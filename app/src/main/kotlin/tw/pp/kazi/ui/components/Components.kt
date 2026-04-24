@@ -76,7 +76,8 @@ fun AppButton(
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        // 內容置中：當 button 被 weight/fillMaxWidth 撐開時，避免文字偏左讓 button 看起來像 input
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         modifier = modifier
             .scale(scale)
             .clip(RoundedCornerShape(10.dp))
@@ -87,7 +88,12 @@ fun AppButton(
             .padding(horizontal = hPad, vertical = vPad),
     ) {
         if (icon != null) {
-            Icon(icon, contentDescription = text, tint = AppColors.OnBg, modifier = Modifier.size(18.dp))
+            Icon(
+                icon,
+                contentDescription = text,
+                tint = if (enabled) AppColors.OnBg else AppColors.OnBgDim,
+                modifier = Modifier.size(18.dp),
+            )
         }
         if (!iconOnly) {
             Text(

@@ -73,7 +73,7 @@ fun LanShareScreen() {
 
     Column(modifier = Modifier.fillMaxSize()) {
         GradientTopBar(
-            title = "LAN 設定分享",
+            title = "遠端遙控",
             subtitle = "掃 QR 或用網址，手機／電腦協助",
             trailing = {
                 AppButton(
@@ -166,13 +166,13 @@ private fun QrPanel(
                 )
             }
             Text(
-                "尚未啟用 LAN 分享",
+                "尚未啟用遠端遙控",
                 color = AppColors.OnBgMuted,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
         AppButton(
-            text = if (running) "停止分享" else "啟用 LAN 分享",
+            text = if (running) "停止遠端遙控" else "啟用遠端遙控",
             icon = if (running) Icons.Filled.StopCircle else Icons.Filled.PlayCircle,
             onClick = onToggle,
             danger = running,
@@ -193,7 +193,7 @@ private fun StepsPanel(compact: Boolean) {
     ) {
         SectionHeader(title = "使用說明")
         Step("1", "同一個 WiFi", "此裝置與手機需連同一網路")
-        Step("2", "啟用 LAN 分享", "點左邊「啟用」按鈕")
+        Step("2", "啟用遠端遙控", "點左邊「啟用」按鈕")
         Step("3", "掃 QR 或輸入網址", "手機瀏覽器開啟，有「遠端搜尋」與「站點管理」兩個頁")
         Step("4", "用完關閉", "避免同 WiFi 的其他人連入")
         Spacer(Modifier.height(4.dp))

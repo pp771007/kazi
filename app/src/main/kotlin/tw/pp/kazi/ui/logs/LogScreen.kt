@@ -210,7 +210,7 @@ private fun buildReport(
     val enabled = sites.count { it.enabled }
     sb.appendLine("站點：${sites.size} 個（啟用 $enabled）")
     val lan = container.lanState.value
-    sb.appendLine("LAN 分享：${if (lan.running) "啟用於 ${lan.url}" else "未啟用"}")
+    sb.appendLine("遠端遙控：${if (lan.running) "啟用於 ${lan.url}" else "未啟用"}")
     sb.appendLine("紀錄筆數：${entries.size}")
     sb.appendLine("==========================================")
     sb.appendLine()

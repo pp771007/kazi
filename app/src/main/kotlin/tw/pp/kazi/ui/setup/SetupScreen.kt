@@ -63,7 +63,6 @@ fun SetupScreen() {
     val compact = windowSize.isCompact
     val sites by container.siteRepository.sites.collectAsState()
     val scope = rememberCoroutineScope()
-    val urlFocus = remember { FocusRequester() }
 
     var newUrl by remember { mutableStateOf("") }
     var newName by remember { mutableStateOf("") }
@@ -74,10 +73,6 @@ fun SetupScreen() {
     var checkSummary by remember { mutableStateOf<String?>(null) }
     var batchChecking by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Site?>(null) }
-
-    LaunchedEffect(sites.isEmpty()) {
-        if (sites.isEmpty()) runCatching { urlFocus.requestFocus() }
-    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         GradientTopBar(
@@ -95,37 +90,6 @@ fun SetupScreen() {
         )
 
         val mainContent: @Composable ColumnScope.() -> Unit = {
-            AddSiteCard(
-                newUrl = newUrl,
-                newName = newName,
-                onUrlChange = { newUrl = it; errorMsg = null },
-                onNameChange = { newName = it },
-                errorMsg = errorMsg,
-                successMsg = successMsg,
-                urlFocus = urlFocus,
-                onAdd = {
-                    if (newUrl.isBlank()) {
-                        errorMsg = "請輸入 URL"
-                        return@AddSiteCard
-                    }
-                    scope.launch {
-                        val r = container.siteRepository.addSite(
-                            newUrl.trim(),
-                            newName.trim().ifEmpty { null },
-                        )
-                        r.fold(
-                            onSuccess = {
-                                newUrl = ""; newName = ""
-                                successMsg = "已新增 ${it.name}"
-                                errorMsg = null
-                            },
-                            onFailure = { errorMsg = it.message; successMsg = null },
-                        )
-                    }
-                },
-                onScan = { nav.navigate(Routes.ScanSites) },
-            )
-
             BatchOpsCard(
                 includeDisabled = includeDisabled,
                 onToggleInclude = { includeDisabled = !includeDisabled },
@@ -149,6 +113,36 @@ fun SetupScreen() {
                     }
                 },
                 onLanShare = { nav.navigate(Routes.LanShare) },
+            )
+
+            AddSiteCard(
+                newUrl = newUrl,
+                newName = newName,
+                onUrlChange = { newUrl = it; errorMsg = null },
+                onNameChange = { newName = it },
+                errorMsg = errorMsg,
+                successMsg = successMsg,
+                onAdd = {
+                    if (newUrl.isBlank()) {
+                        errorMsg = "請輸入 URL"
+                        return@AddSiteCard
+                    }
+                    scope.launch {
+                        val r = container.siteRepository.addSite(
+                            newUrl.trim(),
+                            newName.trim().ifEmpty { null },
+                        )
+                        r.fold(
+                            onSuccess = {
+                                newUrl = ""; newName = ""
+                                successMsg = "已新增 ${it.name}"
+                                errorMsg = null
+                            },
+                            onFailure = { errorMsg = it.message; successMsg = null },
+                        )
+                    }
+                },
+                onScan = { nav.navigate(Routes.ScanSites) },
             )
         }
 
@@ -242,7 +236,6 @@ private fun ColumnScope.AddSiteCard(
     onNameChange: (String) -> Unit,
     errorMsg: String?,
     successMsg: String?,
-    urlFocus: FocusRequester,
     onAdd: () -> Unit,
     onScan: () -> Unit,
 ) {
@@ -261,7 +254,6 @@ private fun ColumnScope.AddSiteCard(
             value = newUrl,
             onValueChange = onUrlChange,
             keyboardType = KeyboardType.Uri,
-            focusRequester = urlFocus,
         )
         FormField(
             label = "名稱（可留空自動命名）",
@@ -324,7 +316,7 @@ private fun ColumnScope.BatchOpsCard(
             Text(it, color = AppColors.OnBgMuted, style = MaterialTheme.typography.bodySmall)
         }
         AppButton(
-            text = "LAN 設定分享",
+            text = "遠端遙控",
             icon = Icons.Filled.QrCode2,
             onClick = onLanShare,
             primary = false,

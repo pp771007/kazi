@@ -1,13 +1,18 @@
 package tw.pp.kazi
 
 import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import tw.pp.kazi.data.Category
 import tw.pp.kazi.data.ConfigRepository
 import tw.pp.kazi.data.HistoryRepository
 import tw.pp.kazi.data.LanConfig
 import tw.pp.kazi.data.MacCmsApi
+import tw.pp.kazi.data.MultiSearchResult
 import tw.pp.kazi.data.RemoteSearchRequest
 import tw.pp.kazi.data.SiteRepository
 import tw.pp.kazi.data.SiteScanner
@@ -21,6 +26,11 @@ import tw.pp.kazi.util.Network
 class AppContainer(private val context: Context) {
 
     private val appContext = context.applicationContext
+
+    // Application 等級 scope；用於那些「離開 composition 後還必須完成」的 IO（例如離開
+    // 播放器時把進度寫進歷史）。不可以用 rememberCoroutineScope，那個會在 composable
+    // 離開 composition 時被 cancel，導致 IO 還沒執行就被砍掉。
+    val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     val configRepository = ConfigRepository(context)
     val siteRepository = SiteRepository(context)
@@ -64,6 +74,16 @@ class AppContainer(private val context: Context) {
     // 一次性傳遞給 DetailScreen 的同名他站列表；DetailScreen 進入時 consume 並清空。
     // 只在 UI thread 讀寫，不需額外同步。
     var pendingDetailPeers: List<Video>? = null
+
+    // HomeScreen / SearchScreen 的 UI snapshot：從 detail 返回時還原，避免重新讀取與跳回第一個站台。
+    // 只在 UI thread 讀寫。
+    var homeSnapshot: HomeUiSnapshot? = null
+    var searchSnapshot: SearchUiSnapshot? = null
+
+    // 無痕模式（session 內，App 重啟會關掉）：開啟時不寫搜尋紀錄、不寫觀看歷史
+    private val _incognito = MutableStateFlow(false)
+    val incognito: StateFlow<Boolean> = _incognito.asStateFlow()
+    fun setIncognito(value: Boolean) { _incognito.value = value }
 
     fun submitRemoteSearch(request: RemoteSearchRequest): Boolean {
         _pendingRemoteSearch.value = request
@@ -123,3 +143,20 @@ class AppContainer(private val context: Context) {
 }
 
 data class LanState(val running: Boolean, val url: String?, val port: Int)
+
+data class HomeUiSnapshot(
+    val selectedSiteId: Long,
+    val selectedCategoryTypeId: Long?,
+    val categories: List<Category>,
+    val videos: List<Video>,
+    val page: Int,
+    val pageCount: Int,
+)
+
+data class SearchUiSnapshot(
+    val keyword: String,
+    val submittedKeyword: String?,
+    val selectedIds: Set<Long>,
+    val result: MultiSearchResult?,
+    val selectorExpanded: Boolean,
+)

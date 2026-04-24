@@ -2,15 +2,22 @@ package tw.pp.kazi.ui.player
 
 import android.content.Context
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.media.AudioManager
 import android.view.KeyEvent
 import android.view.WindowManager
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -22,6 +29,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -29,7 +38,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -219,15 +230,39 @@ fun PlayerScreen(
         onDispose {
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            // 離開播放器時把系統列叫回來，避免影響其他畫面
+            activity?.window?.let { w ->
+                val c = WindowCompat.getInsetsController(w, w.decorView)
+                c.show(WindowInsetsCompat.Type.systemBars())
+            }
+            // 用 appScope，避免 rememberCoroutineScope 在 dispose 時剛好被 cancel 導致歷史沒寫進去
             saveHistoryIfReady(
                 container = container, site = site, details = details,
                 vodId = vodId, sourceIdx = currentSourceIdx, episodeIdx = currentEpIdx,
                 episodeName = currentEpisode?.name.orEmpty(),
                 positionMs = player.currentPosition, durationMs = player.duration,
-                scope = scope,
+                scope = container.appScope,
             )
             player.release()
         }
+    }
+
+    // 橫式全螢幕：藏掉狀態列／導覽列，讓影片真正鋪滿；直式維持原樣（保留狀態列）。
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    DisposableEffect(isLandscape) {
+        val window = activity?.window
+        if (window != null) {
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            if (isLandscape) {
+                controller.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            } else {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+        onDispose { /* 還原放在外層 onDispose */ }
     }
 
     LaunchedEffect(controlsVisible) {
@@ -253,10 +288,17 @@ fun PlayerScreen(
     }
     val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
 
+    val keyFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        runCatching { keyFocusRequester.requestFocus() }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .focusRequester(keyFocusRequester)
+            .focusable()
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 controlsVisible = true
@@ -297,6 +339,10 @@ fun PlayerScreen(
                         this.player = player
                         useController = false
                         this.setKeepContentOnPlayerReset(true)
+                        // 不要搶掉外層 Compose Box 的 focus，否則 DPAD 事件不會進到 onPreviewKeyEvent
+                        isFocusable = false
+                        isFocusableInTouchMode = false
+                        descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
@@ -421,6 +467,13 @@ fun PlayerScreen(
                     showSpeedMenu = showSpeedMenu,
                     onToggleSpeedMenu = { showSpeedMenu = !showSpeedMenu },
                     onPickSpeed = { speed = it; showSpeedMenu = false },
+                    onSeekTo = { target ->
+                        val dur = player.duration.coerceAtLeast(0)
+                        val clamped = target.coerceIn(0, if (dur > 0) dur else target)
+                        player.seekTo(clamped)
+                        positionMs = clamped
+                        controlsVisible = true
+                    },
                 )
             }
         }
@@ -532,6 +585,7 @@ private fun ControlsBar(
     showSpeedMenu: Boolean,
     onToggleSpeedMenu: () -> Unit,
     onPickSpeed: (Float) -> Unit,
+    onSeekTo: (Long) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -549,7 +603,11 @@ private fun ControlsBar(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        ProgressBar(positionMs, durationMs)
+        ProgressBar(
+            positionMs = positionMs,
+            durationMs = durationMs,
+            onSeek = onSeekTo,
+        )
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -629,22 +687,88 @@ private fun ErrorOverlay(message: String, onRetry: () -> Unit, onClose: () -> Un
 }
 
 @Composable
-private fun ProgressBar(positionMs: Long, durationMs: Long) {
-    val progress = if (durationMs > 0) positionMs.toFloat() / durationMs.toFloat() else 0f
+private fun ProgressBar(
+    positionMs: Long,
+    durationMs: Long,
+    onSeek: (Long) -> Unit,
+) {
+    var trackWidthPx by remember { mutableIntStateOf(0) }
+    // 拖曳中以 local 進度顯示，避免 UI 跳動（player position 還沒回報就被覆寫）
+    var draggingProgress by remember { mutableStateOf<Float?>(null) }
+
+    val seekable = durationMs > 0
+    val livedProgress = if (seekable) (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+    val displayProgress = draggingProgress ?: livedProgress
+
+    fun progressFromX(x: Float): Float {
+        val w = trackWidthPx.toFloat().coerceAtLeast(1f)
+        return (x / w).coerceIn(0f, 1f)
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(5.dp)
-            .clip(RoundedCornerShape(3.dp))
-            .background(Color(0x33FFFFFF)),
+            // 加大可觸控高度（thumb 尺寸方便手指點擊），但視覺只畫細條
+            .height(SEEKBAR_TOUCH_HEIGHT)
+            .onSizeChanged { size: IntSize -> trackWidthPx = size.width }
+            .pointerInput(seekable) {
+                if (!seekable) return@pointerInput
+                detectTapGestures(
+                    onTap = { offset ->
+                        val target = (progressFromX(offset.x) * durationMs).toLong()
+                        onSeek(target)
+                    },
+                )
+            }
+            .pointerInput(seekable) {
+                if (!seekable) return@pointerInput
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        draggingProgress = progressFromX(offset.x)
+                    },
+                    onHorizontalDrag = { change, _ ->
+                        change.consume()
+                        draggingProgress = progressFromX(change.position.x)
+                    },
+                    onDragEnd = {
+                        val p = draggingProgress
+                        if (p != null) onSeek((p * durationMs).toLong())
+                        draggingProgress = null
+                    },
+                    onDragCancel = { draggingProgress = null },
+                )
+            },
+        contentAlignment = Alignment.CenterStart,
     ) {
+        // 軌道
         Box(
             modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .fillMaxWidth()
+                .height(SEEKBAR_TRACK_HEIGHT)
                 .clip(RoundedCornerShape(3.dp))
-                .background(AppColors.Primary),
-        )
+                .background(Color(0x33FFFFFF)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(displayProgress)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(AppColors.Primary),
+            )
+        }
+        // 拖曳中或已有時長時畫一個小圓點當 thumb，方便看見手指拖到哪
+        if (seekable) {
+            val thumbSize = if (draggingProgress != null) SEEKBAR_THUMB_DRAG else SEEKBAR_THUMB_IDLE
+            Box(
+                modifier = Modifier
+                    .offset(x = with(androidx.compose.ui.platform.LocalDensity.current) {
+                        (trackWidthPx * displayProgress).toDp() - thumbSize / 2
+                    })
+                    .size(thumbSize)
+                    .clip(RoundedCornerShape(thumbSize / 2))
+                    .background(AppColors.Primary),
+            )
+        }
     }
 }
 
@@ -670,6 +794,7 @@ private fun saveHistoryIfReady(
     durationMs: Long,
     scope: kotlinx.coroutines.CoroutineScope,
 ) {
+    if (container.incognito.value) return
     val s = site ?: return
     val d = details ?: return
     if (positionMs <= 0 || durationMs <= 0) return
@@ -696,3 +821,9 @@ private fun saveHistoryIfReady(
 
 // 螢幕寬度分半參數（左半亮度 / 右半音量），留 local 因為只影響手勢區分邏輯
 private const val HALF_DIVIDER = 2f
+
+// 進度條：軌道很細但點擊熱區要大，免得手指點不到
+private val SEEKBAR_TOUCH_HEIGHT = 28.dp
+private val SEEKBAR_TRACK_HEIGHT = 5.dp
+private val SEEKBAR_THUMB_IDLE = 12.dp
+private val SEEKBAR_THUMB_DRAG = 18.dp

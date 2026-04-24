@@ -48,7 +48,7 @@ fun SettingsScreen() {
     Column(modifier = Modifier.fillMaxSize()) {
         GradientTopBar(
             title = "設定",
-            subtitle = "外觀 · 連線 · LAN 分享",
+            subtitle = "外觀 · 連線 · 遠端遙控",
             trailing = {
                 AppButton(
                     text = "返回",
@@ -90,32 +90,17 @@ fun SettingsScreen() {
 
             Card {
                 SectionHeader(title = "內容")
-                val favCount by container.favoriteRepository.items.collectAsState()
                 Text(
-                    "站點 ${sites.size} · 收藏 ${favCount.size}",
+                    "站點 ${sites.size}",
                     color = AppColors.OnBgMuted,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
-                ButtonRow(windowSize) {
-                    AppButton(
-                        text = "站點管理",
-                        icon = Icons.Filled.Dns,
-                        onClick = { nav.navigate(Routes.Setup) },
-                    )
-                    AppButton(
-                        text = "我的收藏",
-                        icon = Icons.Filled.Star,
-                        onClick = { nav.navigate(Routes.Favorites) },
-                        primary = false,
-                    )
-                    AppButton(
-                        text = "觀看歷史",
-                        icon = Icons.Filled.History,
-                        onClick = { nav.navigate(Routes.History) },
-                        primary = false,
-                    )
-                }
+                AppButton(
+                    text = "站點管理",
+                    icon = Icons.Filled.Dns,
+                    onClick = { nav.navigate(Routes.Setup) },
+                )
             }
 
             Card {
@@ -136,7 +121,7 @@ fun SettingsScreen() {
             }
 
             Card {
-                SectionHeader(title = "LAN 分享")
+                SectionHeader(title = "遠端遙控")
                 Text(
                     if (lanState.running) "已啟用：${lanState.url ?: "-"}" else "未啟用",
                     color = if (lanState.running) AppColors.Success else AppColors.OnBgMuted,
@@ -144,7 +129,7 @@ fun SettingsScreen() {
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
                 AppButton(
-                    text = "開啟 LAN 設定分享",
+                    text = "開啟遠端遙控設定",
                     icon = Icons.Filled.QrCode2,
                     onClick = { nav.navigate(Routes.LanShare) },
                 )
@@ -198,21 +183,5 @@ private fun Card(content: @Composable ColumnScope.() -> Unit) {
         verticalArrangement = Arrangement.spacedBy(6.dp),
         content = content,
     )
-}
-
-@Composable
-private fun ButtonRow(
-    windowSize: tw.pp.kazi.ui.WindowSize,
-    content: @Composable () -> Unit,
-) {
-    if (windowSize.isCompact) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            content()
-        }
-    } else {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            content()
-        }
-    }
 }
 

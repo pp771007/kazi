@@ -56,19 +56,34 @@ fun HomeScreen() {
     val windowSize = LocalWindowSize.current
     val sites by container.siteRepository.sites.collectAsState()
     val settings by container.configRepository.settings.collectAsState()
+    val lanState by container.lanState.collectAsState()
+    val incognito by container.incognito.collectAsState()
     val scope = rememberCoroutineScope()
 
     val enabledSites = remember(sites) { sites.filter { it.enabled }.sortedBy { it.order } }
 
-    var selectedSite by remember { mutableStateOf<Site?>(null) }
-    var selectedCategory by remember { mutableStateOf<Category?>(null) }
-    var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
-    var videos by remember { mutableStateOf<List<Video>>(emptyList()) }
-    var page by remember { mutableIntStateOf(1) }
-    var pageCount by remember { mutableIntStateOf(1) }
+    // 從 detail 返回時還原上次狀態（站台、分類、頁碼、清單），避免重新打 API 也不會跳回第一個站台。
+    val initialSnapshot = remember { container.homeSnapshot }
+    val restoredSite = remember(enabledSites, initialSnapshot) {
+        initialSnapshot?.let { snap -> enabledSites.firstOrNull { it.id == snap.selectedSiteId } }
+    }
+    val restoredCategory = remember(initialSnapshot) {
+        initialSnapshot?.let { snap ->
+            snap.categories.firstOrNull { it.typeId == snap.selectedCategoryTypeId }
+        }
+    }
+
+    var selectedSite by remember { mutableStateOf<Site?>(restoredSite) }
+    var selectedCategory by remember { mutableStateOf<Category?>(restoredCategory) }
+    var categories by remember { mutableStateOf<List<Category>>(initialSnapshot?.categories ?: emptyList()) }
+    var videos by remember { mutableStateOf<List<Video>>(initialSnapshot?.videos ?: emptyList()) }
+    var page by remember { mutableIntStateOf(initialSnapshot?.page ?: 1) }
+    var pageCount by remember { mutableIntStateOf(initialSnapshot?.pageCount ?: 1) }
     var loading by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var retryKey by remember { mutableIntStateOf(0) }
+    // 若 snapshot 還原成功，跳過第一次 LaunchedEffect 觸發的 API 抓取
+    var skipNextFetch by remember { mutableStateOf(initialSnapshot != null && restoredSite != null) }
 
     val searchFocusRequester = remember { FocusRequester() }
 
@@ -82,6 +97,10 @@ fun HomeScreen() {
 
     LaunchedEffect(selectedSite, selectedCategory, page, retryKey) {
         val site = selectedSite ?: return@LaunchedEffect
+        if (skipNextFetch) {
+            skipNextFetch = false
+            return@LaunchedEffect
+        }
         loading = true
         errorMsg = null
         when (val r = container.macCmsApi.fetchList(
@@ -104,6 +123,20 @@ fun HomeScreen() {
         loading = false
     }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            val site = selectedSite ?: return@onDispose
+            container.homeSnapshot = tw.pp.kazi.HomeUiSnapshot(
+                selectedSiteId = site.id,
+                selectedCategoryTypeId = selectedCategory?.typeId,
+                categories = categories,
+                videos = videos,
+                page = page,
+                pageCount = pageCount,
+            )
+        }
+    }
+
     LaunchedEffect(enabledSites.isNotEmpty()) {
         if (enabledSites.isNotEmpty()) {
             runCatching { searchFocusRequester.requestFocus() }
@@ -115,9 +148,15 @@ fun HomeScreen() {
     CollapsibleHeader(
         state = headerState,
         topBar = {
+            val baseSubtitle = selectedSite?.name ?: "請先到設定新增站點"
+            val subtitle = buildString {
+                append(baseSubtitle)
+                if (incognito) append("  · 🕶 無痕模式")
+                if (lanState.running) append("  · 🟢 遠端遙控啟用中")
+            }
             GradientTopBar(
                 title = "咔滋影院",
-                subtitle = selectedSite?.name ?: "請先到設定新增站點",
+                subtitle = subtitle,
                 trailing = {
                     val compact = windowSize.isCompact
                     AppButton(
@@ -127,10 +166,12 @@ fun HomeScreen() {
                         iconOnly = compact,
                         modifier = Modifier.focusRequester(searchFocusRequester),
                     )
-                    ViewModeToggle(
-                        current = settings.viewMode,
-                        compact = compact,
-                        onPick = { scope.launch { container.configRepository.updateViewMode(it) } },
+                    AppButton(
+                        text = "歷史",
+                        icon = Icons.Filled.History,
+                        onClick = { nav.navigate(Routes.History) },
+                        primary = false,
+                        iconOnly = compact,
                     )
                     AppButton(
                         text = "收藏",
@@ -139,11 +180,16 @@ fun HomeScreen() {
                         primary = false,
                         iconOnly = compact,
                     )
+                    ViewModeToggle(
+                        current = settings.viewMode,
+                        compact = compact,
+                        onPick = { scope.launch { container.configRepository.updateViewMode(it) } },
+                    )
                     AppButton(
-                        text = "歷史",
-                        icon = Icons.Filled.History,
-                        onClick = { nav.navigate(Routes.History) },
-                        primary = false,
+                        text = if (incognito) "無痕中" else "無痕",
+                        icon = Icons.Filled.VisibilityOff,
+                        onClick = { container.setIncognito(!incognito) },
+                        primary = incognito,
                         iconOnly = compact,
                     )
                     AppButton(

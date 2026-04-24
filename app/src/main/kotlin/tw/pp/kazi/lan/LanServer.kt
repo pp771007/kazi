@@ -225,7 +225,7 @@ class LanServer(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>咔滋影院 · LAN 控制</title>
+<title>咔滋影院 · 遠端遙控</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -281,7 +281,11 @@ class LanServer(
   .hero { text-align:center; padding: 12px 0 4px;}
   .hero h2 { font-size: 17px; font-weight:600; margin: 0 0 6px; color:#fff;}
   .hero p { font-size: 13px; color:#94A3B8; margin: 0;}
-  .history-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;}
+  .history-head { display:flex; align-items:center; justify-content:space-between;
+                  margin-top:10px;}
+  .history-label { font-size:12px; color:#94A3B8;}
+  .history-head button { margin-top:0;}
+  .history-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;}
   .history-pill { background:#2a2a3e; color:#CBD5E1; padding:6px 10px;
                   border-radius:999px; font-size:12px; cursor:pointer;
                   border:none; margin:0;}
@@ -289,7 +293,7 @@ class LanServer(
 </style>
 </head>
 <body>
-<h1>🍿 咔滋影院 · LAN 控制</h1>
+<h1>🍿 咔滋影院 · 遠端遙控</h1>
 <div class="tabs">
   <button class="tab active" data-tab="search">📱 遠端搜尋</button>
   <button class="tab" data-tab="sites">⚙️ 站點管理</button>
@@ -306,6 +310,10 @@ class LanServer(
       <input id="kw" type="text" placeholder="例如：慶餘年" autocomplete="off" autocapitalize="off" style="flex:1">
       <button class="secondary small" onclick="toSimp()" title="繁體轉簡體"
               style="margin-top:0; padding:0 14px; font-weight:bold;">簡</button>
+    </div>
+    <div class="history-head" id="kwHistoryHead" style="display:none">
+      <span class="history-label">最近搜尋</span>
+      <button class="secondary small" onclick="clearHistory()">清空</button>
     </div>
     <div class="history-row" id="kwHistory"></div>
     <label style="margin-top:14px">搜尋站點</label>
@@ -385,7 +393,9 @@ function selAll(v){
 
 function renderHistory(){
   const wrap = document.getElementById('kwHistory');
+  const head = document.getElementById('kwHistoryHead');
   wrap.innerHTML = '';
+  head.style.display = recentKw.length ? 'flex' : 'none';
   recentKw.slice(0, 10).forEach(k => {
     const b = document.createElement('button');
     b.className = 'history-pill';
@@ -393,6 +403,13 @@ function renderHistory(){
     b.onclick = () => { document.getElementById('kw').value = k; };
     wrap.appendChild(b);
   });
+}
+
+function clearHistory(){
+  if (!confirm('清空所有搜尋歷史？')) return;
+  recentKw.length = 0;
+  localStorage.setItem('maccms_recent_kw', JSON.stringify(recentKw));
+  renderHistory();
 }
 
 function renderList(sites){

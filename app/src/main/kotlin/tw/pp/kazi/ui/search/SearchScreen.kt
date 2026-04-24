@@ -78,17 +78,26 @@ fun SearchScreen(
 
     val enabledSites = remember(sites) { sites.filter { it.enabled } }
 
+    // 從 detail 返回時還原（只有「不是從外部帶 keyword 進來」才使用 snapshot；
+    // 外部傳 keyword 進來代表是新的搜尋意圖，例如手機遠端送過來的）
+    val initialSnapshot = remember {
+        container.searchSnapshot.takeIf { initialKeyword.isBlank() && initialSiteIds.isEmpty() }
+    }
+
     var selectedIds by remember(enabledSites) {
         mutableStateOf(
-            if (initialSiteIds.isNotEmpty()) initialSiteIds
-            else enabledSites.map { it.id }.toSet()
+            when {
+                initialSiteIds.isNotEmpty() -> initialSiteIds
+                initialSnapshot != null -> initialSnapshot.selectedIds
+                else -> enabledSites.map { it.id }.toSet()
+            }
         )
     }
-    var keyword by remember { mutableStateOf(initialKeyword) }
-    var submittedKeyword by remember { mutableStateOf<String?>(null) }
+    var keyword by remember { mutableStateOf(initialSnapshot?.keyword ?: initialKeyword) }
+    var submittedKeyword by remember { mutableStateOf(initialSnapshot?.submittedKeyword) }
     var loading by remember { mutableStateOf(false) }
-    var result by remember { mutableStateOf<MultiSearchResult?>(null) }
-    var selectorExpanded by remember { mutableStateOf(true) }
+    var result by remember { mutableStateOf<MultiSearchResult?>(initialSnapshot?.result) }
+    var selectorExpanded by remember { mutableStateOf(initialSnapshot?.selectorExpanded ?: true) }
     val focusRequester = remember { FocusRequester() }
 
     val aggregated = remember(result) {
@@ -111,7 +120,9 @@ fun SearchScreen(
             loading = true
             submittedKeyword = kw
             selectorExpanded = false
-            container.configRepository.addSearchKeyword(kw)
+            if (!container.incognito.value) {
+                container.configRepository.addSearchKeyword(kw)
+            }
             val serverResult = container.macCmsApi.multiSiteSearch(
                 sites = enabledSites.filter { it.id in selectedIds },
                 keyword = parsed.include,
@@ -122,8 +133,24 @@ fun SearchScreen(
     }
 
     LaunchedEffect(Unit) {
-        runCatching { focusRequester.requestFocus() }
-        if (initialKeyword.isNotBlank()) runSearch()
+        // 只有第一次進入搜尋頁才搶 focus 到輸入框；從 detail 返回時不搶，否則手機鍵盤會又彈出來
+        if (initialSnapshot == null) {
+            runCatching { focusRequester.requestFocus() }
+        }
+        // 只在「從外部帶 keyword 進來」時自動搜尋；從 detail 返回時直接顯示 snapshot 的舊結果
+        if (initialKeyword.isNotBlank() && initialSnapshot == null) runSearch()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            container.searchSnapshot = tw.pp.kazi.SearchUiSnapshot(
+                keyword = keyword,
+                submittedKeyword = submittedKeyword,
+                selectedIds = selectedIds,
+                result = result,
+                selectorExpanded = selectorExpanded,
+            )
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
