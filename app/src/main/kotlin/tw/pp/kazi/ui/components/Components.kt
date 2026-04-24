@@ -1,0 +1,419 @@
+package tw.pp.kazi.ui.components
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Icon
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import tw.pp.kazi.ui.LocalWindowSize
+import tw.pp.kazi.ui.WindowSize
+import tw.pp.kazi.ui.isCompact
+import tw.pp.kazi.ui.theme.AppColors
+import tw.pp.kazi.ui.topBarHorizontal
+import tw.pp.kazi.ui.topBarVertical
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun AppButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    enabled: Boolean = true,
+    primary: Boolean = true,
+    danger: Boolean = false,
+    iconOnly: Boolean = false,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+
+    val bg = when {
+        !enabled -> Color(0xFF2A2A3E)
+        danger && focused -> AppColors.Error
+        danger -> AppColors.Error.copy(alpha = 0.85f)
+        primary && focused -> AppColors.PrimaryVariant
+        primary -> AppColors.Primary
+        focused -> AppColors.Surface
+        else -> AppColors.BgElevated
+    }
+    val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(160), label = "btn-scale")
+    val borderColor by animateColorAsState(
+        if (focused) AppColors.FocusRing else Color.Transparent, tween(160), label = "btn-border"
+    )
+
+    val hPad = if (iconOnly) BUTTON_ICON_ONLY_PAD else BUTTON_H_PAD
+    val vPad = BUTTON_V_PAD
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier
+            .scale(scale)
+            .clip(RoundedCornerShape(10.dp))
+            .background(bg)
+            .border(2.dp, borderColor, RoundedCornerShape(10.dp))
+            .focusable(enabled = enabled, interactionSource = interaction)
+            .clickable(enabled = enabled, interactionSource = interaction, indication = null) { onClick() }
+            .padding(horizontal = hPad, vertical = vPad),
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = text, tint = AppColors.OnBg, modifier = Modifier.size(18.dp))
+        }
+        if (!iconOnly) {
+            Text(
+                text = text,
+                color = if (enabled) AppColors.OnBg else AppColors.OnBgDim,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun FocusableTag(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+
+    val bg = when {
+        selected -> AppColors.Primary
+        focused -> AppColors.Surface
+        else -> AppColors.BgElevated
+    }
+    val borderColor by animateColorAsState(
+        if (focused) AppColors.FocusRing else Color.Transparent, tween(160), label = "tag-border"
+    )
+    val scale by animateFloatAsState(if (focused) 1.06f else 1f, tween(160), label = "tag-scale")
+
+    Box(
+        modifier = modifier
+            .scale(scale)
+            .clip(RoundedCornerShape(999.dp))
+            .background(bg)
+            .border(2.dp, borderColor, RoundedCornerShape(999.dp))
+            .focusable(interactionSource = interaction)
+            .clickable(interactionSource = interaction, indication = null) { onClick() }
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+    ) {
+        Text(
+            text = text,
+            color = if (selected || focused) AppColors.OnBg else AppColors.OnBgMuted,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun PosterCard(
+    title: String,
+    remarks: String,
+    imageUrl: String,
+    fromSite: String? = null,
+    aspectRatio: Float,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val context = LocalContext.current
+
+    val scale by animateFloatAsState(if (focused) 1.08f else 1f, tween(200), label = "card-scale")
+    val borderColor by animateColorAsState(
+        if (focused) AppColors.FocusRing else Color(0x15FFFFFF), tween(160), label = "card-border"
+    )
+    val borderWidth by animateFloatAsState(if (focused) 3f else 1f, tween(160), label = "card-bw")
+
+    Column(
+        modifier = modifier
+            .scale(scale)
+            .clip(RoundedCornerShape(12.dp))
+            .background(AppColors.BgCard)
+            .border(borderWidth.dp, borderColor, RoundedCornerShape(12.dp))
+            .focusable(interactionSource = interaction)
+            .clickable(interactionSource = interaction, indication = null) { onClick() },
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(aspectRatio)
+                .background(AppColors.ShimmerStart),
+        ) {
+            if (imageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context).data(imageUrl).crossfade(true).build(),
+                    contentDescription = title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            if (remarks.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(5.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(Color(0xCC000000))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text = remarks,
+                        color = AppColors.OnBg,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+            if (fromSite != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(5.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(AppColors.Primary.copy(alpha = 0.85f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text = fromSite,
+                        color = AppColors.OnBg,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
+        Text(
+            text = title,
+            color = AppColors.OnBg,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .heightIn(min = 36.dp),
+        )
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun SectionHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    action: @Composable (() -> Unit)? = null,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(20.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Brush.verticalGradient(listOf(AppColors.Primary, AppColors.Secondary))),
+            )
+            Text(
+                text = title,
+                color = AppColors.OnBg,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        action?.invoke()
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun EmptyState(
+    title: String,
+    subtitle: String = "",
+    icon: ImageVector = Icons.Filled.Error,
+    modifier: Modifier = Modifier,
+    action: @Composable (() -> Unit)? = null,
+) {
+    Column(
+        modifier = modifier.fillMaxSize().padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = AppColors.OnBgDim, modifier = Modifier.size(56.dp))
+        Spacer(Modifier.height(14.dp))
+        Text(title, color = AppColors.OnBg, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        if (subtitle.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                subtitle, color = AppColors.OnBgMuted,
+                style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center,
+            )
+        }
+        action?.let {
+            Spacer(Modifier.height(18.dp))
+            it()
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun LoadingState(modifier: Modifier = Modifier, label: String = "載入中⋯") {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        PulsingDot()
+        Spacer(Modifier.height(14.dp))
+        Text(label, color = AppColors.OnBgMuted, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun PulsingDot() {
+    val phase = remember { androidx.compose.animation.core.Animatable(0.4f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            phase.animateTo(1f, tween(800))
+            phase.animateTo(0.4f, tween(800))
+        }
+    }
+    Box(
+        modifier = Modifier
+            .size(16.dp)
+            .clip(RoundedCornerShape(50))
+            .background(AppColors.Primary.copy(alpha = phase.value)),
+    )
+}
+
+/**
+ * 自適應標題列：
+ * - Compact 手機直立：標題行 + 可橫向捲動的操作按鈕行
+ * - Expanded 電視：標題與按鈕同列
+ */
+@Composable
+fun GradientTopBar(
+    title: String,
+    subtitle: String? = null,
+    modifier: Modifier = Modifier,
+    trailing: @Composable (RowScope.() -> Unit)? = null,
+) {
+    val windowSize = LocalWindowSize.current
+    val bg = Brush.horizontalGradient(listOf(AppColors.BgElevated, AppColors.Bg))
+
+    if (windowSize.isCompact) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .background(bg)
+                .padding(
+                    horizontal = windowSize.topBarHorizontal(),
+                    vertical = windowSize.topBarVertical(),
+                ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TitleColumn(title = title, subtitle = subtitle, compact = true)
+            if (trailing != null) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) { trailing() }
+                    }
+                }
+            }
+        }
+    } else {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .background(bg)
+                .padding(
+                    horizontal = windowSize.topBarHorizontal(),
+                    vertical = windowSize.topBarVertical(),
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                TitleColumn(title = title, subtitle = subtitle, compact = false)
+            }
+            if (trailing != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) { trailing() }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun TitleColumn(title: String, subtitle: String?, compact: Boolean) {
+    Text(
+        text = title,
+        color = AppColors.OnBg,
+        style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+    if (subtitle != null) {
+        Text(
+            subtitle,
+            color = AppColors.OnBgMuted,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+val CardShape: Shape = RoundedCornerShape(14.dp)
+
+private val BUTTON_H_PAD = 14.dp
+private val BUTTON_V_PAD = 9.dp
+private val BUTTON_ICON_ONLY_PAD = 9.dp
