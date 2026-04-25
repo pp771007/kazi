@@ -36,12 +36,11 @@ fun SettingsScreen() {
     val nav = LocalNavController.current
     val windowSize = LocalWindowSize.current
     val sites by container.siteRepository.sites.collectAsState()
-    val lanState by container.lanState.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
         GradientTopBar(
             title = "設定",
-            subtitle = "遠端遙控 · 站點 · 紀錄",
+            subtitle = "站點 · 紀錄",
             trailing = {
                 AppButton(
                     text = "返回",
@@ -60,21 +59,6 @@ fun SettingsScreen() {
                 .padding(horizontal = windowSize.pagePadding(), vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(windowSize.sectionGap()),
         ) {
-            Card {
-                SectionHeader(title = "遠端遙控")
-                Text(
-                    if (lanState.running) "已啟用：${lanState.url ?: "-"}" else "未啟用",
-                    color = if (lanState.running) AppColors.Success else AppColors.OnBgMuted,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
-                AppButton(
-                    text = "開啟遠端遙控設定",
-                    icon = Icons.Filled.QrCode2,
-                    onClick = { nav.navigate(Routes.LanShare) },
-                )
-            }
-
             Card {
                 SectionHeader(title = "內容")
                 Text(

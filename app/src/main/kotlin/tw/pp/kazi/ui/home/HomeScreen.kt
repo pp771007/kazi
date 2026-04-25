@@ -87,7 +87,13 @@ fun HomeScreen() {
     // 若 snapshot 還原成功，跳過第一次 LaunchedEffect 觸發的 API 抓取
     var skipNextFetch by remember { mutableStateOf(initialSnapshot != null && restoredSite != null) }
 
+    // top bar 各個會跳出本畫面的按鈕都掛一個 requester；返回時 focus 回原本那顆
     val searchFocusRequester = remember { FocusRequester() }
+    val historyFocusRequester = remember { FocusRequester() }
+    val favoritesFocusRequester = remember { FocusRequester() }
+    val lanFocusRequester = remember { FocusRequester() }
+    val settingsFocusRequester = remember { FocusRequester() }
+
     val firstVideoFocus = remember { FocusRequester() }
     val clickedVideoFocus = remember { FocusRequester() }
     // 換頁後要把 focus 移到新頁第一張卡，避免 focus 卡在「下一頁」按鈕。
@@ -95,6 +101,10 @@ fun HomeScreen() {
     // 從 detail 返回時要 focus 在剛才點進去的那張卡，不是 site strip
     val restoreClickedVodId = remember { initialSnapshot?.lastClickedVodId }
     var pendingClickedFocus by remember { mutableStateOf(restoreClickedVodId != null) }
+    // 從 settings/history/favorites/lan 等子畫面返回時，focus 回到對應的 top bar 按鈕
+    val restoreTopBarKey = remember {
+        container.homeTopBarFocusKey.also { container.homeTopBarFocusKey = null }
+    }
 
     LaunchedEffect(enabledSites) {
         if (selectedSite == null && enabledSites.isNotEmpty()) {
@@ -148,9 +158,17 @@ fun HomeScreen() {
     }
 
     LaunchedEffect(enabledSites.isNotEmpty()) {
-        // 第一次進來如果不是從 detail 返回（沒 clicked 要 restore），focus 搜尋按鈕
+        // 優先順序：(1) 點過卡片 → 等卡片 focus 回去；(2) 有 top bar key 就 focus 那顆；(3) 預設 focus 搜尋
         if (enabledSites.isNotEmpty() && !pendingClickedFocus) {
-            runCatching { searchFocusRequester.requestFocus() }
+            val target = when (restoreTopBarKey) {
+                "history" -> historyFocusRequester
+                "favorites" -> favoritesFocusRequester
+                "lan" -> lanFocusRequester
+                "settings" -> settingsFocusRequester
+                "search" -> searchFocusRequester
+                else -> searchFocusRequester
+            }
+            runCatching { target.requestFocus() }
         }
     }
 
@@ -206,23 +224,34 @@ fun HomeScreen() {
                     AppButton(
                         text = "搜尋",
                         icon = Icons.Filled.Search,
-                        onClick = { nav.navigate(Routes.search()) },
+                        onClick = {
+                            container.homeTopBarFocusKey = "search"
+                            nav.navigate(Routes.search())
+                        },
                         iconOnly = compact,
                         modifier = Modifier.focusRequester(searchFocusRequester),
                     )
                     AppButton(
                         text = "歷史",
                         icon = Icons.Filled.History,
-                        onClick = { nav.navigate(Routes.History) },
+                        onClick = {
+                            container.homeTopBarFocusKey = "history"
+                            nav.navigate(Routes.History)
+                        },
                         primary = false,
                         iconOnly = compact,
+                        modifier = Modifier.focusRequester(historyFocusRequester),
                     )
                     AppButton(
                         text = "收藏",
                         icon = Icons.Filled.Star,
-                        onClick = { nav.navigate(Routes.Favorites) },
+                        onClick = {
+                            container.homeTopBarFocusKey = "favorites"
+                            nav.navigate(Routes.Favorites)
+                        },
                         primary = false,
                         iconOnly = compact,
+                        modifier = Modifier.focusRequester(favoritesFocusRequester),
                     )
                     ViewModeToggle(
                         current = settings.viewMode,
@@ -241,6 +270,7 @@ fun HomeScreen() {
                         icon = Icons.Filled.QrCode2,
                         onClick = {
                             // 一鍵：沒開就順手 enable，已開直接秀 QR 頁
+                            container.homeTopBarFocusKey = "lan"
                             scope.launch {
                                 if (!lanState.running) {
                                     container.startLan()
@@ -251,13 +281,18 @@ fun HomeScreen() {
                         },
                         primary = lanState.running,
                         iconOnly = compact,
+                        modifier = Modifier.focusRequester(lanFocusRequester),
                     )
                     AppButton(
                         text = "設定",
                         icon = Icons.Filled.Settings,
-                        onClick = { nav.navigate(Routes.Settings) },
+                        onClick = {
+                            container.homeTopBarFocusKey = "settings"
+                            nav.navigate(Routes.Settings)
+                        },
                         primary = false,
                         iconOnly = compact,
+                        modifier = Modifier.focusRequester(settingsFocusRequester),
                     )
                 },
             )

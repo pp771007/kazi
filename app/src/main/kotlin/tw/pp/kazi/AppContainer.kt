@@ -79,10 +79,13 @@ class AppContainer(private val context: Context) {
     // 只在 UI thread 讀寫，不需額外同步。
     var pendingDetailPeers: List<Video>? = null
 
-    // HomeScreen / SearchScreen 的 UI snapshot：從 detail 返回時還原，避免重新讀取與跳回第一個站台。
-    // 只在 UI thread 讀寫。
+    // 各畫面的 UI snapshot：從子畫面返回時還原 focus / 狀態。只在 UI thread 讀寫。
     var homeSnapshot: HomeUiSnapshot? = null
     var searchSnapshot: SearchUiSnapshot? = null
+    // 觀看歷史頁返回時的 focus 還原 key（"siteId-vodId"）
+    var historyLastFocusKey: String? = null
+    // 首頁 top bar 按鈕之間互相點擊的 focus 還原 key（"search" / "history" / 等）
+    var homeTopBarFocusKey: String? = null
 
     // 無痕模式：存進 ConfigRepository，App 重啟會記住上次狀態
     val incognito: StateFlow<Boolean> = configRepository.settings

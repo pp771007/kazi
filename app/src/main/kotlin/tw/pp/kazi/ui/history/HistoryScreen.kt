@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +53,19 @@ fun HistoryScreen() {
     val scope = rememberCoroutineScope()
     var checking by remember { mutableStateOf(false) }
     var checkProgress by remember { mutableStateOf<String?>(null) }
+
+    // 從 player / detail 返回時，focus 回到原本那一列的「繼續」按鈕
+    val restoreFocusKey = remember { container.historyLastFocusKey }
+    val rowFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    var pendingRowFocus by remember { mutableStateOf(restoreFocusKey != null) }
+    LaunchedEffect(items) {
+        if (pendingRowFocus && restoreFocusKey != null
+            && items.any { "${it.siteId}-${it.videoId}" == restoreFocusKey }) {
+            kotlinx.coroutines.delay(50)
+            runCatching { rowFocusRequester.requestFocus() }
+            pendingRowFocus = false
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         GradientTopBar(
@@ -145,9 +159,12 @@ fun HistoryScreen() {
             modifier = Modifier.fillMaxSize(),
         ) {
             items(items, key = { "${it.siteId}-${it.videoId}" }) { item ->
+                val key = "${item.siteId}-${item.videoId}"
                 HistoryRow(
                     item = item,
+                    focusRequester = if (key == restoreFocusKey) rowFocusRequester else null,
                     onResume = {
+                        container.historyLastFocusKey = key
                         nav.navigate(
                             Routes.player(
                                 siteId = item.siteId,
@@ -159,6 +176,7 @@ fun HistoryScreen() {
                         )
                     },
                     onOpen = {
+                        container.historyLastFocusKey = key
                         nav.navigate(Routes.detail(item.siteId, item.videoId))
                     },
                     onDelete = {
@@ -177,6 +195,7 @@ private fun HistoryRow(
     onResume: () -> Unit,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
 ) {
     val context = LocalContext.current
     val progress = if (item.durationMs > 0) item.positionMs.toFloat() / item.durationMs.toFloat() else 0f
@@ -263,7 +282,13 @@ private fun HistoryRow(
             )
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                AppButton(text = "繼續", icon = Icons.Filled.PlayArrow, onClick = onResume)
+                AppButton(
+                    text = "繼續",
+                    icon = Icons.Filled.PlayArrow,
+                    onClick = onResume,
+                    modifier = if (focusRequester != null)
+                        Modifier.focusRequester(focusRequester) else Modifier,
+                )
                 AppButton(text = "詳情", icon = Icons.Filled.Info, onClick = onOpen, primary = false)
                 AppButton(text = "刪除", icon = Icons.Filled.Delete, onClick = onDelete, primary = false, danger = true)
             }
