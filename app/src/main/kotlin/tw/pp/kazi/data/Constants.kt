@@ -56,6 +56,8 @@ object PlayerConfig {
     const val POSITION_POLL_MS = 500L
     val PLAYBACK_SPEEDS = floatArrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
     const val DEFAULT_SPEED = 1.0f
+    // 長按全螢幕暫時加速到的倍數（YT pattern：鬆手回原本速度）
+    const val LONG_PRESS_SPEED = 2.0f
 
     // 影片比例偵測門檻：>1.1 視為橫向、<0.9 視為直向，之間不強制
     const val ORIENTATION_LANDSCAPE_THRESHOLD = 1.1f

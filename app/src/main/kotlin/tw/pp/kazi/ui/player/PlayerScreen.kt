@@ -403,23 +403,72 @@ fun PlayerScreen(
                 modifier = Modifier.fillMaxSize(),
             )
 
-            // 觸控手勢層（點擊切控制列、雙擊暫停、拖曳手勢）
+            // 觸控手勢層（YouTube 風格：單擊切控制列、雙擊左右側 ±10s、雙擊中央暫停、長按 2x 速）
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .pointerInput(Unit) {
+                        // 用 var 紀錄長按啟動前的 speed，鬆手後還原
+                        var speedBeforeLongPress = speed
+                        var longPressActive = false
                         detectTapGestures(
+                            onPress = { _ ->
+                                val released = tryAwaitRelease()
+                                if (longPressActive) {
+                                    speed = speedBeforeLongPress
+                                    longPressActive = false
+                                    gestureIndicator = null
+                                }
+                                // released 用來確認手勢被取消還是正常釋放，目前只關心釋放後恢復速度
+                                @Suppress("UNUSED_EXPRESSION") released
+                            },
+                            onLongPress = { _ ->
+                                speedBeforeLongPress = speed
+                                speed = PlayerConfig.LONG_PRESS_SPEED
+                                longPressActive = true
+                                gestureIndicator = GestureIndicator.Speed(speed)
+                                controlsVisible = true
+                            },
                             onTap = { controlsVisible = !controlsVisible },
-                            onDoubleTap = {
-                                if (player.isPlaying) player.pause() else player.play()
+                            onDoubleTap = { offset ->
+                                val w = size.width.toFloat().coerceAtLeast(1f)
+                                when {
+                                    offset.x < w / 3f -> {
+                                        // 左側：往回 10 秒
+                                        val target = (player.currentPosition - PlayerConfig.SEEK_STEP_MS)
+                                            .coerceAtLeast(0)
+                                        player.seekTo(target)
+                                        gestureIndicator = GestureIndicator.Seek(
+                                            targetMs = target,
+                                            deltaMs = -PlayerConfig.SEEK_STEP_MS,
+                                            durationMs = player.duration,
+                                        )
+                                    }
+                                    offset.x > w * 2f / 3f -> {
+                                        // 右側：往前 10 秒
+                                        val target = (player.currentPosition + PlayerConfig.SEEK_STEP_MS)
+                                            .coerceAtMost(player.duration)
+                                        player.seekTo(target)
+                                        gestureIndicator = GestureIndicator.Seek(
+                                            targetMs = target,
+                                            deltaMs = PlayerConfig.SEEK_STEP_MS,
+                                            durationMs = player.duration,
+                                        )
+                                    }
+                                    else -> {
+                                        // 中央：play/pause
+                                        if (player.isPlaying) player.pause() else player.play()
+                                    }
+                                }
+                                controlsVisible = true
                             },
                         )
                     }
                     .pointerInput(Unit) {
+                        // 只接管「垂直 drag」做亮度／音量；橫向滑動讓給系統手勢（避免邊緣手勢誤觸）
                         var mode: DragMode? = null
                         var startX = 0f
                         var startY = 0f
-                        var startPos = 0L
                         var startBrightness = 0f
                         var startVolume = 0
                         detectDragGestures(
@@ -427,39 +476,25 @@ fun PlayerScreen(
                                 mode = null
                                 startX = offset.x
                                 startY = offset.y
-                                startPos = player.currentPosition
                                 startBrightness = currentBrightness(activity)
                                 startVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                controlsVisible = true
                             },
                             onDrag = { change, _ ->
-                                // 每次 drag 都重讀 size，避開旋轉後尺寸過期的問題
                                 val w = size.width.toFloat().coerceAtLeast(1f)
                                 val h = size.height.toFloat().coerceAtLeast(1f)
                                 val dx = change.position.x - startX
                                 val dy = change.position.y - startY
                                 if (mode == null) {
-                                    if (abs(dx) > PlayerConfig.GESTURE_DECISION_PX || abs(dy) > PlayerConfig.GESTURE_DECISION_PX) {
-                                        mode = when {
-                                            abs(dx) > abs(dy) -> DragMode.SEEK
-                                            startX < w / HALF_DIVIDER -> DragMode.BRIGHTNESS
-                                            else -> DragMode.VOLUME
-                                        }
+                                    // 垂直明顯主導才接（避免跟系統橫向邊緣手勢撞）
+                                    val verticalDominant = abs(dy) > PlayerConfig.GESTURE_DECISION_PX
+                                        && abs(dy) > abs(dx) * 1.5f
+                                    if (verticalDominant) {
+                                        mode = if (startX < w / HALF_DIVIDER) DragMode.BRIGHTNESS
+                                            else DragMode.VOLUME
+                                        controlsVisible = true
                                     }
                                 }
                                 when (mode) {
-                                    DragMode.SEEK -> {
-                                        val maxSeekMs = (player.duration.coerceAtLeast(0) / 3L)
-                                            .coerceAtMost(PlayerConfig.SEEK_GESTURE_MAX_MS)
-                                        val deltaMs = ((dx / w) * maxSeekMs).toLong()
-                                        val target = (startPos + deltaMs)
-                                            .coerceIn(0, player.duration.coerceAtLeast(0))
-                                        gestureIndicator = GestureIndicator.Seek(
-                                            targetMs = target,
-                                            deltaMs = target - startPos,
-                                            durationMs = player.duration,
-                                        )
-                                    }
                                     DragMode.BRIGHTNESS -> {
                                         val delta = -(dy / h)
                                         val newVal = (startBrightness + delta).coerceIn(0f, 1f)
@@ -477,14 +512,7 @@ fun PlayerScreen(
                                     null -> Unit
                                 }
                             },
-                            onDragEnd = {
-                                if (mode == DragMode.SEEK) {
-                                    (gestureIndicator as? GestureIndicator.Seek)?.let {
-                                        player.seekTo(it.targetMs)
-                                    }
-                                }
-                                mode = null
-                            },
+                            onDragEnd = { mode = null },
                             onDragCancel = { mode = null },
                         )
                     },
@@ -568,7 +596,7 @@ private fun friendlyPlaybackError(error: PlaybackException): String {
     return base
 }
 
-private enum class DragMode { SEEK, BRIGHTNESS, VOLUME }
+private enum class DragMode { BRIGHTNESS, VOLUME }
 
 private sealed class GestureIndicator {
     data class Seek(val targetMs: Long, val deltaMs: Long, val durationMs: Long) : GestureIndicator()
@@ -706,7 +734,7 @@ private fun ControlsBar(
             }
         }
         Text(
-            "遙控器：OK=暫停／←→=快轉（單按 10s，按住加速到 5m）／↑↓=切倍速／頻道±=切集。手機：左右滑=進度／左滑直=亮度／右滑直=音量／雙擊=暫停",
+            "遙控器：OK=暫停／←→=快轉（單按 10s，按住加速到 5m）／↑↓=切倍速／頻道±=切集。手機：雙擊左右側 ±10s／雙擊中央=暫停／長按=2x 暫時加速／垂直滑左半=亮度、右半=音量",
             color = Color(0x88FFFFFF),
             style = MaterialTheme.typography.labelSmall,
         )
@@ -823,15 +851,39 @@ private fun ProgressBar(
         // 拖曳中或已有時長時畫一個小圓點當 thumb，方便看見手指拖到哪
         if (seekable) {
             val thumbSize = if (draggingProgress != null) SEEKBAR_THUMB_DRAG else SEEKBAR_THUMB_IDLE
+            val density = androidx.compose.ui.platform.LocalDensity.current
             Box(
                 modifier = Modifier
-                    .offset(x = with(androidx.compose.ui.platform.LocalDensity.current) {
+                    .offset(x = with(density) {
                         (trackWidthPx * displayProgress).toDp() - thumbSize / 2
                     })
                     .size(thumbSize)
                     .clip(RoundedCornerShape(thumbSize / 2))
                     .background(AppColors.Primary),
             )
+            // 拖曳中顯示時間 tooltip 在 thumb 上方（YT 風格）
+            if (draggingProgress != null) {
+                val targetMs = (draggingProgress!! * durationMs).toLong()
+                Box(
+                    modifier = Modifier
+                        .offset(
+                            x = with(density) {
+                                (trackWidthPx * displayProgress).toDp() - SEEKBAR_TOOLTIP_HALF
+                            },
+                            y = -SEEKBAR_TOOLTIP_OFFSET_Y,
+                        )
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xCC000000))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                ) {
+                    androidx.tv.material3.Text(
+                        text = formatDuration(targetMs),
+                        color = Color.White,
+                        style = androidx.tv.material3.MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
         }
     }
 }
@@ -891,3 +943,5 @@ private val SEEKBAR_TOUCH_HEIGHT = 28.dp
 private val SEEKBAR_TRACK_HEIGHT = 5.dp
 private val SEEKBAR_THUMB_IDLE = 12.dp
 private val SEEKBAR_THUMB_DRAG = 18.dp
+private val SEEKBAR_TOOLTIP_HALF = 30.dp
+private val SEEKBAR_TOOLTIP_OFFSET_Y = 32.dp
