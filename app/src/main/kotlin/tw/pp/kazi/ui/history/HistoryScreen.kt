@@ -178,6 +178,18 @@ fun HistoryScreen() {
                             )
                         )
                     },
+                    onPlayNext = {
+                        container.historyLastFocusKey = key
+                        nav.navigate(
+                            Routes.player(
+                                siteId = item.siteId,
+                                vodId = item.videoId,
+                                sourceIdx = item.sourceIndex,
+                                episodeIdx = item.episodeIndex + 1,
+                                positionMs = 0L,
+                            )
+                        )
+                    },
                     onOpen = {
                         container.historyLastFocusKey = key
                         nav.navigate(Routes.detail(item.siteId, item.videoId))
@@ -196,12 +208,22 @@ fun HistoryScreen() {
 private fun HistoryRow(
     item: HistoryItem,
     onResume: () -> Unit,
+    onPlayNext: () -> Unit,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
     focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
 ) {
     val context = LocalContext.current
     val progress = if (item.durationMs > 0) item.positionMs.toFloat() / item.durationMs.toFloat() else 0f
+    val hasNextEp = item.totalEpisodes > 0 && item.episodeIndex + 1 < item.totalEpisodes
+    // 兩段式刪除：第一次點 = 變成「再點一次刪除」，3 秒沒動作回復原狀；第二次才真的刪
+    var armedDelete by remember { mutableStateOf(false) }
+    LaunchedEffect(armedDelete) {
+        if (armedDelete) {
+            kotlinx.coroutines.delay(3000)
+            armedDelete = false
+        }
+    }
 
     // 不在 Row 自己加 clickable —— 之前整列 onClick = onResume，但 TV 遙控進去就直接觸發，
     // 沒辦法選裡面的「詳情」「刪除」。改成 row 純展示，所有動作都用裡面的 button，DPAD 可以一個個 focus。
@@ -271,8 +293,19 @@ private fun HistoryRow(
                     }
                 }
             }
+            // 「第 X / Y 集 · 集名」 — 沒有 totalEpisodes 時 fallback 顯示集名
+            val episodeLabel = buildString {
+                if (item.totalEpisodes > 0) {
+                    append("第 ${item.episodeIndex + 1} / ${item.totalEpisodes} 集")
+                    if (item.episodeName.isNotBlank() && item.episodeName != "${item.episodeIndex + 1}") {
+                        append(" · ${item.episodeName}")
+                    }
+                } else if (item.episodeName.isNotBlank()) {
+                    append(item.episodeName)
+                }
+            }
             Text(
-                "${item.siteName} · ${item.episodeName}",
+                if (episodeLabel.isNotBlank()) "${item.siteName} · $episodeLabel" else item.siteName,
                 color = AppColors.OnBgMuted,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
@@ -284,7 +317,6 @@ private fun HistoryRow(
                 style = MaterialTheme.typography.labelSmall,
             )
             Spacer(Modifier.height(6.dp))
-            // 手機（compact）寬度太窄，3 顆 button 會把「刪除」擠成兩行 → iconOnly
             val compact = LocalWindowSize.current.isCompact
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 AppButton(
@@ -295,6 +327,15 @@ private fun HistoryRow(
                     modifier = if (focusRequester != null)
                         Modifier.focusRequester(focusRequester) else Modifier,
                 )
+                if (hasNextEp) {
+                    AppButton(
+                        text = "下一集",
+                        icon = Icons.Filled.SkipNext,
+                        onClick = onPlayNext,
+                        iconOnly = compact,
+                        primary = false,
+                    )
+                }
                 AppButton(
                     text = "詳情",
                     icon = Icons.Filled.Info,
@@ -303,11 +344,14 @@ private fun HistoryRow(
                     primary = false,
                 )
                 AppButton(
-                    text = "刪除",
+                    // 兩段式：armed 後變紅 + 文字提示「再按一次」，避免單擊誤刪
+                    text = if (armedDelete) "再按一次" else "刪除",
                     icon = Icons.Filled.Delete,
-                    onClick = onDelete,
-                    iconOnly = compact,
-                    primary = false,
+                    onClick = {
+                        if (armedDelete) onDelete() else armedDelete = true
+                    },
+                    iconOnly = compact && !armedDelete,
+                    primary = armedDelete,
                     danger = true,
                 )
             }

@@ -814,12 +814,7 @@ private fun ControlsBar(
                 style = MaterialTheme.typography.labelMedium,
             )
             Spacer(Modifier.weight(1f))
-            androidx.tv.material3.Icon(
-                if (isPlaying) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                contentDescription = null,
-                tint = AppColors.OnBgMuted,
-                modifier = Modifier.size(18.dp),
-            )
+            // 之前這裡有一顆「▶/⏸」icon — 已經跟中央大圓鈕重複，拿掉。
             AppButton(
                 text = "${speed}x",
                 icon = Icons.Filled.Speed,
@@ -838,11 +833,7 @@ private fun ControlsBar(
                 }
             }
         }
-        Text(
-            "遙控器：OK=暫停／←→=快轉（單按 10s，按住加速到 5m）／↑↓=切倍速／頻道±=切集。手機：單擊顯示控制／雙擊左右側 ±10s（連按可累加）／雙擊中央=暫停／長按=2x 暫時加速／垂直滑左半=亮度、右半=音量",
-            color = Color(0x88FFFFFF),
-            style = MaterialTheme.typography.labelSmall,
-        )
+        // 之前這裡塞一大段操作說明，太嘮叨。手勢／快捷鍵讓使用者自己摸索（YT/Netflix 也都不放）。
     }
 }
 
