@@ -118,26 +118,32 @@ class AppContainer(private val context: Context) {
 
     fun startLan(): Boolean {
         if (lanServer != null) return true
-        val server = LanServer(
-            port = LanConfig.DEFAULT_PORT,
-            siteRepository = siteRepository,
-            onRemoteSearch = { req -> submitRemoteSearch(req) },
-            appContext = appContext,
-        )
-        return if (server.safeStart()) {
-            lanServer = server
-            val ip = Network.localIp()
-            _lanState.value = LanState(
-                running = true,
-                url = if (ip != null) "http://$ip:${LanConfig.DEFAULT_PORT}" else null,
-                port = LanConfig.DEFAULT_PORT,
+        // 先試 DEFAULT_PORT 跟它附近 3 個（多數情況下都成功），
+        // 全撞了就 fallback 到 port=0 讓 OS 隨便挑一個 ephemeral port
+        val candidates = (0..3).map { LanConfig.DEFAULT_PORT + it } + 0
+        val server = candidates.firstNotNullOfOrNull { port ->
+            val s = LanServer(
+                port = port,
+                siteRepository = siteRepository,
+                onRemoteSearch = { req -> submitRemoteSearch(req) },
+                appContext = appContext,
             )
-            Logger.i("LAN share started at ${_lanState.value.url}")
-            true
-        } else {
-            Logger.w("LAN share failed to start")
-            false
+            if (s.safeStart()) s else null
         }
+        if (server == null) {
+            Logger.w("LAN share failed on all candidate ports")
+            return false
+        }
+        lanServer = server
+        val ip = Network.localIp()
+        val actualPort = server.listeningPort
+        _lanState.value = LanState(
+            running = true,
+            url = if (ip != null) "http://$ip:$actualPort" else null,
+            port = actualPort,
+        )
+        Logger.i("LAN share started at ${_lanState.value.url}")
+        return true
     }
 
     fun stopLan() {
