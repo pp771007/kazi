@@ -219,9 +219,14 @@ private fun StepsPanel(compact: Boolean) {
     ) {
         SectionHeader(title = "使用說明")
         Step("1", "同一個 WiFi", "此裝置與手機需連同一網路")
-        Step("2", "啟用遠端遙控", "點左邊「啟用」按鈕")
-        Step("3", "掃 QR 或輸入網址", "手機瀏覽器開啟，有「遠端搜尋」與「站點管理」兩個頁")
-        Step("4", "用完關閉", "避免同 WiFi 的其他人連入")
+        Step("2", "啟用遠端遙控", "點左邊「啟用」按鈕（首頁的 QR icon 會自動順手開）")
+        Step("3", "掃 QR 或輸入網址", "手機瀏覽器開啟即可使用三個頁籤")
+        Spacer(Modifier.height(2.dp))
+        Step("📱", "遠端搜尋", "手機打字、勾站點，送出 → TV 跳到搜尋結果。歷史可清空。")
+        Step("📥", "匯入站點", "從手機 app 站點管理「📋 匯出站點」複製 → 在這頁貼上 → 預覽 → 匯入")
+        Step("⚙️", "站點管理", "新增 / 啟停 / 排序 / 刪除站台，跟手機 app 即時同步")
+        Spacer(Modifier.height(4.dp))
+        Step("4", "用完關閉", "點首頁標題旁的「🟢 遠端遙控」膠囊一下就關，或回這頁按「停止」")
         Spacer(Modifier.height(4.dp))
         Box(
             modifier = Modifier
@@ -231,7 +236,7 @@ private fun StepsPanel(compact: Boolean) {
                 .padding(12.dp),
         ) {
             Text(
-                "⚠ 此模式無密碼保護。僅建議在自家 WiFi 使用。",
+                "⚠ 此模式無密碼保護，同 WiFi 的人只要拿到網址都能進來操控。僅建議在自家 WiFi 使用。",
                 color = AppColors.Warning,
                 style = MaterialTheme.typography.bodySmall,
             )

@@ -110,6 +110,10 @@ fun PlayerScreen(
         mutableLongStateOf(resumePositionMs)
     }
     var gestureIndicator by remember { mutableStateOf<GestureIndicator?>(null) }
+    // 雙擊累加 seek（YT 風）：每次雙擊只累加，停止 SEEK_COMMIT_DELAY_MS 才實際 seek
+    var pendingSeekDeltaMs by remember { mutableLongStateOf(0L) }
+    var pendingSeekStartPos by remember { mutableLongStateOf(0L) }
+    var seekCommitTrigger by remember { mutableIntStateOf(0) }
 
     val player = remember {
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -279,6 +283,17 @@ fun PlayerScreen(
         }
     }
 
+    // 雙擊累加 seek 的提交：每次 seekCommitTrigger 變動就重新計時，timer 結束才真的 seek
+    LaunchedEffect(seekCommitTrigger) {
+        if (pendingSeekDeltaMs == 0L) return@LaunchedEffect
+        delay(PlayerConfig.SEEK_COMMIT_DELAY_MS)
+        val target = (pendingSeekStartPos + pendingSeekDeltaMs)
+            .coerceIn(0, player.duration.coerceAtLeast(0))
+        player.seekTo(target)
+        positionMs = target
+        pendingSeekDeltaMs = 0L
+    }
+
     BackHandler {
         if (showSpeedMenu) showSpeedMenu = false else nav.popBackStack()
     }
@@ -432,33 +447,38 @@ fun PlayerScreen(
                             onTap = { controlsVisible = !controlsVisible },
                             onDoubleTap = { offset ->
                                 val w = size.width.toFloat().coerceAtLeast(1f)
-                                when {
-                                    offset.x < w / 3f -> {
-                                        // 左側：往回 10 秒
-                                        val target = (player.currentPosition - PlayerConfig.SEEK_STEP_MS)
-                                            .coerceAtLeast(0)
-                                        player.seekTo(target)
-                                        gestureIndicator = GestureIndicator.Seek(
-                                            targetMs = target,
-                                            deltaMs = -PlayerConfig.SEEK_STEP_MS,
-                                            durationMs = player.duration,
-                                        )
+                                val step = PlayerConfig.SEEK_STEP_MS
+                                val delta = when {
+                                    offset.x < w / 3f -> -step
+                                    offset.x > w * 2f / 3f -> step
+                                    else -> 0L
+                                }
+                                if (delta == 0L) {
+                                    // 中央雙擊 = play/pause
+                                    if (player.isPlaying) player.pause() else player.play()
+                                } else {
+                                    // YT 風累加：第一次雙擊才記下 startPos，之後每次只加 delta，
+                                    // 跟原方向反向時重新從現在位置算起
+                                    val sameDirection = (pendingSeekDeltaMs == 0L)
+                                        || (pendingSeekDeltaMs > 0) == (delta > 0)
+                                    if (!sameDirection) {
+                                        // 反向：先 commit 上一輪（瞬間覆蓋一次再開始新方向）
+                                        pendingSeekStartPos = player.currentPosition
+                                        pendingSeekDeltaMs = delta
+                                    } else {
+                                        if (pendingSeekDeltaMs == 0L) {
+                                            pendingSeekStartPos = player.currentPosition
+                                        }
+                                        pendingSeekDeltaMs += delta
                                     }
-                                    offset.x > w * 2f / 3f -> {
-                                        // 右側：往前 10 秒
-                                        val target = (player.currentPosition + PlayerConfig.SEEK_STEP_MS)
-                                            .coerceAtMost(player.duration)
-                                        player.seekTo(target)
-                                        gestureIndicator = GestureIndicator.Seek(
-                                            targetMs = target,
-                                            deltaMs = PlayerConfig.SEEK_STEP_MS,
-                                            durationMs = player.duration,
-                                        )
-                                    }
-                                    else -> {
-                                        // 中央：play/pause
-                                        if (player.isPlaying) player.pause() else player.play()
-                                    }
+                                    val target = (pendingSeekStartPos + pendingSeekDeltaMs)
+                                        .coerceIn(0, player.duration.coerceAtLeast(0))
+                                    gestureIndicator = GestureIndicator.Seek(
+                                        targetMs = target,
+                                        deltaMs = pendingSeekDeltaMs,
+                                        durationMs = player.duration,
+                                    )
+                                    seekCommitTrigger += 1 // 重新計時 debounce
                                 }
                                 controlsVisible = true
                             },
@@ -532,6 +552,22 @@ fun PlayerScreen(
 
             gestureIndicator?.let { indicator ->
                 GestureOverlay(indicator, modifier = Modifier.align(Alignment.Center))
+            }
+
+            // 控制列顯示時，畫面中央也放一顆大的 play/pause 按鈕（YT pattern）
+            AnimatedVisibility(
+                visible = controlsVisible,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.Center),
+            ) {
+                CenterPlayPauseButton(
+                    isPlaying = isPlaying,
+                    onClick = {
+                        if (player.isPlaying) player.pause() else player.play()
+                        controlsVisible = true
+                    },
+                )
             }
 
             AnimatedVisibility(
@@ -667,6 +703,28 @@ private fun applyBrightness(activity: android.app.Activity?, value: Float) {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
+private fun CenterPlayPauseButton(isPlaying: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(72.dp)
+            .clip(RoundedCornerShape(36.dp))
+            .background(Color(0x66000000))
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onClick() })
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.tv.material3.Icon(
+            if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+            contentDescription = if (isPlaying) "暫停" else "播放",
+            tint = Color.White,
+            modifier = Modifier.size(44.dp),
+        )
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
 private fun ControlsBar(
     title: String,
     epName: String,
@@ -734,7 +792,7 @@ private fun ControlsBar(
             }
         }
         Text(
-            "遙控器：OK=暫停／←→=快轉（單按 10s，按住加速到 5m）／↑↓=切倍速／頻道±=切集。手機：雙擊左右側 ±10s／雙擊中央=暫停／長按=2x 暫時加速／垂直滑左半=亮度、右半=音量",
+            "遙控器：OK=暫停／←→=快轉（單按 10s，按住加速到 5m）／↑↓=切倍速／頻道±=切集。手機：單擊顯示控制／雙擊左右側 ±10s（連按可累加）／雙擊中央=暫停／長按=2x 暫時加速／垂直滑左半=亮度、右半=音量",
             color = Color(0x88FFFFFF),
             style = MaterialTheme.typography.labelSmall,
         )
