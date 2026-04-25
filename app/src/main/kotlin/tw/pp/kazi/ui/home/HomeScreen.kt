@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -86,6 +87,9 @@ fun HomeScreen() {
     var skipNextFetch by remember { mutableStateOf(initialSnapshot != null && restoredSite != null) }
 
     val searchFocusRequester = remember { FocusRequester() }
+    val firstVideoFocus = remember { FocusRequester() }
+    // 換頁後要把 focus 移到新頁第一張卡，避免 focus 卡在「下一頁」按鈕。
+    var pendingFirstVideoFocus by remember { mutableStateOf(false) }
 
     LaunchedEffect(enabledSites) {
         if (selectedSite == null && enabledSites.isNotEmpty()) {
@@ -140,6 +144,15 @@ fun HomeScreen() {
     LaunchedEffect(enabledSites.isNotEmpty()) {
         if (enabledSites.isNotEmpty()) {
             runCatching { searchFocusRequester.requestFocus() }
+        }
+    }
+
+    // videos 重新載入後，如果剛剛是按上下頁觸發的，把 focus 推到第一張卡
+    LaunchedEffect(videos, pendingFirstVideoFocus) {
+        if (pendingFirstVideoFocus && videos.isNotEmpty()) {
+            kotlinx.coroutines.delay(50) // 等 LazyVerticalGrid 把第一張 item compose 出來
+            runCatching { firstVideoFocus.requestFocus() }
+            pendingFirstVideoFocus = false
         }
     }
 
@@ -283,6 +296,7 @@ fun HomeScreen() {
                         videos = videos,
                         viewMode = settings.viewMode,
                         windowSize = windowSize,
+                        firstItemFocus = firstVideoFocus,
                         onClick = { v ->
                             val site = selectedSite ?: return@VideoGrid
                             nav.navigate(Routes.detail(site.id, v.vodId))
@@ -295,8 +309,12 @@ fun HomeScreen() {
                 Pager(
                     page = page,
                     pageCount = pageCount,
-                    onPrev = { if (page > 1) page-- },
-                    onNext = { if (page < pageCount) page++ },
+                    onPrev = {
+                        if (page > 1) { page--; pendingFirstVideoFocus = true }
+                    },
+                    onNext = {
+                        if (page < pageCount) { page++; pendingFirstVideoFocus = true }
+                    },
                     windowSize = windowSize,
                 )
             }
@@ -411,6 +429,7 @@ private fun VideoGrid(
     videos: List<Video>,
     viewMode: ViewMode,
     windowSize: WindowSize,
+    firstItemFocus: FocusRequester,
     onClick: (Video) -> Unit,
 ) {
     LazyVerticalGrid(
@@ -423,7 +442,7 @@ private fun VideoGrid(
         verticalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
         modifier = Modifier.fillMaxSize(),
     ) {
-        items(videos, key = { it.vodId }) { v ->
+        itemsIndexed(videos, key = { _, v -> v.vodId }) { idx, v ->
             PosterCard(
                 title = v.vodName,
                 remarks = v.vodRemarks,
@@ -431,6 +450,7 @@ private fun VideoGrid(
                 fromSite = v.fromSite,
                 aspectRatio = viewMode.aspectRatio,
                 onClick = { onClick(v) },
+                focusRequester = if (idx == 0) firstItemFocus else null,
             )
         }
     }

@@ -1,9 +1,15 @@
 package tw.pp.kazi.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,12 +25,17 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -174,23 +185,26 @@ fun PosterCard(
     aspectRatio: Float,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val context = LocalContext.current
 
     val scale by animateFloatAsState(if (focused) 1.08f else 1f, tween(200), label = "card-scale")
-    val borderColor by animateColorAsState(
-        if (focused) AppColors.FocusRing else Color(0x15FFFFFF), tween(160), label = "card-border"
-    )
-    val borderWidth by animateFloatAsState(if (focused) 3f else 1f, tween(160), label = "card-bw")
+    val borderBrush = rememberFocusFlowBrush(active = focused, idleColor = Color(0x15FFFFFF))
+    val borderWidth by animateDpAsState(if (focused) 4.dp else 1.dp, tween(160), label = "card-bw")
+    val elevation by animateDpAsState(if (focused) 12.dp else 0.dp, tween(160), label = "card-elev")
 
+    val baseModifier = modifier
+        .scale(scale)
+        .shadow(elevation, RoundedCornerShape(12.dp))
+        .clip(RoundedCornerShape(12.dp))
+        .background(AppColors.BgCard)
+        .border(BorderStroke(borderWidth, borderBrush), RoundedCornerShape(12.dp))
+    val focusedModifier = if (focusRequester != null) baseModifier.focusRequester(focusRequester) else baseModifier
     Column(
-        modifier = modifier
-            .scale(scale)
-            .clip(RoundedCornerShape(12.dp))
-            .background(AppColors.BgCard)
-            .border(borderWidth.dp, borderColor, RoundedCornerShape(12.dp))
+        modifier = focusedModifier
             .focusable(interactionSource = interaction)
             .clickable(interactionSource = interaction, indication = null) { onClick() },
     ) {
@@ -492,3 +506,35 @@ val CardShape: Shape = RoundedCornerShape(14.dp)
 private val BUTTON_H_PAD = 14.dp
 private val BUTTON_V_PAD = 9.dp
 private val BUTTON_ICON_ONLY_PAD = 9.dp
+
+/**
+ * 流光 focus border：active 時用一個漸層 brush 沿 border 走動，比單色框醒目很多。
+ * idleColor: 沒 focus 時的 border 顏色（用 SolidColor 包起來）。
+ */
+@Composable
+private fun rememberFocusFlowBrush(active: Boolean, idleColor: Color): Brush {
+    if (!active) return SolidColor(idleColor)
+    val transition = rememberInfiniteTransition(label = "focus-flow")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "focus-flow-phase",
+    )
+    val tile = 220f
+    val shift = phase * tile * 2f
+    return Brush.linearGradient(
+        colors = listOf(
+            AppColors.Primary,
+            Color(0xFFFFFFFF),
+            AppColors.Secondary,
+            AppColors.Primary,
+        ),
+        start = Offset(shift, 0f),
+        end = Offset(shift + tile, tile),
+        tileMode = TileMode.Mirror,
+    )
+}
