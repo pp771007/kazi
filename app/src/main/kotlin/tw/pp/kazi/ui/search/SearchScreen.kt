@@ -155,11 +155,12 @@ fun SearchScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        val baseSubtitle = submittedKeyword?.let { "「$it」結果" } ?: "同時搜所有已啟用站點"
-        val subtitleText = if (incognito) "🕶 無痕模式  · $baseSubtitle" else baseSubtitle
         GradientTopBar(
             title = "搜尋",
-            subtitle = subtitleText,
+            subtitle = submittedKeyword?.let { "「$it」結果" } ?: "同時搜所有已啟用站點",
+            titleBadges = if (incognito) {
+                { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會留紀錄）") }
+            } else null,
             trailing = {
                 AppButton(
                     text = "返回",

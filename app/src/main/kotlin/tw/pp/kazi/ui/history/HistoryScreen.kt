@@ -56,6 +56,7 @@ fun HistoryScreen() {
     val windowSize = LocalWindowSize.current
     val compact = windowSize.isCompact
     val items by container.historyRepository.items.collectAsState()
+    val incognito by container.incognito.collectAsState()
     val scope = rememberCoroutineScope()
     var checking by remember { mutableStateOf(false) }
     var checkProgress by remember { mutableStateOf<String?>(null) }
@@ -64,6 +65,9 @@ fun HistoryScreen() {
         GradientTopBar(
             title = "觀看歷史",
             subtitle = "${items.size} 筆紀錄",
+            titleBadges = if (incognito) {
+                { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會新增）") }
+            } else null,
             trailing = {
                 AppButton(
                     text = if (checking) "檢查中" else "檢查更新",
