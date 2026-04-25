@@ -15,7 +15,8 @@ android {
         targetSdk = 35
         versionCode = 1
         // CI 用 tag 名稱蓋過：./gradlew assembleDebug -PversionName=0.2.0
-        versionName = (project.findProperty("versionName") as String?) ?: "0.1.0"
+        // 沒帶就 fallback 成 "0.0.0-local"，一看就知道是本機開發 build，不是正式版
+        versionName = (project.findProperty("versionName") as String?) ?: "0.0.0-local"
     }
 
     buildTypes {
