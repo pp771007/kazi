@@ -17,6 +17,18 @@ data class Site(
     @SerialName("check_status") val checkStatus: String? = null,
 )
 
+/**
+ * 跨裝置匯出／匯入用的精簡版 Site：只帶設定，不帶 id/order/health/檢查時間。
+ * 匯入端會生成新的 id 與 order，sslVerify / enabled 會 apply。
+ */
+@Serializable
+data class SiteExportItem(
+    val name: String,
+    val url: String,
+    @SerialName("ssl_verify") val sslVerify: Boolean = true,
+    val enabled: Boolean = true,
+)
+
 @Serializable
 data class Category(
     @SerialName("type_id") val typeId: Long,

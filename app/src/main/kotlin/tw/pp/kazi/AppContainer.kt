@@ -110,7 +110,6 @@ class AppContainer(private val context: Context) {
         val server = LanServer(
             port = LanConfig.DEFAULT_PORT,
             siteRepository = siteRepository,
-            siteScanner = siteScanner,
             onRemoteSearch = { req -> submitRemoteSearch(req) },
             appContext = appContext,
         )

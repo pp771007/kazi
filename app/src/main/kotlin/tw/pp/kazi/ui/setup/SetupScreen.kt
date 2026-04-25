@@ -25,7 +25,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -63,6 +65,7 @@ fun SetupScreen() {
     val compact = windowSize.isCompact
     val sites by container.siteRepository.sites.collectAsState()
     val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
 
     var newUrl by remember { mutableStateOf("") }
     var newName by remember { mutableStateOf("") }
@@ -73,6 +76,8 @@ fun SetupScreen() {
     var checkSummary by remember { mutableStateOf<String?>(null) }
     var batchChecking by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Site?>(null) }
+    var transferMsg by remember { mutableStateOf<String?>(null) }
+    var importPreview by remember { mutableStateOf<tw.pp.kazi.data.ImportPreview?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         GradientTopBar(
@@ -96,6 +101,7 @@ fun SetupScreen() {
                 batchChecking = batchChecking,
                 summary = checkSummary,
                 sitesEnabled = sites.isNotEmpty(),
+                transferMsg = transferMsg,
                 onCheckAll = {
                     scope.launch {
                         batchChecking = true
@@ -113,6 +119,23 @@ fun SetupScreen() {
                     }
                 },
                 onLanShare = { nav.navigate(Routes.LanShare) },
+                onExport = {
+                    val json = container.siteRepository.exportToJson()
+                    clipboard.setText(AnnotatedString(json))
+                    transferMsg = "已複製 ${sites.size} 個站台到剪貼簿"
+                },
+                onImport = {
+                    val raw = clipboard.getText()?.text.orEmpty()
+                    val preview = container.siteRepository.parseImport(raw)
+                    if (preview.errorMessage != null) {
+                        transferMsg = preview.errorMessage
+                    } else if (preview.toAdd.isEmpty() && preview.skipped.isEmpty()) {
+                        transferMsg = "剪貼簿沒有可匯入的站台"
+                    } else {
+                        importPreview = preview
+                        transferMsg = null
+                    }
+                },
             )
 
             AddSiteCard(
@@ -225,6 +248,22 @@ fun SetupScreen() {
             },
         )
     }
+
+    importPreview?.let { preview ->
+        ImportPreviewDialog(
+            preview = preview,
+            onDismiss = { importPreview = null },
+            onConfirm = {
+                scope.launch {
+                    val r = container.siteRepository.importApply(preview.toAdd)
+                    transferMsg = "匯入完成：成功 ${r.added}" +
+                        (if (r.failed > 0) " / 失敗 ${r.failed}" else "") +
+                        (if (preview.skipped.isNotEmpty()) " / 略過 ${preview.skipped.size}" else "")
+                    importPreview = null
+                }
+            },
+        )
+    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -287,8 +326,11 @@ private fun ColumnScope.BatchOpsCard(
     batchChecking: Boolean,
     summary: String?,
     sitesEnabled: Boolean,
+    transferMsg: String?,
     onCheckAll: () -> Unit,
     onLanShare: () -> Unit,
+    onExport: () -> Unit,
+    onImport: () -> Unit,
 ) {
     SectionHeader(title = "批次操作")
     Column(
@@ -322,6 +364,24 @@ private fun ColumnScope.BatchOpsCard(
             primary = false,
             modifier = Modifier.fillMaxWidth(),
         )
+        AppButton(
+            text = "匯出站點到剪貼簿",
+            icon = Icons.Filled.ContentCopy,
+            onClick = onExport,
+            enabled = sitesEnabled,
+            primary = false,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        AppButton(
+            text = "從剪貼簿匯入站點",
+            icon = Icons.Filled.ContentPaste,
+            onClick = onImport,
+            primary = false,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        transferMsg?.let {
+            Text(it, color = AppColors.OnBgMuted, style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 
@@ -699,3 +759,117 @@ private fun SiteRow(
 }
 
 private val LEFT_COL_WIDTH = 360.dp
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun ImportPreviewDialog(
+    preview: tw.pp.kazi.data.ImportPreview,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val screenW = LocalConfiguration.current.screenWidthDp.dp
+    val dialogWidth = if (screenW < 560.dp) screenW - 32.dp else 480.dp
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .width(dialogWidth)
+                .clip(RoundedCornerShape(14.dp))
+                .background(AppColors.BgCard)
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                "匯入站點預覽",
+                color = AppColors.OnBg,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "新增 ${preview.toAdd.size} 個" +
+                    (if (preview.skipped.isNotEmpty()) "（略過 ${preview.skipped.size} 個重複的）" else ""),
+                color = AppColors.OnBgMuted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 280.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                preview.toAdd.forEach { item ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0x10FFFFFF))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(AppColors.Success),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                item.name,
+                                color = AppColors.OnBg,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                item.url,
+                                color = AppColors.OnBgMuted,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+                preview.skipped.forEach { item ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0x08FFFFFF))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(AppColors.OnBgDim),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                item.name + "（已存在）",
+                                color = AppColors.OnBgDim,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                item.url,
+                                color = AppColors.OnBgDim,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppButton(text = "取消", onClick = onDismiss, primary = false)
+                AppButton(
+                    text = "確定匯入",
+                    icon = Icons.Filled.Check,
+                    onClick = onConfirm,
+                    enabled = preview.toAdd.isNotEmpty(),
+                )
+            }
+        }
+    }
+}

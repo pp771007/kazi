@@ -124,6 +124,69 @@ class SiteRepository(context: Context) {
         }
     }
 
+    /**
+     * 把目前所有站台序列化成精簡 JSON（沒 id/order/check 狀態），給跨裝置匯出用。
+     */
+    fun exportToJson(): String {
+        val items = _sites.value.map {
+            SiteExportItem(name = it.name, url = it.url, sslVerify = it.sslVerify, enabled = it.enabled)
+        }
+        return AppJson.encodeToString(EXPORT_LIST_SERIALIZER, items)
+    }
+
+    /**
+     * 解析匯入字串，回傳 (要新增的, 已存在被略過的, 解析失敗訊息)。
+     * 不直接寫入；UI 拿去預覽 + 確認後再呼叫 importApply。
+     */
+    fun parseImport(raw: String): ImportPreview {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return ImportPreview(emptyList(), emptyList(), "貼上的內容是空的")
+        val parsed = runCatching {
+            AppJson.decodeFromString(EXPORT_LIST_SERIALIZER, trimmed)
+        }.getOrElse {
+            return ImportPreview(emptyList(), emptyList(), "JSON 解析失敗：${it.message}")
+        }
+        val existingUrls = _sites.value.map { it.url.lowercase() }.toSet()
+        val seen = mutableSetOf<String>()
+        val toAdd = mutableListOf<SiteExportItem>()
+        val skipped = mutableListOf<SiteExportItem>()
+        parsed.forEach { item ->
+            val cleaned = cleanBaseUrl(item.url)?.lowercase() ?: return@forEach
+            if (cleaned in existingUrls || cleaned in seen) skipped += item
+            else { toAdd += item; seen += cleaned }
+        }
+        return ImportPreview(toAdd, skipped, null)
+    }
+
+    /**
+     * 把 parseImport 回傳的 toAdd 寫進 repo。回傳 (成功數, 失敗數)。
+     */
+    suspend fun importApply(items: List<SiteExportItem>): ImportResult = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            var ok = 0
+            var fail = 0
+            val current = _sites.value.toMutableList()
+            items.forEach { item ->
+                val cleanedUrl = cleanBaseUrl(item.url)
+                if (cleanedUrl == null) { fail++; return@forEach }
+                if (current.any { it.url.equals(cleanedUrl, ignoreCase = true) }) { fail++; return@forEach }
+                val site = Site(
+                    id = System.currentTimeMillis() + ok,  // 加 ok 避免同毫秒撞 id
+                    name = item.name.trim().ifEmpty { autoName(cleanedUrl) },
+                    url = cleanedUrl,
+                    enabled = item.enabled,
+                    sslVerify = item.sslVerify,
+                    order = current.size,
+                )
+                current += site
+                ok++
+            }
+            _sites.value = current.toList()
+            writeToDisk(current)
+            ImportResult(added = ok, failed = fail)
+        }
+    }
+
     suspend fun recordCheckResult(id: Long, healthy: Boolean) = withContext(Dispatchers.IO) {
         mutex.withLock {
             val timestamp = System.currentTimeMillis().toString()
@@ -168,10 +231,19 @@ class SiteRepository(context: Context) {
     companion object {
         const val SITES_FILE_NAME = "sites.json"
         private val COMMON_TLDS = setOf("com", "net", "org", "xyz", "top", "cn", "cc", "tv", "io")
+        private val EXPORT_LIST_SERIALIZER = ListSerializer(SiteExportItem.serializer())
     }
 }
 
 enum class MoveDirection { Up, Down }
+
+data class ImportPreview(
+    val toAdd: List<SiteExportItem>,
+    val skipped: List<SiteExportItem>,
+    val errorMessage: String?,
+)
+
+data class ImportResult(val added: Int, val failed: Int)
 
 internal fun cleanBaseUrl(raw: String): String? {
     if (raw.isBlank()) return null

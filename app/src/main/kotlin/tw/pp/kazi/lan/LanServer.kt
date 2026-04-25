@@ -1,15 +1,9 @@
 package tw.pp.kazi.lan
 
 import fi.iki.elonen.NanoHTTPD
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -24,8 +18,6 @@ import tw.pp.kazi.data.MoveDirection
 import tw.pp.kazi.data.RemoteSearchRequest
 import tw.pp.kazi.data.Site
 import tw.pp.kazi.data.SiteRepository
-import tw.pp.kazi.data.SiteScanner
-import tw.pp.kazi.data.cleanBaseUrl
 import tw.pp.kazi.util.Logger
 import android.content.Context
 import tw.pp.kazi.util.ChineseConverter
@@ -34,7 +26,6 @@ import java.io.IOException
 class LanServer(
     port: Int,
     private val siteRepository: SiteRepository,
-    private val siteScanner: SiteScanner,
     private val onRemoteSearch: (RemoteSearchRequest) -> Boolean,
     private val appContext: Context,
 ) : NanoHTTPD(port) {
@@ -63,8 +54,7 @@ class LanServer(
                 uri == PATH_ROOT -> indexPage()
                 uri == PATH_API_SITES && method == Method.GET -> listSites()
                 uri == PATH_API_SITES && method == Method.POST -> addSite(session)
-                uri == PATH_API_SITES_BATCH && method == Method.POST -> batchAddSites(session)
-                uri == PATH_API_SCAN && method == Method.POST -> scanFromText(session)
+                uri == PATH_API_SITES_IMPORT && method == Method.POST -> importSites(session)
                 uri == PATH_API_REMOTE_SEARCH && method == Method.POST -> remoteSearch(session)
                 uri == PATH_API_T2S && method == Method.POST -> t2s(session)
                 uri.startsWith(PATH_API_SITE_PREFIX) && uri.endsWith(PATH_MOVE_SUFFIX) -> moveSite(session)
@@ -168,81 +158,38 @@ class LanServer(
         }
     }
 
-    private fun scanFromText(session: IHTTPSession): Response = runBlocking {
+    /**
+     * 把手機 app 匯出的 JSON（[{name,url,ssl_verify,enabled}, ...]）丟過來，全部加進站點。
+     */
+    private fun importSites(session: IHTTPSession): Response = runBlocking {
         val body = readBody(session)
         val obj = parseJsonObject(body) ?: return@runBlocking badRequest("Invalid JSON")
-        val text = (obj["text"] as? JsonPrimitive)?.contentOrNull.orEmpty()
-        if (text.isBlank()) return@runBlocking badRequest("text required")
+        val rawText = (obj["text"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+        if (rawText.isBlank()) return@runBlocking badRequest("text required")
 
-        val existingUrls = siteRepository.sites.value.map { it.url.lowercase() }.toSet()
-        val urls = extractCandidateUrls(text).filter { it.lowercase() !in existingUrls }
-
-        if (urls.isEmpty()) {
-            return@runBlocking jsonResponse(Response.Status.OK, buildJsonObject {
-                put("status", STATUS_SUCCESS)
-                put("candidates", buildJsonArray { })
-                put("message", "沒抓到任何新站點（可能已經在站點清單裡）")
-            })
+        val preview = siteRepository.parseImport(rawText)
+        if (preview.errorMessage != null) {
+            return@runBlocking badRequest(preview.errorMessage!!)
         }
-
-        val candidates = withContext(Dispatchers.IO) {
-            urls.map { url ->
-                async { url to siteScanner.probe(url) }
-            }.awaitAll()
-        }
-
+        val result = lock.withLock { siteRepository.importApply(preview.toAdd) }
         jsonResponse(Response.Status.OK, buildJsonObject {
             put("status", STATUS_SUCCESS)
-            put("candidates", buildJsonArray {
-                candidates.forEach { (url, probe) ->
-                    add(buildJsonObject {
-                        put("url", url)
-                        put("healthy", probe.healthy)
-                        put("name", probe.name ?: "")
-                        put("message", probe.message)
-                    })
-                }
+            put("added", result.added)
+            put("failed", result.failed)
+            put("skipped", preview.skipped.size)
+            put("preview", buildJsonArray {
+                preview.toAdd.forEach { add(buildJsonObject {
+                    put("name", it.name)
+                    put("url", it.url)
+                }) }
+            })
+            put("skippedItems", buildJsonArray {
+                preview.skipped.forEach { add(buildJsonObject {
+                    put("name", it.name)
+                    put("url", it.url)
+                }) }
             })
         })
-    }
-
-    private fun batchAddSites(session: IHTTPSession): Response = runBlocking {
-        val body = readBody(session)
-        val obj = parseJsonObject(body) ?: return@runBlocking badRequest("Invalid JSON")
-        val urls = (obj["urls"] as? JsonArray)
-            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
-            .orEmpty()
-        if (urls.isEmpty()) return@runBlocking badRequest("urls required")
-
-        val results = lock.withLock {
-            urls.map { url ->
-                val r = siteRepository.addSite(url, null)
-                buildJsonObject {
-                    put("url", url)
-                    put("success", r.isSuccess)
-                    if (r.isSuccess) {
-                        put("name", r.getOrNull()?.name.orEmpty())
-                    } else {
-                        put("error", r.exceptionOrNull()?.message ?: "failed")
-                    }
-                }
-            }
-        }
-        jsonResponse(Response.Status.OK, buildJsonObject {
-            put("status", STATUS_SUCCESS)
-            put("results", buildJsonArray { results.forEach { add(it) } })
-        })
-    }
-
-    private fun extractCandidateUrls(text: String): List<String> {
-        return URL_REGEX.findAll(text)
-            .map { it.value }
-            .filter { it.contains(PROVIDE_VOD_PATH, ignoreCase = true) }
-            .mapNotNull { cleanBaseUrl(it) }
-            .map { it.lowercase() to it }
-            .distinctBy { it.first }
-            .map { it.second }
-            .toList()
     }
 
     private fun t2s(session: IHTTPSession): Response {
@@ -295,10 +242,9 @@ class LanServer(
     companion object {
         private const val PATH_ROOT = "/"
         private const val PATH_API_SITES = "/api/sites"
-        private const val PATH_API_SITES_BATCH = "/api/sites/batch"
+        private const val PATH_API_SITES_IMPORT = "/api/sites/import"
         private const val PATH_API_REMOTE_SEARCH = "/api/remote_search"
         private const val PATH_API_T2S = "/api/t2s"
-        private const val PATH_API_SCAN = "/api/scan"
         private const val PATH_API_SITE_PREFIX = "/api/sites/"
         private const val PATH_MOVE_SUFFIX = "/move"
 
@@ -307,10 +253,6 @@ class LanServer(
 
         private const val STATUS_SUCCESS = "success"
         private const val STATUS_ERROR = "error"
-
-        // 從貼上的文字／HTML 撈所有 http(s):// URL，再過濾包含 MacCMS API 路徑的
-        private val URL_REGEX = Regex("https?://[^\\s\"'<>`]+", RegexOption.IGNORE_CASE)
-        private const val PROVIDE_VOD_PATH = "api.php/provide/vod"
 
         private val INDEX_HTML = """
 <!DOCTYPE html>
@@ -405,7 +347,7 @@ class LanServer(
 <h1>🍿 咔滋影院 · 遠端遙控</h1>
 <div class="tabs">
   <button class="tab active" data-tab="search">📱 遠端搜尋</button>
-  <button class="tab" data-tab="scan">🔎 掃描站台</button>
+  <button class="tab" data-tab="import">📥 匯入站點</button>
   <button class="tab" data-tab="sites">⚙️ 站點管理</button>
 </div>
 
@@ -439,36 +381,34 @@ class LanServer(
   </div>
 </div>
 
-<div id="panel-scan" class="panel">
+<div id="panel-import" class="panel">
   <div class="card">
     <h2 style="margin:0 0 10px; font-size:16px">怎麼用</h2>
     <ol class="steps">
-      <li>按下面綠色按鈕「在新分頁開 Google 搜尋」（用手機本身的瀏覽器，比 TV 上操作好用太多）</li>
-      <li>瀏覽 Google 結果。看到喜歡的站，<strong>長按連結 → 複製連結網址</strong>；
-          或乾脆<strong>全選整頁複製</strong>（系統會自動撈出所有 MacCMS URL）</li>
-      <li>回到這頁，把複製的東西<strong>貼進下面的方框</strong></li>
-      <li>按「掃描」→ TV 會幫你 probe 這些 URL 哪些是可用的 MacCMS 站，並抓站名</li>
-      <li>勾選想要的站，按「加入所選」</li>
+      <li>在手機 app 開「站點管理」→ 批次操作 →「<strong>匯出站點到剪貼簿</strong>」</li>
+      <li>切回這個瀏覽器分頁（剪貼簿的 JSON 已經在你手機裡）</li>
+      <li>在下面方框<strong>長按 → 貼上</strong></li>
+      <li>按「📥 匯入」→ 預覽要新增哪些（已存在的站會自動略過）</li>
+      <li>確認沒問題就按「確定匯入」</li>
     </ol>
-    <a class="link-btn" href="https://www.google.com/search?q=inurl:/api.php/provide/vod/" target="_blank" rel="noopener">🔗 在新分頁開 Google 搜尋</a>
+    <p style="margin:8px 0 0; color:#94A3B8; font-size:12px">
+      格式：JSON array，例如
+      <code>[{"name":"範例","url":"https://...","ssl_verify":true,"enabled":true}]</code>
+    </p>
   </div>
 
   <div class="card">
-    <label>貼這裡（連結／文字／整段 HTML 都可以）</label>
-    <textarea id="scanText" rows="6" placeholder="例：&#10;https://example.com/api.php/provide/vod/&#10;https://another.tv/api.php/provide/vod/at/json&#10;&#10;或直接 Ctrl+A 全選 Google 結果頁複製貼上⋯"></textarea>
-    <button onclick="runScan()" id="scanBtn" style="width:100%">🔎 掃描</button>
-    <div id="scanMsg" class="err"></div>
+    <label>貼匯出字串</label>
+    <textarea id="importText" rows="8" placeholder="從手機 app 匯出的 JSON 貼這裡⋯"></textarea>
+    <button onclick="runImportPreview()" id="importBtn" style="width:100%">📥 預覽匯入</button>
+    <div id="importMsg" class="err"></div>
   </div>
 
-  <div class="card" id="scanResultCard" style="display:none">
-    <div class="row">
-      <h2 style="margin:0; font-size:16px; flex:1;">掃描結果</h2>
-      <button class="secondary small" onclick="scanSelectAll(true)">全選</button>
-      <button class="secondary small" onclick="scanSelectAll(false)">全不選</button>
-    </div>
-    <ul id="scanList" class="scan-list"></ul>
-    <button onclick="addScanned()" id="scanAddBtn" style="width:100%">加入所選</button>
-    <div id="scanAddMsg" class="err"></div>
+  <div class="card" id="importPreviewCard" style="display:none">
+    <h2 id="importPreviewTitle" style="margin:0 0 8px; font-size:16px;">預覽</h2>
+    <ul id="importList" class="scan-list"></ul>
+    <button onclick="confirmImport()" id="importConfirmBtn" style="width:100%">確定匯入</button>
+    <div id="importDoneMsg" class="err"></div>
   </div>
 </div>
 
@@ -647,104 +587,73 @@ async function move(id, direction){
   loadSites();
 }
 
-let scanCandidates = [];
+let importParsedRaw = null;
+let importPreviewData = null;
 
-async function runScan(){
-  const text = document.getElementById('scanText').value;
-  const msg = document.getElementById('scanMsg');
-  const btn = document.getElementById('scanBtn');
+async function runImportPreview(){
+  const text = document.getElementById('importText').value;
+  const msg = document.getElementById('importMsg');
   msg.className = 'err'; msg.textContent = '';
-  if (!text.trim()) { msg.textContent = '請先貼點東西進來'; return; }
-  btn.disabled = true; btn.textContent = '🔎 掃描中（probe 每個站可能要幾秒⋯）';
-  try {
-    const r = await api('/api/scan', { method:'POST', headers:{'Content-Type':'application/json'},
-                                        body: JSON.stringify({ text: text })});
-    if (!r.ok) {
-      msg.textContent = (r.data && r.data.message) || '掃描失敗';
-      return;
-    }
-    scanCandidates = (r.data.candidates || []).map(function(c){
-      return Object.assign({}, c, { selected: !!c.healthy });
-    });
-    if (scanCandidates.length === 0) {
-      msg.textContent = (r.data && r.data.message) || '沒抓到任何新站點';
-      document.getElementById('scanResultCard').style.display = 'none';
-      return;
-    }
-    const okCount = scanCandidates.filter(function(c){ return c.healthy; }).length;
-    msg.className = 'err ok';
-    msg.textContent = '掃到 ' + scanCandidates.length + ' 個候選，' + okCount + ' 個可用';
-    renderScanList();
-    document.getElementById('scanResultCard').style.display = 'block';
-  } finally {
-    btn.disabled = false; btn.textContent = '🔎 掃描';
-  }
+  if (!text.trim()) { msg.textContent = '請先貼東西進來'; return; }
+  // 純客戶端先 parse 一次驗 JSON 格式 → 出錯不浪費 round-trip
+  let parsed;
+  try { parsed = JSON.parse(text); }
+  catch (e) { msg.textContent = 'JSON 格式錯誤：' + e.message; return; }
+  if (!Array.isArray(parsed)) { msg.textContent = '需要 JSON array（[ ... ]）'; return; }
+  importParsedRaw = text;
+  importPreviewData = parsed;
+  renderImportPreview();
+  msg.className = 'err ok';
+  msg.textContent = '解析到 ' + parsed.length + ' 個站台，按下方「確定匯入」送出';
+  document.getElementById('importPreviewCard').style.display = 'block';
 }
 
-function renderScanList(){
-  const ul = document.getElementById('scanList');
+function renderImportPreview(){
+  const ul = document.getElementById('importList');
   ul.innerHTML = '';
-  scanCandidates.forEach(function(c, i){
+  document.getElementById('importPreviewTitle').textContent = '預覽（' + importPreviewData.length + ' 個）';
+  importPreviewData.forEach(function(item){
     const li = document.createElement('li');
-    if (!c.healthy) li.className = 'fail';
-    const display = c.name && c.name.length > 0 ? c.name : c.url.replace(/^https?:\/\//, '');
-    const status = c.healthy ? '✓' : '✗';
-    const errLine = (!c.healthy && c.message)
-      ? '<div class="err-msg">' + escapeHtml(c.message) + '</div>'
-      : '';
-    const checkedAttr = c.selected ? 'checked' : '';
-    const disabledAttr = c.healthy ? '' : 'disabled';
+    const name = item.name || '(未命名)';
+    const url = item.url || '';
     li.innerHTML =
-      '<input type="checkbox" ' + checkedAttr + ' ' + disabledAttr + '>' +
       '<div class="grow">' +
-        '<div class="name">' + status + ' ' + escapeHtml(display) + '</div>' +
-        '<div class="url">' + escapeHtml(c.url) + '</div>' +
-        errLine +
+        '<div class="name">' + escapeHtml(name) + '</div>' +
+        '<div class="url">' + escapeHtml(url) + '</div>' +
       '</div>';
-    li.querySelector('input').addEventListener('change', function(e){
-      scanCandidates[i].selected = e.target.checked;
-    });
     ul.appendChild(li);
   });
 }
 
-function scanSelectAll(v){
-  scanCandidates.forEach(function(c){ if (c.healthy) c.selected = v; });
-  renderScanList();
-}
-
-async function addScanned(){
-  const urls = scanCandidates
-    .filter(function(c){ return c.selected && c.healthy; })
-    .map(function(c){ return c.url; });
-  const msg = document.getElementById('scanAddMsg');
-  const btn = document.getElementById('scanAddBtn');
+async function confirmImport(){
+  const btn = document.getElementById('importConfirmBtn');
+  const msg = document.getElementById('importDoneMsg');
   msg.className = 'err'; msg.textContent = '';
-  if (urls.length === 0) { msg.textContent = '請至少勾一個'; return; }
-  btn.disabled = true; btn.textContent = '加入中⋯';
+  if (!importParsedRaw) return;
+  btn.disabled = true; btn.textContent = '匯入中⋯';
   try {
-    const r = await api('/api/sites/batch', { method:'POST', headers:{'Content-Type':'application/json'},
-                                                body: JSON.stringify({ urls: urls })});
+    const r = await api('/api/sites/import', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ text: importParsedRaw }),
+    });
     if (!r.ok) {
-      msg.textContent = (r.data && r.data.message) || '加入失敗';
+      msg.textContent = (r.data && r.data.message) || '匯入失敗';
       return;
     }
-    const results = (r.data.results || []);
-    const okCount = results.filter(function(x){ return x.success; }).length;
-    const failCount = results.filter(function(x){ return !x.success; }).length;
+    const added = r.data.added || 0;
+    const failed = r.data.failed || 0;
+    const skipped = r.data.skipped || 0;
     msg.className = 'err ok';
-    msg.textContent = '已加入 ' + okCount + ' 個' + (failCount > 0 ? ('（' + failCount + ' 個失敗）') : '');
-    const addedLower = new Set(
-      results.filter(function(x){ return x.success; }).map(function(x){ return x.url.toLowerCase(); })
-    );
-    scanCandidates = scanCandidates.filter(function(c){ return !addedLower.has(c.url.toLowerCase()); });
-    renderScanList();
-    if (scanCandidates.length === 0) {
-      document.getElementById('scanResultCard').style.display = 'none';
-    }
+    msg.textContent = '已新增 ' + added + ' 個' +
+      (skipped > 0 ? '（略過 ' + skipped + ' 個重複）' : '') +
+      (failed > 0 ? '（失敗 ' + failed + ' 個）' : '');
+    document.getElementById('importText').value = '';
+    document.getElementById('importPreviewCard').style.display = 'none';
+    importParsedRaw = null;
+    importPreviewData = null;
     loadSites(); // 順便重整站點管理頁
   } finally {
-    btn.disabled = false; btn.textContent = '加入所選';
+    btn.disabled = false; btn.textContent = '確定匯入';
   }
 }
 
