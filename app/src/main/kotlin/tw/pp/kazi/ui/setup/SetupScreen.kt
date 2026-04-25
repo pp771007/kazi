@@ -690,7 +690,7 @@ private fun SiteRow(
                         primary = false,
                     )
                 }
-                item { AppButton(text = "刪", onClick = onDelete, danger = true) }
+                item { tw.pp.kazi.ui.components.ConfirmDeleteButton(text = "刪", icon = Icons.Filled.Delete, onConfirm = onDelete) }
             }
         }
     } else {
@@ -753,7 +753,7 @@ private fun SiteRow(
                 onClick = onToggle,
                 primary = false,
             )
-            AppButton(text = "刪除", icon = Icons.Filled.Delete, onClick = onDelete, danger = true)
+            tw.pp.kazi.ui.components.ConfirmDeleteButton(text = "刪除", icon = Icons.Filled.Delete, onConfirm = onDelete)
         }
     }
 }

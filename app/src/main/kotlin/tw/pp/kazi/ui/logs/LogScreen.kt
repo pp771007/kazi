@@ -80,13 +80,11 @@ fun LogScreen() {
                     },
                     enabled = entries.isNotEmpty(),
                 )
-                AppButton(
+                tw.pp.kazi.ui.components.ConfirmDeleteButton(
                     text = "清空",
                     icon = Icons.Filled.DeleteSweep,
                     iconOnly = windowSize.isCompact,
-                    onClick = { LogBuffer.clear() },
-                    primary = false,
-                    danger = true,
+                    onConfirm = { LogBuffer.clear() },
                     enabled = entries.isNotEmpty(),
                 )
                 AppButton(

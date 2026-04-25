@@ -43,13 +43,11 @@ fun FavoritesScreen() {
             title = "我的收藏",
             subtitle = "${favorites.size} 部影片",
             trailing = {
-                AppButton(
+                tw.pp.kazi.ui.components.ConfirmDeleteButton(
                     text = "清空",
                     icon = Icons.Filled.DeleteSweep,
-                    onClick = { scope.launch { container.favoriteRepository.clear() } },
+                    onConfirm = { scope.launch { container.favoriteRepository.clear() } },
                     enabled = favorites.isNotEmpty(),
-                    primary = false,
-                    danger = true,
                     iconOnly = windowSize.isCompact,
                 )
                 AppButton(

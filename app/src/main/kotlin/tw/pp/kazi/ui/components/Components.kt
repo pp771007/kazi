@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -462,6 +463,57 @@ private fun TitleColumn(
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/**
+ * 兩段式刪除按鈕 — 全站刪除動作統一用這個，避免遙控器或誤觸刪掉重要資料。
+ *
+ * 行為：
+ *  - idle：原本的 text + icon、紅框（danger 不填滿）
+ *  - 第一次點擊：armed，text 換成 confirmText（預設「確認」），icon 換 Check，背景變紅 fill
+ *  - timeoutMs 沒第二次點擊就 revert
+ *  - 第二次點擊（armed 狀態下）才呼叫 onConfirm
+ *
+ * 視覺上 idle vs armed 有「icon + 顏色」兩個維度的變化，比單純文字「再按一次」清楚很多。
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun ConfirmDeleteButton(
+    text: String,
+    icon: ImageVector,
+    onConfirm: () -> Unit,
+    modifier: Modifier = Modifier,
+    confirmText: String = "確認",
+    confirmIcon: ImageVector = Icons.Filled.Check,
+    iconOnly: Boolean = false,
+    enabled: Boolean = true,
+    timeoutMs: Long = 3000L,
+) {
+    var armed by remember { mutableStateOf(false) }
+    LaunchedEffect(armed) {
+        if (armed) {
+            kotlinx.coroutines.delay(timeoutMs)
+            armed = false
+        }
+    }
+    AppButton(
+        text = if (armed) confirmText else text,
+        icon = if (armed) confirmIcon else icon,
+        onClick = {
+            if (armed) {
+                armed = false
+                onConfirm()
+            } else {
+                armed = true
+            }
+        },
+        // armed 時 fill（primary=true）讓視覺更跳；idle 維持 outline
+        primary = armed,
+        danger = true,
+        iconOnly = iconOnly,
+        enabled = enabled,
+        modifier = modifier,
+    )
 }
 
 /**

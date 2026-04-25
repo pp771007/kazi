@@ -110,13 +110,11 @@ fun HistoryScreen() {
                     enabled = !checking && items.isNotEmpty(),
                     primary = false,
                 )
-                AppButton(
+                tw.pp.kazi.ui.components.ConfirmDeleteButton(
                     text = "清空",
                     icon = Icons.Filled.DeleteSweep,
-                    onClick = { scope.launch { container.historyRepository.clear() } },
+                    onConfirm = { scope.launch { container.historyRepository.clear() } },
                     enabled = items.isNotEmpty(),
-                    primary = false,
-                    danger = true,
                     iconOnly = compact,
                 )
                 AppButton(
@@ -216,14 +214,6 @@ private fun HistoryRow(
     val context = LocalContext.current
     val progress = if (item.durationMs > 0) item.positionMs.toFloat() / item.durationMs.toFloat() else 0f
     val hasNextEp = item.totalEpisodes > 0 && item.episodeIndex + 1 < item.totalEpisodes
-    // 兩段式刪除：第一次點 = 變成「再點一次刪除」，3 秒沒動作回復原狀；第二次才真的刪
-    var armedDelete by remember { mutableStateOf(false) }
-    LaunchedEffect(armedDelete) {
-        if (armedDelete) {
-            kotlinx.coroutines.delay(3000)
-            armedDelete = false
-        }
-    }
 
     // 不在 Row 自己加 clickable —— 之前整列 onClick = onResume，但 TV 遙控進去就直接觸發，
     // 沒辦法選裡面的「詳情」「刪除」。改成 row 純展示，所有動作都用裡面的 button，DPAD 可以一個個 focus。
@@ -343,16 +333,11 @@ private fun HistoryRow(
                     iconOnly = compact,
                     primary = false,
                 )
-                AppButton(
-                    // 兩段式：armed 後變紅 + 文字提示「再按一次」，避免單擊誤刪
-                    text = if (armedDelete) "再按一次" else "刪除",
+                tw.pp.kazi.ui.components.ConfirmDeleteButton(
+                    text = "刪除",
                     icon = Icons.Filled.Delete,
-                    onClick = {
-                        if (armedDelete) onDelete() else armedDelete = true
-                    },
-                    iconOnly = compact && !armedDelete,
-                    primary = armedDelete,
-                    danger = true,
+                    onConfirm = onDelete,
+                    iconOnly = compact,
                 )
             }
         }
