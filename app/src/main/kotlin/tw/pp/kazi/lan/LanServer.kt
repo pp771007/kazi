@@ -4,14 +4,19 @@ import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import tw.pp.kazi.data.AppJson
@@ -19,6 +24,8 @@ import tw.pp.kazi.data.MoveDirection
 import tw.pp.kazi.data.RemoteSearchRequest
 import tw.pp.kazi.data.Site
 import tw.pp.kazi.data.SiteRepository
+import tw.pp.kazi.data.SiteScanner
+import tw.pp.kazi.data.cleanBaseUrl
 import tw.pp.kazi.util.Logger
 import android.content.Context
 import tw.pp.kazi.util.ChineseConverter
@@ -27,6 +34,7 @@ import java.io.IOException
 class LanServer(
     port: Int,
     private val siteRepository: SiteRepository,
+    private val siteScanner: SiteScanner,
     private val onRemoteSearch: (RemoteSearchRequest) -> Boolean,
     private val appContext: Context,
 ) : NanoHTTPD(port) {
@@ -55,6 +63,8 @@ class LanServer(
                 uri == PATH_ROOT -> indexPage()
                 uri == PATH_API_SITES && method == Method.GET -> listSites()
                 uri == PATH_API_SITES && method == Method.POST -> addSite(session)
+                uri == PATH_API_SITES_BATCH && method == Method.POST -> batchAddSites(session)
+                uri == PATH_API_SCAN && method == Method.POST -> scanFromText(session)
                 uri == PATH_API_REMOTE_SEARCH && method == Method.POST -> remoteSearch(session)
                 uri == PATH_API_T2S && method == Method.POST -> t2s(session)
                 uri.startsWith(PATH_API_SITE_PREFIX) && uri.endsWith(PATH_MOVE_SUFFIX) -> moveSite(session)
@@ -158,6 +168,83 @@ class LanServer(
         }
     }
 
+    private fun scanFromText(session: IHTTPSession): Response = runBlocking {
+        val body = readBody(session)
+        val obj = parseJsonObject(body) ?: return@runBlocking badRequest("Invalid JSON")
+        val text = (obj["text"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+        if (text.isBlank()) return@runBlocking badRequest("text required")
+
+        val existingUrls = siteRepository.sites.value.map { it.url.lowercase() }.toSet()
+        val urls = extractCandidateUrls(text).filter { it.lowercase() !in existingUrls }
+
+        if (urls.isEmpty()) {
+            return@runBlocking jsonResponse(Response.Status.OK, buildJsonObject {
+                put("status", STATUS_SUCCESS)
+                put("candidates", buildJsonArray { })
+                put("message", "沒抓到任何新站點（可能已經在站點清單裡）")
+            })
+        }
+
+        val candidates = withContext(Dispatchers.IO) {
+            urls.map { url ->
+                async { url to siteScanner.probe(url) }
+            }.awaitAll()
+        }
+
+        jsonResponse(Response.Status.OK, buildJsonObject {
+            put("status", STATUS_SUCCESS)
+            put("candidates", buildJsonArray {
+                candidates.forEach { (url, probe) ->
+                    add(buildJsonObject {
+                        put("url", url)
+                        put("healthy", probe.healthy)
+                        put("name", probe.name ?: "")
+                        put("message", probe.message)
+                    })
+                }
+            })
+        })
+    }
+
+    private fun batchAddSites(session: IHTTPSession): Response = runBlocking {
+        val body = readBody(session)
+        val obj = parseJsonObject(body) ?: return@runBlocking badRequest("Invalid JSON")
+        val urls = (obj["urls"] as? JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+            .orEmpty()
+        if (urls.isEmpty()) return@runBlocking badRequest("urls required")
+
+        val results = lock.withLock {
+            urls.map { url ->
+                val r = siteRepository.addSite(url, null)
+                buildJsonObject {
+                    put("url", url)
+                    put("success", r.isSuccess)
+                    if (r.isSuccess) {
+                        put("name", r.getOrNull()?.name.orEmpty())
+                    } else {
+                        put("error", r.exceptionOrNull()?.message ?: "failed")
+                    }
+                }
+            }
+        }
+        jsonResponse(Response.Status.OK, buildJsonObject {
+            put("status", STATUS_SUCCESS)
+            put("results", buildJsonArray { results.forEach { add(it) } })
+        })
+    }
+
+    private fun extractCandidateUrls(text: String): List<String> {
+        return URL_REGEX.findAll(text)
+            .map { it.value }
+            .filter { it.contains(PROVIDE_VOD_PATH, ignoreCase = true) }
+            .mapNotNull { cleanBaseUrl(it) }
+            .map { it.lowercase() to it }
+            .distinctBy { it.first }
+            .map { it.second }
+            .toList()
+    }
+
     private fun t2s(session: IHTTPSession): Response {
         val body = readBody(session)
         val obj = parseJsonObject(body) ?: return badRequest("Invalid JSON")
@@ -208,8 +295,10 @@ class LanServer(
     companion object {
         private const val PATH_ROOT = "/"
         private const val PATH_API_SITES = "/api/sites"
+        private const val PATH_API_SITES_BATCH = "/api/sites/batch"
         private const val PATH_API_REMOTE_SEARCH = "/api/remote_search"
         private const val PATH_API_T2S = "/api/t2s"
+        private const val PATH_API_SCAN = "/api/scan"
         private const val PATH_API_SITE_PREFIX = "/api/sites/"
         private const val PATH_MOVE_SUFFIX = "/move"
 
@@ -218,6 +307,10 @@ class LanServer(
 
         private const val STATUS_SUCCESS = "success"
         private const val STATUS_ERROR = "error"
+
+        // 從貼上的文字／HTML 撈所有 http(s):// URL，再過濾包含 MacCMS API 路徑的
+        private val URL_REGEX = Regex("https?://[^\\s\"'<>`]+", RegexOption.IGNORE_CASE)
+        private const val PROVIDE_VOD_PATH = "api.php/provide/vod"
 
         private val INDEX_HTML = """
 <!DOCTYPE html>
@@ -290,12 +383,29 @@ class LanServer(
                   border-radius:999px; font-size:12px; cursor:pointer;
                   border:none; margin:0;}
   .history-pill:hover { background:#3B82F6; color:#fff;}
+  .steps { margin: 0 0 12px; padding: 0 0 0 22px; color:#CBD5E1; font-size:13px;
+           line-height: 1.7;}
+  .steps li { margin-bottom: 4px;}
+  .steps code { background:#0D0D15; padding:1px 6px; border-radius:4px;
+                font-size:12px; color:#93C5FD;}
+  .link-btn { display:inline-block; background:#10B981; color:#fff; padding:10px 16px;
+              border-radius:10px; text-decoration:none; font-weight:500; font-size:14px;
+              margin-top:8px;}
+  .link-btn:hover { background:#34D399;}
+  .scan-list { list-style:none; padding:0; margin:8px 0 12px;}
+  .scan-list li { display:flex; align-items:flex-start; gap:10px; padding:10px;
+                  border-bottom:1px solid #2a2a3e;}
+  .scan-list li:last-child { border-bottom:none;}
+  .scan-list li.fail { opacity:0.55;}
+  .scan-list input[type=checkbox] { width:18px; height:18px; cursor:pointer; margin-top:3px;}
+  .scan-list .err-msg { color:#F87171; font-size:11px; margin-top:2px;}
 </style>
 </head>
 <body>
 <h1>🍿 咔滋影院 · 遠端遙控</h1>
 <div class="tabs">
   <button class="tab active" data-tab="search">📱 遠端搜尋</button>
+  <button class="tab" data-tab="scan">🔎 掃描站台</button>
   <button class="tab" data-tab="sites">⚙️ 站點管理</button>
 </div>
 
@@ -326,6 +436,39 @@ class LanServer(
       <button onclick="submitSearch()" id="submitBtn" style="flex:1">🚀 送到 TV 執行搜尋</button>
     </div>
     <div id="searchMsg" class="err"></div>
+  </div>
+</div>
+
+<div id="panel-scan" class="panel">
+  <div class="card">
+    <h2 style="margin:0 0 10px; font-size:16px">怎麼用</h2>
+    <ol class="steps">
+      <li>按下面綠色按鈕「在新分頁開 Google 搜尋」（用手機本身的瀏覽器，比 TV 上操作好用太多）</li>
+      <li>瀏覽 Google 結果。看到喜歡的站，<strong>長按連結 → 複製連結網址</strong>；
+          或乾脆<strong>全選整頁複製</strong>（系統會自動撈出所有 MacCMS URL）</li>
+      <li>回到這頁，把複製的東西<strong>貼進下面的方框</strong></li>
+      <li>按「掃描」→ TV 會幫你 probe 這些 URL 哪些是可用的 MacCMS 站，並抓站名</li>
+      <li>勾選想要的站，按「加入所選」</li>
+    </ol>
+    <a class="link-btn" href="https://www.google.com/search?q=inurl:/api.php/provide/vod/" target="_blank" rel="noopener">🔗 在新分頁開 Google 搜尋</a>
+  </div>
+
+  <div class="card">
+    <label>貼這裡（連結／文字／整段 HTML 都可以）</label>
+    <textarea id="scanText" rows="6" placeholder="例：&#10;https://example.com/api.php/provide/vod/&#10;https://another.tv/api.php/provide/vod/at/json&#10;&#10;或直接 Ctrl+A 全選 Google 結果頁複製貼上⋯"></textarea>
+    <button onclick="runScan()" id="scanBtn" style="width:100%">🔎 掃描</button>
+    <div id="scanMsg" class="err"></div>
+  </div>
+
+  <div class="card" id="scanResultCard" style="display:none">
+    <div class="row">
+      <h2 style="margin:0; font-size:16px; flex:1;">掃描結果</h2>
+      <button class="secondary small" onclick="scanSelectAll(true)">全選</button>
+      <button class="secondary small" onclick="scanSelectAll(false)">全不選</button>
+    </div>
+    <ul id="scanList" class="scan-list"></ul>
+    <button onclick="addScanned()" id="scanAddBtn" style="width:100%">加入所選</button>
+    <div id="scanAddMsg" class="err"></div>
   </div>
 </div>
 
@@ -503,6 +646,114 @@ async function move(id, direction){
                                               body: JSON.stringify({ direction })});
   loadSites();
 }
+
+let scanCandidates = [];
+
+async function runScan(){
+  const text = document.getElementById('scanText').value;
+  const msg = document.getElementById('scanMsg');
+  const btn = document.getElementById('scanBtn');
+  msg.className = 'err'; msg.textContent = '';
+  if (!text.trim()) { msg.textContent = '請先貼點東西進來'; return; }
+  btn.disabled = true; btn.textContent = '🔎 掃描中（probe 每個站可能要幾秒⋯）';
+  try {
+    const r = await api('/api/scan', { method:'POST', headers:{'Content-Type':'application/json'},
+                                        body: JSON.stringify({ text: text })});
+    if (!r.ok) {
+      msg.textContent = (r.data && r.data.message) || '掃描失敗';
+      return;
+    }
+    scanCandidates = (r.data.candidates || []).map(function(c){
+      return Object.assign({}, c, { selected: !!c.healthy });
+    });
+    if (scanCandidates.length === 0) {
+      msg.textContent = (r.data && r.data.message) || '沒抓到任何新站點';
+      document.getElementById('scanResultCard').style.display = 'none';
+      return;
+    }
+    const okCount = scanCandidates.filter(function(c){ return c.healthy; }).length;
+    msg.className = 'err ok';
+    msg.textContent = '掃到 ' + scanCandidates.length + ' 個候選，' + okCount + ' 個可用';
+    renderScanList();
+    document.getElementById('scanResultCard').style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = '🔎 掃描';
+  }
+}
+
+function renderScanList(){
+  const ul = document.getElementById('scanList');
+  ul.innerHTML = '';
+  scanCandidates.forEach(function(c, i){
+    const li = document.createElement('li');
+    if (!c.healthy) li.className = 'fail';
+    const display = c.name && c.name.length > 0 ? c.name : c.url.replace(/^https?:\/\//, '');
+    const status = c.healthy ? '✓' : '✗';
+    const errLine = (!c.healthy && c.message)
+      ? '<div class="err-msg">' + escapeHtml(c.message) + '</div>'
+      : '';
+    const checkedAttr = c.selected ? 'checked' : '';
+    const disabledAttr = c.healthy ? '' : 'disabled';
+    li.innerHTML =
+      '<input type="checkbox" ' + checkedAttr + ' ' + disabledAttr + '>' +
+      '<div class="grow">' +
+        '<div class="name">' + status + ' ' + escapeHtml(display) + '</div>' +
+        '<div class="url">' + escapeHtml(c.url) + '</div>' +
+        errLine +
+      '</div>';
+    li.querySelector('input').addEventListener('change', function(e){
+      scanCandidates[i].selected = e.target.checked;
+    });
+    ul.appendChild(li);
+  });
+}
+
+function scanSelectAll(v){
+  scanCandidates.forEach(function(c){ if (c.healthy) c.selected = v; });
+  renderScanList();
+}
+
+async function addScanned(){
+  const urls = scanCandidates
+    .filter(function(c){ return c.selected && c.healthy; })
+    .map(function(c){ return c.url; });
+  const msg = document.getElementById('scanAddMsg');
+  const btn = document.getElementById('scanAddBtn');
+  msg.className = 'err'; msg.textContent = '';
+  if (urls.length === 0) { msg.textContent = '請至少勾一個'; return; }
+  btn.disabled = true; btn.textContent = '加入中⋯';
+  try {
+    const r = await api('/api/sites/batch', { method:'POST', headers:{'Content-Type':'application/json'},
+                                                body: JSON.stringify({ urls: urls })});
+    if (!r.ok) {
+      msg.textContent = (r.data && r.data.message) || '加入失敗';
+      return;
+    }
+    const results = (r.data.results || []);
+    const okCount = results.filter(function(x){ return x.success; }).length;
+    const failCount = results.filter(function(x){ return !x.success; }).length;
+    msg.className = 'err ok';
+    msg.textContent = '已加入 ' + okCount + ' 個' + (failCount > 0 ? ('（' + failCount + ' 個失敗）') : '');
+    const addedLower = new Set(
+      results.filter(function(x){ return x.success; }).map(function(x){ return x.url.toLowerCase(); })
+    );
+    scanCandidates = scanCandidates.filter(function(c){ return !addedLower.has(c.url.toLowerCase()); });
+    renderScanList();
+    if (scanCandidates.length === 0) {
+      document.getElementById('scanResultCard').style.display = 'none';
+    }
+    loadSites(); // 順便重整站點管理頁
+  } finally {
+    btn.disabled = false; btn.textContent = '加入所選';
+  }
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, function(ch){
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch];
+  });
+}
+
 loadSites();
 renderHistory();
 </script>
