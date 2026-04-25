@@ -201,7 +201,7 @@ fun HistoryScreen() {
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun HistoryRow(
     item: HistoryItem,
@@ -308,7 +308,12 @@ private fun HistoryRow(
             )
             Spacer(Modifier.height(6.dp))
             val compact = LocalWindowSize.current.isCompact
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // 用 FlowRow 不用 Row：3-4 顆 button 在窄卡片上會排不下，FlowRow 會自動換行
+            // 而不是把最後一顆「刪除」擠出畫面
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 AppButton(
                     text = "繼續",
                     icon = Icons.Filled.PlayArrow,

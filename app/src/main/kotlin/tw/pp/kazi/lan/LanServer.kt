@@ -266,6 +266,8 @@ class LanServer(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>咔滋影院 · 遠端遙控</title>
+<!-- favicon 用 SVG data URI 直接內嵌 🍿（跟 app 標題一致），瀏覽器 tab 上看得到 -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%BF%3C/text%3E%3C/svg%3E">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -318,7 +320,6 @@ class LanServer(
                 cursor:pointer; border:2px solid transparent;}
   .site-check input { width:18px; height:18px; cursor:pointer;}
   .site-check.checked { border-color:#3B82F6; background:#1A1F3A;}
-  .site-favicon { width:16px; height:16px; border-radius:3px; object-fit:contain; flex-shrink:0;}
   .hero { text-align:center; padding: 12px 0 4px;}
   .hero h2 { font-size: 17px; font-weight:600; margin: 0 0 6px; color:#fff;}
   .hero p { font-size: 13px; color:#94A3B8; margin: 0;}
@@ -465,15 +466,9 @@ function renderChecks(sites){
   wrap.innerHTML = '';
   sites.filter(s => s.enabled).forEach(s => {
     const id = 'chk-' + s.id;
-    // 站台 favicon：直接從站根 /favicon.ico 抓，沒有的話 onerror 把 img 隱藏
-    const origin = (s.url || '').replace(/\/$/, '').replace(/\/api\.php.*$/, '');
-    const favicon = origin + '/favicon.ico';
     const div = document.createElement('label');
     div.className = 'site-check checked';
-    div.innerHTML =
-      '<input type="checkbox" id="' + id + '" value="' + s.id + '" checked onchange="toggleCheck(this)">' +
-      '<img class="site-favicon" src="' + favicon + '" onerror="this.style.display=\'none\'">' +
-      '<span>' + s.name + '</span>';
+    div.innerHTML = '<input type="checkbox" id="'+id+'" value="'+s.id+'" checked onchange="toggleCheck(this)"><span>'+s.name+'</span>';
     wrap.appendChild(div);
   });
 }
