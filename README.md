@@ -7,8 +7,6 @@
 直接抓 [最新 release](https://github.com/pp771007/kazi/releases/latest) 裡的 `kazi-<version>.apk`，傳到裝置上裝即可。
 
 > 第一次裝可能要在系統設定打開「允許安裝來源不明的 APK」。
->
-> 註：v0.5.0 起改用 release 簽章。**從 v0.4.x 升級需先解除安裝舊版**，之後版本之間升級就不用了。
 
 ## 主要功能
 
