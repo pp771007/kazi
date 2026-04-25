@@ -527,7 +527,8 @@ private fun rememberFocusFlowBrush(active: Boolean, idleColor: Color): Brush {
         label = "focus-flow-phase",
     )
     val tile = 220f
-    val shift = phase * tile * 2f
+    // shift 走完整一個 tile（0 → tile），加上首尾同色 + Repeated tile mode → 接縫無感
+    val shift = phase * tile
     return Brush.linearGradient(
         colors = listOf(
             AppColors.Primary,
@@ -537,6 +538,6 @@ private fun rememberFocusFlowBrush(active: Boolean, idleColor: Color): Brush {
         ),
         start = Offset(shift, 0f),
         end = Offset(shift + tile, tile),
-        tileMode = TileMode.Mirror,
+        tileMode = TileMode.Repeated,
     )
 }

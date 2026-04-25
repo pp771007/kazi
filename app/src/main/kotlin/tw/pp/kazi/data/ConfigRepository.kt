@@ -23,6 +23,7 @@ data class AppSettings(
     val requestTimeoutSeconds: Int = DEFAULT_TIMEOUT_SECONDS,
     val viewMode: ViewMode = ViewMode.Default,
     val lanShareEnabled: Boolean = false,
+    val incognitoMode: Boolean = false,
     val searchHistory: List<String> = emptyList(),
 ) {
     companion object {
@@ -59,6 +60,8 @@ class ConfigRepository(context: Context) {
                 viewMode = ViewMode.fromKey((obj[ConfigKeys.VIEW_MODE] as? JsonPrimitive)?.content),
                 lanShareEnabled = (obj[ConfigKeys.LAN_SHARE_ENABLED] as? JsonPrimitive)?.booleanOrNull
                     ?: false,
+                incognitoMode = (obj[ConfigKeys.INCOGNITO_MODE] as? JsonPrimitive)?.booleanOrNull
+                    ?: false,
                 searchHistory = history,
             )
         }
@@ -67,6 +70,8 @@ class ConfigRepository(context: Context) {
     suspend fun updateViewMode(mode: ViewMode) = update { it.copy(viewMode = mode) }
 
     suspend fun updateLanShare(enabled: Boolean) = update { it.copy(lanShareEnabled = enabled) }
+
+    suspend fun updateIncognito(enabled: Boolean) = update { it.copy(incognitoMode = enabled) }
 
     suspend fun updateTimeout(seconds: Int) = update { it.copy(requestTimeoutSeconds = seconds) }
 
@@ -105,6 +110,7 @@ class ConfigRepository(context: Context) {
                 ConfigKeys.REQUEST_TIMEOUT to JsonPrimitive(settings.requestTimeoutSeconds),
                 ConfigKeys.VIEW_MODE to JsonPrimitive(settings.viewMode.key),
                 ConfigKeys.LAN_SHARE_ENABLED to JsonPrimitive(settings.lanShareEnabled),
+                ConfigKeys.INCOGNITO_MODE to JsonPrimitive(settings.incognitoMode),
                 ConfigKeys.SEARCH_HISTORY to AppJson.parseToJsonElement(
                     AppJson.encodeToString(stringListSerializer, settings.searchHistory)
                 ),

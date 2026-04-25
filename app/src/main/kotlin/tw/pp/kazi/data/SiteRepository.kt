@@ -22,6 +22,11 @@ class SiteRepository(context: Context) {
     private val _sites = MutableStateFlow<List<Site>>(emptyList())
     val sites: StateFlow<List<Site>> = _sites.asStateFlow()
 
+    // 第一次 load 完才會 true；HomeScreen 拿來區分「還沒讀檔」vs「真的沒站台」
+    // 不然 App 剛開瞬間會閃一下「還沒有啟用的站點」
+    private val _loaded = MutableStateFlow(false)
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
+
     suspend fun load() = withContext(Dispatchers.IO) {
         mutex.withLock {
             val raw = runCatching { sitesFile.readText() }.getOrNull()
@@ -29,6 +34,7 @@ class SiteRepository(context: Context) {
                 ?.let { runCatching { AppJson.decodeFromString(listSerializer, it) }.getOrNull() }
                 ?.sortedBy { it.order }
                 ?: emptyList()
+            _loaded.value = true
         }
     }
 

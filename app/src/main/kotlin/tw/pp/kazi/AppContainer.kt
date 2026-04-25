@@ -5,8 +5,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import tw.pp.kazi.data.Category
 import tw.pp.kazi.data.ConfigRepository
 import tw.pp.kazi.data.HistoryRepository
@@ -80,10 +84,14 @@ class AppContainer(private val context: Context) {
     var homeSnapshot: HomeUiSnapshot? = null
     var searchSnapshot: SearchUiSnapshot? = null
 
-    // 無痕模式（session 內，App 重啟會關掉）：開啟時不寫搜尋紀錄、不寫觀看歷史
-    private val _incognito = MutableStateFlow(false)
-    val incognito: StateFlow<Boolean> = _incognito.asStateFlow()
-    fun setIncognito(value: Boolean) { _incognito.value = value }
+    // 無痕模式：存進 ConfigRepository，App 重啟會記住上次狀態
+    val incognito: StateFlow<Boolean> = configRepository.settings
+        .map { it.incognitoMode }
+        .stateIn(appScope, SharingStarted.Eagerly, false)
+
+    fun setIncognito(value: Boolean) {
+        appScope.launch { configRepository.updateIncognito(value) }
+    }
 
     fun submitRemoteSearch(request: RemoteSearchRequest): Boolean {
         _pendingRemoteSearch.value = request
@@ -151,6 +159,7 @@ data class HomeUiSnapshot(
     val videos: List<Video>,
     val page: Int,
     val pageCount: Int,
+    val lastClickedVodId: Long? = null,
 )
 
 data class SearchUiSnapshot(
@@ -159,4 +168,7 @@ data class SearchUiSnapshot(
     val selectedIds: Set<Long>,
     val result: MultiSearchResult?,
     val selectorExpanded: Boolean,
+    val page: Int = 1,
+    val pageCount: Int = 1,
+    val lastClickedAggName: String? = null,
 )

@@ -56,6 +56,7 @@ fun HomeScreen() {
     val nav = LocalNavController.current
     val windowSize = LocalWindowSize.current
     val sites by container.siteRepository.sites.collectAsState()
+    val sitesLoaded by container.siteRepository.loaded.collectAsState()
     val settings by container.configRepository.settings.collectAsState()
     val lanState by container.lanState.collectAsState()
     val incognito by container.incognito.collectAsState()
@@ -88,8 +89,12 @@ fun HomeScreen() {
 
     val searchFocusRequester = remember { FocusRequester() }
     val firstVideoFocus = remember { FocusRequester() }
+    val clickedVideoFocus = remember { FocusRequester() }
     // 換頁後要把 focus 移到新頁第一張卡，避免 focus 卡在「下一頁」按鈕。
     var pendingFirstVideoFocus by remember { mutableStateOf(false) }
+    // 從 detail 返回時要 focus 在剛才點進去的那張卡，不是 site strip
+    val restoreClickedVodId = remember { initialSnapshot?.lastClickedVodId }
+    var pendingClickedFocus by remember { mutableStateOf(restoreClickedVodId != null) }
 
     LaunchedEffect(enabledSites) {
         if (selectedSite == null && enabledSites.isNotEmpty()) {
@@ -137,22 +142,33 @@ fun HomeScreen() {
                 videos = videos,
                 page = page,
                 pageCount = pageCount,
+                lastClickedVodId = container.homeSnapshot?.lastClickedVodId,
             )
         }
     }
 
     LaunchedEffect(enabledSites.isNotEmpty()) {
-        if (enabledSites.isNotEmpty()) {
+        // 第一次進來如果不是從 detail 返回（沒 clicked 要 restore），focus 搜尋按鈕
+        if (enabledSites.isNotEmpty() && !pendingClickedFocus) {
             runCatching { searchFocusRequester.requestFocus() }
         }
     }
 
-    // 換頁後 videos 會重新載入；只在「新 videos 來」的那一刻 focus 第一張，避免 focus 在舊資料的第一張卡上
+    // 換頁後 videos 會重新載入；只在「新 videos 來」的那一刻 focus 第一張
     LaunchedEffect(videos) {
         if (pendingFirstVideoFocus && videos.isNotEmpty()) {
             kotlinx.coroutines.delay(50) // 等 LazyVerticalGrid 把第一張 item compose 出來
             runCatching { firstVideoFocus.requestFocus() }
             pendingFirstVideoFocus = false
+        }
+    }
+
+    // 從 detail 返回 → focus 剛才點進去的那張卡
+    LaunchedEffect(videos) {
+        if (pendingClickedFocus && restoreClickedVodId != null && videos.any { it.vodId == restoreClickedVodId }) {
+            kotlinx.coroutines.delay(50)
+            runCatching { clickedVideoFocus.requestFocus() }
+            pendingClickedFocus = false
         }
     }
 
@@ -221,6 +237,22 @@ fun HomeScreen() {
                         iconOnly = compact,
                     )
                     AppButton(
+                        text = "遠端遙控",
+                        icon = Icons.Filled.QrCode2,
+                        onClick = {
+                            // 一鍵：沒開就順手 enable，已開直接秀 QR 頁
+                            scope.launch {
+                                if (!lanState.running) {
+                                    container.startLan()
+                                    container.configRepository.updateLanShare(true)
+                                }
+                                nav.navigate(Routes.LanShare)
+                            }
+                        },
+                        primary = lanState.running,
+                        iconOnly = compact,
+                    )
+                    AppButton(
                         text = "設定",
                         icon = Icons.Filled.Settings,
                         onClick = { nav.navigate(Routes.Settings) },
@@ -232,6 +264,11 @@ fun HomeScreen() {
         },
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            // 等站台檔案讀完才判斷 empty，不然 App 一進來會閃一下「還沒有啟用的站點」
+            if (!sitesLoaded) {
+                LoadingState()
+                return@Column
+            }
             if (enabledSites.isEmpty()) {
                 EmptyState(
                     title = "還沒有啟用的站點",
@@ -297,8 +334,21 @@ fun HomeScreen() {
                         viewMode = settings.viewMode,
                         windowSize = windowSize,
                         firstItemFocus = firstVideoFocus,
+                        clickedVodId = restoreClickedVodId,
+                        clickedItemFocus = clickedVideoFocus,
                         onClick = { v ->
                             val site = selectedSite ?: return@VideoGrid
+                            // 記下這次點的 vodId，從 detail 返回時 focus 會自動回到這張
+                            container.homeSnapshot = container.homeSnapshot?.copy(lastClickedVodId = v.vodId)
+                                ?: tw.pp.kazi.HomeUiSnapshot(
+                                    selectedSiteId = site.id,
+                                    selectedCategoryTypeId = selectedCategory?.typeId,
+                                    categories = categories,
+                                    videos = videos,
+                                    page = page,
+                                    pageCount = pageCount,
+                                    lastClickedVodId = v.vodId,
+                                )
                             nav.navigate(Routes.detail(site.id, v.vodId))
                         },
                     )
@@ -430,6 +480,8 @@ private fun VideoGrid(
     viewMode: ViewMode,
     windowSize: WindowSize,
     firstItemFocus: FocusRequester,
+    clickedVodId: Long?,
+    clickedItemFocus: FocusRequester,
     onClick: (Video) -> Unit,
 ) {
     LazyVerticalGrid(
@@ -450,7 +502,11 @@ private fun VideoGrid(
                 fromSite = v.fromSite,
                 aspectRatio = viewMode.aspectRatio,
                 onClick = { onClick(v) },
-                focusRequester = if (idx == 0) firstItemFocus else null,
+                focusRequester = when {
+                    clickedVodId != null && v.vodId == clickedVodId -> clickedItemFocus
+                    idx == 0 -> firstItemFocus
+                    else -> null
+                },
             )
         }
     }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -101,7 +102,14 @@ fun SearchScreen(
     var loading by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<MultiSearchResult?>(initialSnapshot?.result) }
     var selectorExpanded by remember { mutableStateOf(initialSnapshot?.selectorExpanded ?: true) }
+    var page by remember { mutableIntStateOf(initialSnapshot?.page ?: 1) }
+    var pageCount by remember { mutableIntStateOf(initialSnapshot?.pageCount ?: 1) }
     val focusRequester = remember { FocusRequester() }
+    val firstResultFocus = remember { FocusRequester() }
+    val clickedResultFocus = remember { FocusRequester() }
+    val restoreClickedAggName = remember { initialSnapshot?.lastClickedAggName }
+    var pendingResultFocus by remember { mutableStateOf(false) }
+    var pendingClickedFocus by remember { mutableStateOf(restoreClickedAggName != null) }
 
     val aggregated = remember(result) {
         result?.videos?.let(::aggregateByName) ?: emptyList()
@@ -109,7 +117,7 @@ fun SearchScreen(
 
     val parsedQuery = remember(keyword) { parseSearchQuery(keyword) }
 
-    fun runSearch() {
+    fun runSearch(targetPage: Int = 1) {
         val kw = keyword.trim()
         if (kw.isBlank() || selectedIds.isEmpty()) return
         val parsed = parseSearchQuery(kw)
@@ -123,25 +131,49 @@ fun SearchScreen(
             loading = true
             submittedKeyword = kw
             selectorExpanded = false
-            if (!container.incognito.value) {
+            page = targetPage
+            if (targetPage == 1 && !container.incognito.value) {
                 container.configRepository.addSearchKeyword(kw)
             }
             val serverResult = container.macCmsApi.multiSiteSearch(
                 sites = enabledSites.filter { it.id in selectedIds },
                 keyword = parsed.include,
+                page = targetPage,
             )
-            result = applyExcludes(serverResult, parsed.excludes)
+            val applied = applyExcludes(serverResult, parsed.excludes)
+            result = applied
+            pageCount = applied.pageCount.coerceAtLeast(1)
             loading = false
+            pendingResultFocus = true
         }
     }
 
     LaunchedEffect(Unit) {
         // 只有第一次進入搜尋頁才搶 focus 到輸入框；從 detail 返回時不搶，否則手機鍵盤會又彈出來
-        if (initialSnapshot == null) {
+        if (initialSnapshot == null && !pendingClickedFocus) {
             runCatching { focusRequester.requestFocus() }
         }
         // 只在「從外部帶 keyword 進來」時自動搜尋；從 detail 返回時直接顯示 snapshot 的舊結果
         if (initialKeyword.isNotBlank() && initialSnapshot == null) runSearch()
+    }
+
+    // 搜完 / 換頁完 → focus 第一個結果（避免 focus 卡在 input 鍵盤又彈出來）
+    LaunchedEffect(aggregated) {
+        if (pendingResultFocus && aggregated.isNotEmpty()) {
+            kotlinx.coroutines.delay(50)
+            runCatching { firstResultFocus.requestFocus() }
+            pendingResultFocus = false
+        }
+    }
+
+    // 從 detail 返回 → focus 剛才點進去那張卡
+    LaunchedEffect(aggregated) {
+        if (pendingClickedFocus && restoreClickedAggName != null
+            && aggregated.any { it.name == restoreClickedAggName }) {
+            kotlinx.coroutines.delay(50)
+            runCatching { clickedResultFocus.requestFocus() }
+            pendingClickedFocus = false
+        }
     }
 
     DisposableEffect(Unit) {
@@ -152,6 +184,9 @@ fun SearchScreen(
                 selectedIds = selectedIds,
                 result = result,
                 selectorExpanded = selectorExpanded,
+                page = page,
+                pageCount = pageCount,
+                lastClickedAggName = container.searchSnapshot?.lastClickedAggName,
             )
         }
     }
@@ -243,9 +278,12 @@ fun SearchScreen(
                             ),
                             horizontalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
                             verticalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.weight(1f),
                         ) {
-                            items(aggregated, key = { it.name }) { agg ->
+                            itemsIndexed(
+                                aggregated,
+                                key = { _, agg -> agg.name },
+                            ) { idx, agg ->
                                 PosterCard(
                                     title = agg.name,
                                     remarks = agg.remarks,
@@ -258,10 +296,37 @@ fun SearchScreen(
                                         val sid = first.fromSiteId ?: return@PosterCard
                                         container.pendingDetailPeers =
                                             if (agg.sources.size > 1) agg.sources else null
+                                        // 記下這次點的影片名（用名字做 key 因為聚合後沒有單一 vodId）
+                                        container.searchSnapshot = container.searchSnapshot
+                                            ?.copy(lastClickedAggName = agg.name)
+                                            ?: tw.pp.kazi.SearchUiSnapshot(
+                                                keyword = keyword,
+                                                submittedKeyword = submittedKeyword,
+                                                selectedIds = selectedIds,
+                                                result = result,
+                                                selectorExpanded = selectorExpanded,
+                                                page = page,
+                                                pageCount = pageCount,
+                                                lastClickedAggName = agg.name,
+                                            )
                                         nav.navigate(Routes.detail(sid, first.vodId))
+                                    },
+                                    focusRequester = when {
+                                        restoreClickedAggName != null && agg.name == restoreClickedAggName -> clickedResultFocus
+                                        idx == 0 -> firstResultFocus
+                                        else -> null
                                     },
                                 )
                             }
+                        }
+                        if (pageCount > 1 && !loading) {
+                            SearchPager(
+                                page = page,
+                                pageCount = pageCount,
+                                onPrev = { if (page > 1) runSearch(page - 1) },
+                                onNext = { if (page < pageCount) runSearch(page + 1) },
+                                windowSize = windowSize,
+                            )
                         }
                     }
                 }
@@ -269,6 +334,40 @@ fun SearchScreen(
         }
     }
 
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun SearchPager(
+    page: Int,
+    pageCount: Int,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    windowSize: tw.pp.kazi.ui.WindowSize,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = windowSize.pagePadding(), vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AppButton(text = "上頁", onClick = onPrev, enabled = page > 1, primary = false)
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color(0x22FFFFFF))
+                .padding(horizontal = 14.dp, vertical = 7.dp),
+        ) {
+            Text(
+                "$page / $pageCount",
+                color = AppColors.OnBg,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+        AppButton(text = "下頁", onClick = onNext, enabled = page < pageCount, primary = false)
+        Spacer(Modifier.weight(1f))
+    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -330,10 +429,17 @@ private fun SearchField(
             }
             if (value.isNotEmpty()) {
                 val clearInteraction = remember { MutableInteractionSource() }
+                val clearFocused by clearInteraction.collectIsFocusedAsState()
                 Box(
                     modifier = Modifier
                         .size(28.dp)
                         .clip(RoundedCornerShape(999.dp))
+                        .background(if (clearFocused) AppColors.Primary else Color(0x22FFFFFF))
+                        .border(
+                            2.dp,
+                            if (clearFocused) AppColors.FocusRing else Color.Transparent,
+                            RoundedCornerShape(999.dp),
+                        )
                         .focusable(interactionSource = clearInteraction)
                         .clickable(interactionSource = clearInteraction, indication = null) {
                             onChange("")
@@ -343,7 +449,7 @@ private fun SearchField(
                     androidx.tv.material3.Icon(
                         Icons.Filled.Close,
                         contentDescription = "清除",
-                        tint = AppColors.OnBgMuted,
+                        tint = if (clearFocused) Color.White else AppColors.OnBgMuted,
                         modifier = Modifier.size(18.dp),
                     )
                 }
@@ -379,6 +485,7 @@ private fun SearchField(
             InputBox(Modifier.weight(1f))
             AppButton(
                 text = "簡",
+                icon = Icons.Filled.Translate,
                 onClick = onToSimplified,
                 enabled = value.isNotBlank(),
                 primary = false,

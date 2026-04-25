@@ -48,8 +48,8 @@ object PlayerConfig {
     const val SEEK_STEP_MS = 10_000L
     const val SEEK_STEP_LONG_MS = 60_000L
 
-    // DPAD 連按加速：每次按 ←/→ 都會往階梯爬一格，停 1.5 秒不按就重置
-    val SEEK_LADDER_MS = longArrayOf(10_000L, 30_000L, 60_000L, 300_000L, 600_000L) // 10s/30s/1m/5m/10m
+    // DPAD 連按加速：每次按 ←/→ 往上爬一格；停 1.5 秒、或方向反向都會重置回第一格
+    val SEEK_LADDER_MS = longArrayOf(10_000L, 20_000L, 30_000L, 60_000L, 120_000L, 300_000L)
     const val SEEK_LADDER_RESET_MS = 1500L
 
     const val CONTROLS_AUTO_HIDE_MS = 5_000L
@@ -89,5 +89,6 @@ object ConfigKeys {
     const val REQUEST_TIMEOUT = "request_timeout"
     const val VIEW_MODE = "view_mode"
     const val LAN_SHARE_ENABLED = "lan_share_enabled"
+    const val INCOGNITO_MODE = "incognito_mode"
     const val SEARCH_HISTORY = "search_history"
 }

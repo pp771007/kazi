@@ -293,16 +293,26 @@ fun PlayerScreen(
         runCatching { keyFocusRequester.requestFocus() }
     }
 
-    // DPAD 連按 ←/→ 加速 seek：階梯從 10s → 30s → 1m → 5m → 10m，停按 1.5 秒重置
+    // ←/→ 行為（參考 YouTube/Netflix 在 TV 上的做法）：
+    // - 單按一次（repeatCount=0）→ 永遠是 10s 小跳，不累積
+    // - 按住不放（OS 連發 repeat 事件）→ 階梯加速：10s → 20s → 30s → 1m → 2m → 5m
+    // - 換方向、或停按 1.5s → 階梯重置
     var seekLadderIdx by remember { mutableIntStateOf(0) }
     var lastSeekKeyMs by remember { mutableLongStateOf(0L) }
+    var lastSeekForward by remember { mutableStateOf<Boolean?>(null) }
 
-    fun nextSeekStep(): Long {
+    fun computeSeekStep(forward: Boolean, isHold: Boolean): Long {
         val now = System.currentTimeMillis()
         val ladder = PlayerConfig.SEEK_LADDER_MS
-        seekLadderIdx = if (now - lastSeekKeyMs > PlayerConfig.SEEK_LADDER_RESET_MS) 0
-            else (seekLadderIdx + 1).coerceAtMost(ladder.size - 1)
+        val timedOut = now - lastSeekKeyMs > PlayerConfig.SEEK_LADDER_RESET_MS
+        val directionChanged = lastSeekForward != null && lastSeekForward != forward
+        seekLadderIdx = when {
+            !isHold -> 0
+            timedOut || directionChanged -> 0
+            else -> (seekLadderIdx + 1).coerceAtMost(ladder.size - 1)
+        }
         lastSeekKeyMs = now
+        lastSeekForward = forward
         return ladder[seekLadderIdx]
     }
 
@@ -329,7 +339,8 @@ fun PlayerScreen(
                         if (player.isPlaying) player.pause() else player.play(); true
                     }
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                        val step = nextSeekStep()
+                        val isHold = keyEvent.nativeKeyEvent.repeatCount > 0
+                        val step = computeSeekStep(forward = false, isHold = isHold)
                         val target = (player.currentPosition - step).coerceAtLeast(0)
                         player.seekTo(target)
                         gestureIndicator = GestureIndicator.Seek(
@@ -340,7 +351,8 @@ fun PlayerScreen(
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                        val step = nextSeekStep()
+                        val isHold = keyEvent.nativeKeyEvent.repeatCount > 0
+                        val step = computeSeekStep(forward = true, isHold = isHold)
                         val target = (player.currentPosition + step).coerceAtMost(player.duration)
                         player.seekTo(target)
                         gestureIndicator = GestureIndicator.Seek(
@@ -694,7 +706,7 @@ private fun ControlsBar(
             }
         }
         Text(
-            "遙控器：OK=暫停／←→=快轉（連按加速 10s→30s→1m→5m→10m）／↑↓=切倍速／頻道±=切集。手機：左右滑=進度／左滑直=亮度／右滑直=音量／雙擊=暫停",
+            "遙控器：OK=暫停／←→=快轉（單按 10s，按住加速到 5m）／↑↓=切倍速／頻道±=切集。手機：左右滑=進度／左滑直=亮度／右滑直=音量／雙擊=暫停",
             color = Color(0x88FFFFFF),
             style = MaterialTheme.typography.labelSmall,
         )
