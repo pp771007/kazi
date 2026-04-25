@@ -256,17 +256,20 @@ fun PosterCard(
                 }
             }
         }
+        // 電視盒上字太小看不清楚 → wide 用 bodyMedium、compact 維持 bodySmall
+        val windowSize = LocalWindowSize.current
         Text(
             text = title,
             color = AppColors.OnBg,
-            style = MaterialTheme.typography.bodySmall,
+            style = if (windowSize.isCompact) MaterialTheme.typography.bodySmall
+                else MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp)
-                .heightIn(min = 36.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .heightIn(min = if (windowSize.isCompact) 36.dp else 48.dp),
         )
     }
 }
