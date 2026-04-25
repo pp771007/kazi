@@ -82,9 +82,8 @@ fun AppButton(
         else -> AppColors.BgElevated
     }
     val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(160), label = "btn-scale")
-    val borderColor by animateColorAsState(
-        if (focused) AppColors.FocusRing else Color.Transparent, tween(160), label = "btn-border"
-    )
+    val borderBrush = rememberFocusFlowBrush(active = focused, idleColor = Color.Transparent)
+    val borderWidth by animateDpAsState(if (focused) 3.dp else 2.dp, tween(160), label = "btn-bw")
     // 微立體：rest 有 2dp 陰影，focus 4dp、按下去 0dp（沉下去的觸感）
     val elevation by animateDpAsState(
         when {
@@ -109,7 +108,7 @@ fun AppButton(
             .shadow(elevation, RoundedCornerShape(10.dp))
             .clip(RoundedCornerShape(10.dp))
             .background(bg)
-            .border(2.dp, borderColor, RoundedCornerShape(10.dp))
+            .border(BorderStroke(borderWidth, borderBrush), RoundedCornerShape(10.dp))
             .focusable(enabled = enabled, interactionSource = interaction)
             .clickable(enabled = enabled, interactionSource = interaction, indication = null) { onClick() }
             .padding(horizontal = hPad, vertical = vPad),
@@ -149,9 +148,8 @@ fun FocusableTag(
         focused -> AppColors.Surface
         else -> AppColors.BgElevated
     }
-    val borderColor by animateColorAsState(
-        if (focused) AppColors.FocusRing else Color.Transparent, tween(160), label = "tag-border"
-    )
+    val borderBrush = rememberFocusFlowBrush(active = focused, idleColor = Color.Transparent)
+    val borderWidth by animateDpAsState(if (focused) 3.dp else 2.dp, tween(160), label = "tag-bw")
     val scale by animateFloatAsState(if (focused) 1.06f else 1f, tween(160), label = "tag-scale")
 
     Box(
@@ -159,7 +157,7 @@ fun FocusableTag(
             .scale(scale)
             .clip(RoundedCornerShape(999.dp))
             .background(bg)
-            .border(2.dp, borderColor, RoundedCornerShape(999.dp))
+            .border(BorderStroke(borderWidth, borderBrush), RoundedCornerShape(999.dp))
             .focusable(interactionSource = interaction)
             .clickable(interactionSource = interaction, indication = null) { onClick() }
             .padding(horizontal = 14.dp, vertical = 7.dp),
@@ -472,15 +470,19 @@ fun StatusPill(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val borderColor by animateColorAsState(
-        if (focused && onClick != null) AppColors.FocusRing else Color.Transparent,
+    val borderBrush = rememberFocusFlowBrush(
+        active = focused && onClick != null,
+        idleColor = Color.Transparent,
+    )
+    val borderWidth by animateDpAsState(
+        if (focused && onClick != null) 2.5.dp else 0.dp,
         tween(160),
-        label = "pill-border",
+        label = "pill-bw",
     )
     val baseModifier = modifier
         .clip(RoundedCornerShape(999.dp))
         .background(Color(0x33FFFFFF))
-        .border(2.dp, borderColor, RoundedCornerShape(999.dp))
+        .border(BorderStroke(borderWidth, borderBrush), RoundedCornerShape(999.dp))
     val pillModifier = if (onClick != null) {
         baseModifier
             .focusable(interactionSource = interaction)

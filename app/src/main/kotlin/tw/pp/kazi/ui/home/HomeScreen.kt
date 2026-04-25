@@ -147,8 +147,8 @@ fun HomeScreen() {
         }
     }
 
-    // videos 重新載入後，如果剛剛是按上下頁觸發的，把 focus 推到第一張卡
-    LaunchedEffect(videos, pendingFirstVideoFocus) {
+    // 換頁後 videos 會重新載入；只在「新 videos 來」的那一刻 focus 第一張，避免 focus 在舊資料的第一張卡上
+    LaunchedEffect(videos) {
         if (pendingFirstVideoFocus && videos.isNotEmpty()) {
             kotlinx.coroutines.delay(50) // 等 LazyVerticalGrid 把第一張 item compose 出來
             runCatching { firstVideoFocus.requestFocus() }
