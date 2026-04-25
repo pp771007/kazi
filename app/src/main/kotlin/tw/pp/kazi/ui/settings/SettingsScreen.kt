@@ -123,6 +123,8 @@ fun SettingsScreen() {
                     color = AppColors.OnBgMuted,
                     style = MaterialTheme.typography.bodySmall,
                 )
+                Spacer(Modifier.height(8.dp))
+                UpdateSection()
             }
         }
     }
