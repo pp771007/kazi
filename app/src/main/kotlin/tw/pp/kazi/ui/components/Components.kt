@@ -82,8 +82,9 @@ fun AppButton(
         else -> AppColors.BgElevated
     }
     val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(160), label = "btn-scale")
+    // border 寬度固定 2dp 不動畫，避免每次 focus 變化造成 layout shift
     val borderBrush = rememberFocusFlowBrush(active = focused, idleColor = Color.Transparent)
-    val borderWidth by animateDpAsState(if (focused) 3.dp else 2.dp, tween(160), label = "btn-bw")
+    val borderWidth = 2.dp
     // 微立體：rest 有 2dp 陰影，focus 4dp、按下去 0dp（沉下去的觸感）
     val elevation by animateDpAsState(
         when {
@@ -149,7 +150,7 @@ fun FocusableTag(
         else -> AppColors.BgElevated
     }
     val borderBrush = rememberFocusFlowBrush(active = focused, idleColor = Color.Transparent)
-    val borderWidth by animateDpAsState(if (focused) 3.dp else 2.dp, tween(160), label = "tag-bw")
+    val borderWidth = 2.dp
     val scale by animateFloatAsState(if (focused) 1.06f else 1f, tween(160), label = "tag-scale")
 
     Box(
@@ -190,8 +191,9 @@ fun PosterCard(
     val context = LocalContext.current
 
     val scale by animateFloatAsState(if (focused) 1.08f else 1f, tween(200), label = "card-scale")
+    // border 寬度固定 3dp，只切換 brush（focus = 流光 / idle = 微透明灰），避免 layout 抖動
     val borderBrush = rememberFocusFlowBrush(active = focused, idleColor = Color(0x15FFFFFF))
-    val borderWidth by animateDpAsState(if (focused) 4.dp else 1.dp, tween(160), label = "card-bw")
+    val borderWidth = 3.dp
     val elevation by animateDpAsState(if (focused) 12.dp else 0.dp, tween(160), label = "card-elev")
 
     val baseModifier = modifier
@@ -474,11 +476,8 @@ fun StatusPill(
         active = focused && onClick != null,
         idleColor = Color.Transparent,
     )
-    val borderWidth by animateDpAsState(
-        if (focused && onClick != null) 2.5.dp else 0.dp,
-        tween(160),
-        label = "pill-bw",
-    )
+    // 只有可點的 pill 預留 border 空間（避免抖動）；不可點的維持無框
+    val borderWidth = if (onClick != null) 2.dp else 0.dp
     val baseModifier = modifier
         .clip(RoundedCornerShape(999.dp))
         .background(Color(0x33FFFFFF))
