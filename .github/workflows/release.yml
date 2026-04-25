@@ -1,0 +1,72 @@
+name: Release APK
+
+# 推 v* 標籤就會自動 build debug APK 並掛到 GitHub Release。
+# 例如：git tag v0.2.0 && git push origin v0.2.0
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:  # 也允許手動觸發（從 Actions 頁面按 Run）
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 需要才能 create release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 本機的 gradle-wrapper.properties 指向公司網路擋下載而 bundle 的 file:// 路徑，
+      # CI 上沒有這個檔案，要改回公開的 distribution URL。
+      - name: Patch gradle-wrapper distribution URL
+        run: |
+          sed -i 's|distributionUrl=file.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.11.1-bin.zip|' gradle/wrapper/gradle-wrapper.properties
+          cat gradle/wrapper/gradle-wrapper.properties
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Resolve version name from tag
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="dev-${GITHUB_SHA::7}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Version: ${VERSION}"
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug -PversionName=${{ steps.version.outputs.version }} --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: |
+          mv app/build/outputs/apk/debug/app-debug.apk kazi-${{ steps.version.outputs.version }}.apk
+          ls -lh kazi-*.apk
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kazi-${{ steps.version.outputs.version }}
+          path: kazi-*.apk
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: kazi-*.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: true

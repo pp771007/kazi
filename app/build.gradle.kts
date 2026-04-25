@@ -14,7 +14,8 @@ android {
         minSdk = 21
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        // CI 用 tag 名稱蓋過：./gradlew assembleDebug -PversionName=0.2.0
+        versionName = (project.findProperty("versionName") as String?) ?: "0.1.0"
     }
 
     buildTypes {

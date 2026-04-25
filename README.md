@@ -59,6 +59,24 @@ APK 在 `app/build/outputs/apk/debug/app-debug.apk`。
 
 公司網路擋 Gradle 下載？專案內已經 bundle 一份 Gradle zip（`gradle/*.zip`），首次 build 會自動用。
 
+## Release（CI 自動發版）
+
+打 `v*` 標籤就會觸發 GitHub Actions 自動 build APK 並掛到 GitHub Release：
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Workflow 會：
+
+1. 把 `gradle-wrapper.properties` 從本機 `file://` 路徑改回公開 distribution URL
+2. 用 tag 後面的數字蓋過 `versionName`（傳 `-PversionName=0.2.0`）
+3. Build debug APK，重新命名為 `kazi-<version>.apk`
+4. 建立 GitHub Release，附 APK 跟自動 changelog
+
+也可以從 Actions 頁面手動觸發（不會建 release，只會留 artifact）。
+
 ### 環境
 
 - compileSdk / targetSdk = 35（Android 15）
