@@ -344,6 +344,7 @@ fun GradientTopBar(
     title: String,
     subtitle: String? = null,
     modifier: Modifier = Modifier,
+    titleBadges: (@Composable RowScope.() -> Unit)? = null,
     trailing: @Composable (RowScope.() -> Unit)? = null,
 ) {
     val windowSize = LocalWindowSize.current
@@ -360,7 +361,7 @@ fun GradientTopBar(
                 ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TitleColumn(title = title, subtitle = subtitle, compact = true)
+            TitleColumn(title = title, subtitle = subtitle, titleBadges = titleBadges, compact = true)
             if (trailing != null) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item {
@@ -384,7 +385,7 @@ fun GradientTopBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                TitleColumn(title = title, subtitle = subtitle, compact = false)
+                TitleColumn(title = title, subtitle = subtitle, titleBadges = titleBadges, compact = false)
             }
             if (trailing != null) {
                 Row(
@@ -398,15 +399,26 @@ fun GradientTopBar(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun TitleColumn(title: String, subtitle: String?, compact: Boolean) {
-    Text(
-        text = title,
-        color = AppColors.OnBg,
-        style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.Bold,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
+private fun TitleColumn(
+    title: String,
+    subtitle: String?,
+    titleBadges: (@Composable RowScope.() -> Unit)?,
+    compact: Boolean,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = title,
+            color = AppColors.OnBg,
+            style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (titleBadges != null) titleBadges()
+    }
     if (subtitle != null) {
         Text(
             subtitle,
@@ -414,6 +426,28 @@ private fun TitleColumn(title: String, subtitle: String?, compact: Boolean) {
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * 給 GradientTopBar.titleBadges 用的小膠囊。
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun StatusPill(text: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color(0x33FFFFFF))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        Text(
+            text,
+            color = AppColors.OnBg,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
         )
     }
 }
