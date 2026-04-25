@@ -82,10 +82,16 @@ fun SearchScreen(
 
     val enabledSites = remember(sites) { sites.filter { it.enabled } }
 
-    // 從 detail 返回時還原（只有「不是從外部帶 keyword 進來」才使用 snapshot；
-    // 外部傳 keyword 進來代表是新的搜尋意圖，例如手機遠端送過來的）
+    // 從子畫面（detail / player）返回時還原。
+    // 規則：snapshot 的 submittedKeyword 跟這次 nav 的 initialKeyword 一致（且 siteIds 也相同）→ 還原；
+    // 否則代表是新一輪搜尋（例如手機遠端送過來不同 keyword），不能用 snapshot，要 fresh search。
+    // 之前寫成「只有 initialKeyword 為空才用 snapshot」是錯的 —— 從 detail 返回時 nav arg 還是原本的 keyword，
+    // 結果 snapshot 永遠不被用、每次返回都重搜。
     val initialSnapshot = remember {
-        container.searchSnapshot.takeIf { initialKeyword.isBlank() && initialSiteIds.isEmpty() }
+        val snap = container.searchSnapshot ?: return@remember null
+        val sameKeyword = (initialKeyword.isBlank() || initialKeyword == snap.submittedKeyword)
+        val sameSites = (initialSiteIds.isEmpty() || initialSiteIds == snap.selectedIds)
+        if (sameKeyword && sameSites) snap else null
     }
 
     var selectedIds by remember(enabledSites) {
@@ -149,11 +155,14 @@ fun SearchScreen(
     }
 
     LaunchedEffect(Unit) {
-        // 只有第一次進入搜尋頁才搶 focus 到輸入框；從 detail 返回時不搶，否則手機鍵盤會又彈出來
-        if (initialSnapshot == null && !pendingClickedFocus) {
+        // 只有「使用者主動點搜尋進來」（沒帶 keyword、沒 snapshot 還原）才搶 focus 到輸入框；
+        // 遠端推進來自動搜尋的情況下千萬別 focus，不然鍵盤會直接蓋住載入動畫
+        val isFreshUserEntry = initialSnapshot == null
+            && !pendingClickedFocus
+            && initialKeyword.isBlank()
+        if (isFreshUserEntry) {
             runCatching { focusRequester.requestFocus() }
         }
-        // 只在「從外部帶 keyword 進來」時自動搜尋；從 detail 返回時直接顯示 snapshot 的舊結果
         if (initialKeyword.isNotBlank() && initialSnapshot == null) runSearch()
     }
 

@@ -318,6 +318,7 @@ class LanServer(
                 cursor:pointer; border:2px solid transparent;}
   .site-check input { width:18px; height:18px; cursor:pointer;}
   .site-check.checked { border-color:#3B82F6; background:#1A1F3A;}
+  .site-favicon { width:16px; height:16px; border-radius:3px; object-fit:contain; flex-shrink:0;}
   .hero { text-align:center; padding: 12px 0 4px;}
   .hero h2 { font-size: 17px; font-weight:600; margin: 0 0 6px; color:#fff;}
   .hero p { font-size: 13px; color:#94A3B8; margin: 0;}
@@ -373,16 +374,17 @@ class LanServer(
       <button class="secondary small" onclick="clearHistory()">清空</button>
     </div>
     <div class="history-row" id="kwHistory"></div>
-    <label style="margin-top:14px">搜尋站點</label>
-    <div id="siteChecks"></div>
-    <div class="row">
-      <button class="secondary small" onclick="selAll(true)">全選</button>
-      <button class="secondary small" onclick="selAll(false)">全不選</button>
-    </div>
-    <div class="row" style="margin-top:12px">
+    <!-- 送出 button 移到上面，站點多的時候不用滾到最底 -->
+    <div class="row" style="margin-top:14px">
       <button onclick="submitSearch()" id="submitBtn" style="flex:1">🚀 送到 TV 執行搜尋</button>
     </div>
     <div id="searchMsg" class="err"></div>
+    <div class="row" style="margin-top:14px; align-items:center">
+      <label style="margin:0; flex:1">搜尋站點</label>
+      <button class="secondary small" onclick="selAll(true)">全選</button>
+      <button class="secondary small" onclick="selAll(false)">全不選</button>
+    </div>
+    <div id="siteChecks"></div>
   </div>
 </div>
 
@@ -463,9 +465,15 @@ function renderChecks(sites){
   wrap.innerHTML = '';
   sites.filter(s => s.enabled).forEach(s => {
     const id = 'chk-' + s.id;
+    // 站台 favicon：直接從站根 /favicon.ico 抓，沒有的話 onerror 把 img 隱藏
+    const origin = (s.url || '').replace(/\/$/, '').replace(/\/api\.php.*$/, '');
+    const favicon = origin + '/favicon.ico';
     const div = document.createElement('label');
     div.className = 'site-check checked';
-    div.innerHTML = `<input type="checkbox" id="`+id+`" value="`+s.id+`" checked onchange="toggleCheck(this)"><span>`+s.name+`</span>`;
+    div.innerHTML =
+      '<input type="checkbox" id="' + id + '" value="' + s.id + '" checked onchange="toggleCheck(this)">' +
+      '<img class="site-favicon" src="' + favicon + '" onerror="this.style.display=\'none\'">' +
+      '<span>' + s.name + '</span>';
     wrap.appendChild(div);
   });
 }
