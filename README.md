@@ -1,107 +1,82 @@
 # 咔滋影院 (kazi)
 
-原生 Android 影片聚合播放器，後端串接 MacCMS 開放 API。一次搜多站、聚合同名來源、支援電視盒遙控與手機觸控雙界面。
+原生 Android 影片聚合播放器，一次搜多站、聚合同名來源。手機 / 平板 / 電視盒（Android TV）都能裝。
 
-> APK 自用，目前未發行 Play Store。
+## 下載
+
+直接抓 [最新 release](https://github.com/pp771007/kazi/releases/latest) 裡的 `kazi-<version>.apk`，傳到裝置上裝即可。
+
+> 第一次裝可能要在系統設定打開「允許安裝來源不明的 APK」。
 >
-> 想下載直接抓 [最新 release](https://github.com/pp771007/kazi/releases/latest) 裡的 `kazi-<version>.apk`；想自己 build 看下面 [Build](#build)。
+> 註：每個版本目前是 debug 簽章，**更新時可能需要先解除安裝舊版**再裝新版。
 
 ## 主要功能
 
-- **多站聚合搜尋**：同時打多個 MacCMS 站點，依片名聚合來源
-- **支援排除詞**：例如 `慶餘年 -第二季 -預告`
-- **繁簡轉換**：搜尋框旁邊一鍵轉簡體
-- **影片播放**：Media3 ExoPlayer，HLS / DASH 支援，方向自動依影片比例旋轉
-- **電視盒友善**：DPAD 控制、focus ring、RTC 三段播放速度
-- **手機友善**：橫式自動全螢幕（藏狀態列）、左右滑進度、左右滑直亮度／音量、雙擊暫停、進度條可拖
-- **觀看歷史**：自動記錄 resume position，回去點同一集會接續播放
-- **我的收藏**：重點站台、重點片
-- **遠端遙控**（LAN）：手機開瀏覽器掃 QR 即可在 TV 上送出搜尋／管站台
-- **無痕模式**：開了之後不寫搜尋紀錄、不寫觀看歷史
-- **狀態保留**：從詳情頁返回，搜尋結果與站台選擇都還在，不會重新打 API
+### 影片瀏覽
+- **多站聚合搜尋**：同時搜多個資源站，依片名聚合來源
+- **支援排除詞**：例如 `慶餘年 -第二季 -預告` 可排除掉預告／續集
+- **繁簡轉換**：搜尋框旁邊一鍵把關鍵字轉簡體
+- **狀態保留**：返回時搜尋結果、選中的站台、影片捲動位置都還在
 
-## 專案結構
+### 看片體驗
+- **支援 HLS / DASH**，畫面會依影片比例自動旋轉橫直
+- **手機操作**（YouTube 風）：
+  - 單擊：顯示／隱藏控制列
+  - 雙擊左 1/3：往回 10 秒（連按可累加）
+  - 雙擊右 1/3：往前 10 秒（連按可累加）
+  - 雙擊中央：暫停
+  - 長按：暫時 2 倍速（鬆手回原本速度）
+  - 拖進度條：上方會顯示時間 tooltip
+  - 垂直滑左半：調亮度
+  - 垂直滑右半：調音量
+- **電視盒操作**：
+  - OK：暫停
+  - ←／→：快轉（單按 10 秒，按住加速到 5 分鐘）
+  - ↑／↓：切換倍速
+  - 頻道±：切上／下集
+- **橫式自動全螢幕**（手機橫過來就藏掉狀態列做真全螢幕）
 
-```
-app/src/main/kotlin/tw/pp/kazi/
-├── MainActivity.kt              入口
-├── KaziApplication.kt           Application 持有 AppContainer
-├── AppContainer.kt              共用單例：repos, scope, snapshots
-├── data/                        domain models, API, 持久化
-│   ├── MacCmsApi.kt             MacCMS API client
-│   ├── SiteRepository.kt        站台 CRUD + 排序
-│   ├── ConfigRepository.kt      設定（搜尋紀錄、view mode、LAN）
-│   ├── HistoryRepository.kt     觀看歷史
-│   ├── FavoriteRepository.kt    收藏
-│   ├── SiteScanner.kt           批次健康檢查 / 掃站
-│   └── Constants.kt             所有 magic value
-├── lan/
-│   └── LanServer.kt             NanoHTTPD HTTP 伺服器 + 內嵌 HTML 控制台
-├── ui/
-│   ├── KaziApp.kt               NavHost + CompositionLocal
-│   ├── home/HomeScreen.kt
-│   ├── search/SearchScreen.kt
-│   ├── detail/DetailScreen.kt
-│   ├── player/PlayerScreen.kt   ExoPlayer + 手勢 + DPAD
-│   ├── setup/SetupScreen.kt     站點管理
-│   ├── settings/SettingsScreen.kt
-│   ├── lan/LanShareScreen.kt    遠端遙控啟用 + QR
-│   ├── favorites/, history/, scan/, logs/
-│   └── components/              AppButton, FocusableTag, PosterCard, ...
-└── util/                        Logger, ChineseConverter (繁簡), Network, QrCode
-```
+### 觀看歷史 / 我的收藏
+- 看片自動記住進度，下次點同一集從上次的時間點繼續
+- 收藏喜歡的影片放在「收藏」區
+- 歷史頁可以一鍵檢查所有片是不是有更新（多了新集數會標記）
 
-## Build
+### 無痕模式
+首頁右上角的「🚫」按鈕點一下就開啟。開啟後：
+- 搜尋不會留紀錄
+- 看片不會寫進觀看歷史
 
-```bash
-./gradlew :app:assembleDebug
-```
+設定會記住，App 重開維持上次的狀態。
 
-APK 在 `app/build/outputs/apk/debug/app-debug.apk`。
+### 遠端遙控
+電視盒上用遙控器打字很痛苦，這個功能讓你用手機操控 TV：
 
-公司網路擋 Gradle 下載？專案內已經 bundle 一份 Gradle zip（`gradle/*.zip`），首次 build 會自動用。
+**怎麼開**：首頁右上角的「QR Code」icon 按一下，會自動啟用並顯示 QR Code。
 
-## Release（CI 自動發版）
+**手機這邊**：
+1. 跟 TV 連同個 WiFi
+2. 用手機相機掃 QR（或手動輸入 `http://<TV-IP>:9090`）
+3. 手機瀏覽器會打開一個有三個分頁的網頁
 
-打 `v*` 標籤就會觸發 GitHub Actions 自動 build APK 並掛到 GitHub Release：
+**三個分頁**：
+- **📱 遠端搜尋**：手機打字、勾要搜的站，送出後 TV 螢幕會自動跳到搜尋結果
+- **📥 匯入站點**：把另一台裝置的站點設定快速搬過來（在原裝置點「匯出站點到剪貼簿」→ 在這頁貼上 → 預覽 → 匯入）
+- **⚙️ 站點管理**：新增 / 啟停 / 排序 / 刪除站台
 
-```bash
-git tag v0.3.0
-git push origin v0.3.0
-```
+**怎麼關**：
+- 首頁標題「咔滋影院」旁邊會出現一顆綠色「🟢 遠端遙控」膠囊，點一下就關
+- 或回到 QR 那頁按「停止遠端遙控」
 
-幾分鐘後到 [Releases](https://github.com/pp771007/kazi/releases) 抓 APK。
+⚠️ **沒有密碼保護**，同 WiFi 上的人只要拿到網址都能進來操控。**只建議在自家 WiFi 用**。
 
-Workflow（`.github/workflows/release.yml`）會：
+## 站點怎麼來
 
-1. 把 `gradle-wrapper.properties` 從本機 `file://` 路徑改回公開 distribution URL
-2. 從 `gradle.properties` 砍掉本機寫死的 `org.gradle.java.home`（指向 Android Studio JBR，CI 上沒這個檔）
-3. `chmod +x ./gradlew`（Windows commit 上來沒 exec bit）
-4. 用 tag 後面的數字蓋過 `versionName`（傳 `-PversionName=0.3.0`）
-5. Build debug APK，重新命名為 `kazi-<version>.apk`
-6. 建立 GitHub Release，附 APK 跟自動 changelog
+App 不內建任何站台 — 你需要自己提供 MacCMS 規格的 API URL（通常長得像 `https://example.com/api.php/provide/vod/`）。
 
-也可以從 Actions 頁面手動觸發（不會建 release，只會留 artifact）。
+「設定」→「站點管理」可以：
+- 手動貼一個 URL 新增
+- 「掃描站台」用 Google 搜尋自動找一批候選
 
-### 環境
+## 反饋
 
-- compileSdk / targetSdk = 35（Android 15）
-- minSdk = 21（Android 5.0）
-- JVM 17
-- Kotlin + Compose（手機）+ androidx.tv.material3（電視盒）
-
-## 遠端遙控（LAN）使用方法
-
-1. 進「設定」→「遠端遙控」→「啟用遠端遙控」
-2. 手機跟 TV 連同個 WiFi
-3. 手機掃畫面上的 QR（或手動輸入 `http://<TV-IP>:9090`）
-4. 手機輸入關鍵字 → 送出 → TV 自動跳到搜尋結果
-5. 也可以遠端管站台（新增 / 啟停 / 排序 / 刪除）
-6. 不用了記得回去關，雖然閒置時開銷接近零
-
-⚠ 沒有密碼保護，僅建議在自家 WiFi 用。
-
-## 不要動的設定
-
-- `gradle/*.zip` 是離線 Gradle 包（公司網路擋下載），`.gitignore` 已排除但檔案保留在本機
-- `local.properties` 是 Android SDK path，每台機器不同，不進 git
+Bug / 建議到 [Issues](https://github.com/pp771007/kazi/issues)。
