@@ -3,6 +3,8 @@ package tw.pp.kazi.ui.search
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
@@ -326,6 +328,26 @@ private fun SearchField(
                     },
                 )
             }
+            if (value.isNotEmpty()) {
+                val clearInteraction = remember { MutableInteractionSource() }
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .focusable(interactionSource = clearInteraction)
+                        .clickable(interactionSource = clearInteraction, indication = null) {
+                            onChange("")
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.tv.material3.Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "清除",
+                        tint = AppColors.OnBgMuted,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
         }
     }
 
@@ -335,6 +357,7 @@ private fun SearchField(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AppButton(
                     text = "簡",
+                    icon = Icons.Filled.Translate,
                     onClick = onToSimplified,
                     enabled = value.isNotBlank(),
                     primary = false,

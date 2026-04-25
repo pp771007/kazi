@@ -41,7 +41,7 @@ fun SettingsScreen() {
     Column(modifier = Modifier.fillMaxSize()) {
         GradientTopBar(
             title = "設定",
-            subtitle = "外觀 · 連線 · 遠端遙控",
+            subtitle = "遠端遙控 · 站點 · 紀錄",
             trailing = {
                 AppButton(
                     text = "返回",

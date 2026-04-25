@@ -1,6 +1,7 @@
 package tw.pp.kazi.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -9,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -56,6 +59,7 @@ fun AppButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val pressed by interaction.collectIsPressedAsState()
 
     val bg = when {
         !enabled -> Color(0xFF2A2A3E)
@@ -70,6 +74,17 @@ fun AppButton(
     val borderColor by animateColorAsState(
         if (focused) AppColors.FocusRing else Color.Transparent, tween(160), label = "btn-border"
     )
+    // 微立體：rest 有 2dp 陰影，focus 4dp、按下去 0dp（沉下去的觸感）
+    val elevation by animateDpAsState(
+        when {
+            !enabled -> 0.dp
+            pressed -> 0.dp
+            focused -> 4.dp
+            else -> 2.dp
+        },
+        tween(120),
+        label = "btn-elev",
+    )
 
     val hPad = if (iconOnly) BUTTON_ICON_ONLY_PAD else BUTTON_H_PAD
     val vPad = BUTTON_V_PAD
@@ -80,6 +95,7 @@ fun AppButton(
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         modifier = modifier
             .scale(scale)
+            .shadow(elevation, RoundedCornerShape(10.dp))
             .clip(RoundedCornerShape(10.dp))
             .background(bg)
             .border(2.dp, borderColor, RoundedCornerShape(10.dp))
@@ -431,16 +447,35 @@ private fun TitleColumn(
 }
 
 /**
- * 給 GradientTopBar.titleBadges 用的小膠囊。
+ * 給 GradientTopBar.titleBadges 用的小膠囊。傳 onClick 就會變成可點擊的 toggle。
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun StatusPill(text: String, modifier: Modifier = Modifier) {
+fun StatusPill(
+    text: String,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val borderColor by animateColorAsState(
+        if (focused && onClick != null) AppColors.FocusRing else Color.Transparent,
+        tween(160),
+        label = "pill-border",
+    )
+    val baseModifier = modifier
+        .clip(RoundedCornerShape(999.dp))
+        .background(Color(0x33FFFFFF))
+        .border(2.dp, borderColor, RoundedCornerShape(999.dp))
+    val pillModifier = if (onClick != null) {
+        baseModifier
+            .focusable(interactionSource = interaction)
+            .clickable(interactionSource = interaction, indication = null) { onClick() }
+    } else {
+        baseModifier
+    }
     Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(Color(0x33FFFFFF))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+        modifier = pillModifier.padding(horizontal = 8.dp, vertical = 3.dp),
     ) {
         Text(
             text,

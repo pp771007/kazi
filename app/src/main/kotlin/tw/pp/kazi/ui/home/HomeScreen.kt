@@ -153,8 +153,23 @@ fun HomeScreen() {
                 subtitle = selectedSite?.name ?: "請先到設定新增站點",
                 titleBadges = if (incognito || lanState.running) {
                     {
-                        if (incognito) tw.pp.kazi.ui.components.StatusPill("🕶 無痕")
-                        if (lanState.running) tw.pp.kazi.ui.components.StatusPill("🟢 遠端遙控")
+                        if (incognito) {
+                            tw.pp.kazi.ui.components.StatusPill(
+                                text = "🕶 無痕",
+                                onClick = { container.setIncognito(false) },
+                            )
+                        }
+                        if (lanState.running) {
+                            tw.pp.kazi.ui.components.StatusPill(
+                                text = "🟢 遠端遙控",
+                                onClick = {
+                                    scope.launch {
+                                        container.stopLan()
+                                        container.configRepository.updateLanShare(false)
+                                    }
+                                },
+                            )
+                        }
                     }
                 } else null,
                 trailing = {

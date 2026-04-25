@@ -219,6 +219,28 @@ fun DetailScreen(siteId: Long, vodId: Long) {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
+private fun CopyTextButton(text: String) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            kotlinx.coroutines.delay(1500)
+            copied = false
+        }
+    }
+    AppButton(
+        text = if (copied) "已複製" else "複製",
+        icon = if (copied) Icons.Filled.Check else Icons.Filled.ContentCopy,
+        onClick = {
+            clipboard.setText(androidx.compose.ui.text.AnnotatedString(text))
+            copied = true
+        },
+        primary = false,
+    )
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
 private fun IncognitoBadge() {
     Box(
         modifier = Modifier
@@ -310,14 +332,18 @@ private fun CompactLayout(
                 }
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    v.vodName,
-                    color = AppColors.OnBg,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        v.vodName,
+                        color = AppColors.OnBg,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    CopyTextButton(text = v.vodName)
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (v.vodRemarks.isNotBlank()) BadgeSmall(v.vodRemarks, AppColors.Accent)
                     if (v.vodYear.isNotBlank()) BadgeSmall(v.vodYear, AppColors.Secondary)
@@ -469,12 +495,16 @@ private fun WideLayout(
                     )
                 }
             }
-            Text(
-                v.vodName,
-                color = AppColors.OnBg,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    v.vodName,
+                    color = AppColors.OnBg,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                CopyTextButton(text = v.vodName)
+            }
             if (v.vodRemarks.isNotBlank() || v.vodYear.isNotBlank() || v.vodArea.isNotBlank()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (v.vodRemarks.isNotBlank()) BadgeSmall(v.vodRemarks, AppColors.Accent)
