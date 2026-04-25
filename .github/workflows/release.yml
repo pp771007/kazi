@@ -58,12 +58,22 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Version: ${VERSION}"
 
-      - name: Build debug APK
-        run: ./gradlew :app:assembleDebug -PversionName=${{ steps.version.outputs.version }} --no-daemon --stacktrace
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.KAZI_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/kazi-release.jks"
+          test -s "$RUNNER_TEMP/kazi-release.jks"
+          echo "KAZI_KEYSTORE_FILE=$RUNNER_TEMP/kazi-release.jks" >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        env:
+          KAZI_KEYSTORE_PASSWORD: ${{ secrets.KAZI_KEYSTORE_PASSWORD }}
+          KAZI_KEY_ALIAS:         ${{ secrets.KAZI_KEY_ALIAS }}
+          KAZI_KEY_PASSWORD:      ${{ secrets.KAZI_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease -PversionName=${{ steps.version.outputs.version }} --no-daemon --stacktrace
 
       - name: Rename APK
         run: |
-          mv app/build/outputs/apk/debug/app-debug.apk kazi-${{ steps.version.outputs.version }}.apk
+          mv app/build/outputs/apk/release/app-release.apk kazi-${{ steps.version.outputs.version }}.apk
           ls -lh kazi-*.apk
 
       - name: Upload APK as workflow artifact

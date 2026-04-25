@@ -19,6 +19,22 @@ android {
         versionName = (project.findProperty("versionName") as String?) ?: "0.0.0-local"
     }
 
+    signingConfigs {
+        create("release") {
+            val ksPath = (project.findProperty("KAZI_KEYSTORE_FILE") as String?)
+                ?: System.getenv("KAZI_KEYSTORE_FILE")
+            if (ksPath != null) {
+                storeFile = file(ksPath)
+                storePassword = (project.findProperty("KAZI_KEYSTORE_PASSWORD") as String?)
+                    ?: System.getenv("KAZI_KEYSTORE_PASSWORD")
+                keyAlias = (project.findProperty("KAZI_KEY_ALIAS") as String?)
+                    ?: System.getenv("KAZI_KEY_ALIAS")
+                keyPassword = (project.findProperty("KAZI_KEY_PASSWORD") as String?)
+                    ?: System.getenv("KAZI_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -26,6 +42,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // 沒設密碼（本機沒配 gradle.properties / CI 沒給 secret）就不簽，避免 build 直接爆
+            signingConfigs.findByName("release")?.takeIf { it.storeFile != null }?.let {
+                signingConfig = it
+            }
         }
     }
 
