@@ -37,6 +37,10 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      # Windows commit 上來的 gradlew 沒有 exec bit，Linux runner 跑不動
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
       - name: Resolve version name from tag
         id: version
         run: |
