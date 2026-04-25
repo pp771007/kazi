@@ -31,6 +31,12 @@ jobs:
           sed -i 's|distributionUrl=file.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.11.1-bin.zip|' gradle/wrapper/gradle-wrapper.properties
           cat gradle/wrapper/gradle-wrapper.properties
 
+      # gradle.properties 寫死本機 Android Studio 的 JBR 路徑（Windows-only），CI 用不了
+      - name: Strip local-only org.gradle.java.home from gradle.properties
+        run: |
+          sed -i '/^org\.gradle\.java\.home=/d' gradle.properties
+          cat gradle.properties
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
