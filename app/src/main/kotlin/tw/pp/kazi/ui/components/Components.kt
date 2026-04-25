@@ -1,7 +1,6 @@
 package tw.pp.kazi.ui.components
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -30,12 +29,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -512,34 +509,22 @@ private val BUTTON_V_PAD = 9.dp
 private val BUTTON_ICON_ONLY_PAD = 9.dp
 
 /**
- * 流光 focus border：active 時用一個漸層 brush 沿 border 走動，比單色框醒目很多。
- * idleColor: 沒 focus 時的 border 顏色（用 SolidColor 包起來）。
+ * 呼吸燈 focus border：active 時 border 顏色的 alpha 在 0.45 ↔ 1.0 之間平滑往返，
+ * 比流光那種會 slide 的視覺穩定很多，也不會在小元件上看起來「在跑」。
+ * idleColor: 沒 focus 時的 border 顏色。
  */
 @Composable
 private fun rememberFocusFlowBrush(active: Boolean, idleColor: Color): Brush {
     if (!active) return SolidColor(idleColor)
-    val transition = rememberInfiniteTransition(label = "focus-flow")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
+    val transition = rememberInfiniteTransition(label = "focus-breath")
+    val intensity by transition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1400, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
+            animation = tween(1100, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "focus-flow-phase",
+        label = "focus-breath-intensity",
     )
-    val tile = 220f
-    // shift 走完整一個 tile（0 → tile），加上首尾同色 + Repeated tile mode → 接縫無感
-    val shift = phase * tile
-    return Brush.linearGradient(
-        colors = listOf(
-            AppColors.Primary,
-            Color(0xFFFFFFFF),
-            AppColors.Secondary,
-            AppColors.Primary,
-        ),
-        start = Offset(shift, 0f),
-        end = Offset(shift + tile, tile),
-        tileMode = TileMode.Repeated,
-    )
+    return SolidColor(AppColors.FocusRing.copy(alpha = intensity))
 }
