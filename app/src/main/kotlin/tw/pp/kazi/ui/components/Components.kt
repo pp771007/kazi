@@ -94,22 +94,26 @@ fun AppButton(
         label = "btn-elev",
     )
 
-    val hPad = if (iconOnly) BUTTON_ICON_ONLY_PAD else BUTTON_H_PAD
-    val vPad = BUTTON_V_PAD
-
+    // iconOnly 時用固定 44dp 方形（Material 推薦的 tap target），這樣 icon button 全部一樣大
+    // 也比較好按。有文字時用 padding-based 撐開，文字長度決定寬度。
+    val baseModifier = modifier
+        .scale(scale)
+        .shadow(elevation, RoundedCornerShape(10.dp))
+        .clip(RoundedCornerShape(10.dp))
+        .background(bg)
+        .border(BorderStroke(borderWidth, borderBrush), RoundedCornerShape(10.dp))
+        .focusable(enabled = enabled, interactionSource = interaction)
+        .clickable(enabled = enabled, interactionSource = interaction, indication = null) { onClick() }
+    val rowModifier = if (iconOnly) {
+        baseModifier.size(BUTTON_ICON_ONLY_SIZE)
+    } else {
+        baseModifier.padding(horizontal = BUTTON_H_PAD, vertical = BUTTON_V_PAD)
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         // 內容置中：當 button 被 weight/fillMaxWidth 撐開時，避免文字偏左讓 button 看起來像 input
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        modifier = modifier
-            .scale(scale)
-            .shadow(elevation, RoundedCornerShape(10.dp))
-            .clip(RoundedCornerShape(10.dp))
-            .background(bg)
-            .border(BorderStroke(borderWidth, borderBrush), RoundedCornerShape(10.dp))
-            .focusable(enabled = enabled, interactionSource = interaction)
-            .clickable(enabled = enabled, interactionSource = interaction, indication = null) { onClick() }
-            .padding(horizontal = hPad, vertical = vPad),
+        modifier = rowModifier,
     ) {
         if (icon != null) {
             Icon(
@@ -506,7 +510,7 @@ val CardShape: Shape = RoundedCornerShape(14.dp)
 
 private val BUTTON_H_PAD = 14.dp
 private val BUTTON_V_PAD = 9.dp
-private val BUTTON_ICON_ONLY_PAD = 9.dp
+private val BUTTON_ICON_ONLY_SIZE = 44.dp
 
 /**
  * 呼吸燈 focus border：active 時 border 顏色的 alpha 在 0.45 ↔ 1.0 之間平滑往返，
