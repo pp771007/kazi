@@ -1,14 +1,7 @@
 package tw.pp.kazi.ui.history
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -21,7 +14,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -187,24 +179,16 @@ private fun HistoryRow(
     onDelete: () -> Unit,
 ) {
     val context = LocalContext.current
-    val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) 1.03f else 1f, tween(180), label = "hist-scale")
-    val borderColor by animateColorAsState(
-        if (focused) AppColors.FocusRing else Color(0x22FFFFFF), tween(160), label = "hist-border"
-    )
-
     val progress = if (item.durationMs > 0) item.positionMs.toFloat() / item.durationMs.toFloat() else 0f
 
+    // 不在 Row 自己加 clickable —— 之前整列 onClick = onResume，但 TV 遙控進去就直接觸發，
+    // 沒辦法選裡面的「詳情」「刪除」。改成 row 純展示，所有動作都用裡面的 button，DPAD 可以一個個 focus。
     Row(
         modifier = Modifier
-            .scale(scale)
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(AppColors.BgCard)
-            .border(2.dp, borderColor, RoundedCornerShape(14.dp))
-            .focusable(interactionSource = interaction)
-            .clickable(interactionSource = interaction, indication = null) { onResume() }
+            .border(2.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -277,8 +261,9 @@ private fun HistoryRow(
                 color = AppColors.OnBgDim,
                 style = MaterialTheme.typography.labelSmall,
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                AppButton(text = "繼續", icon = Icons.Filled.PlayArrow, onClick = onResume)
                 AppButton(text = "詳情", icon = Icons.Filled.Info, onClick = onOpen, primary = false)
                 AppButton(text = "刪除", icon = Icons.Filled.Delete, onClick = onDelete, primary = false, danger = true)
             }

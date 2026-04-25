@@ -47,6 +47,11 @@ object FavoriteConfig {
 object PlayerConfig {
     const val SEEK_STEP_MS = 10_000L
     const val SEEK_STEP_LONG_MS = 60_000L
+
+    // DPAD 連按加速：每次按 ←/→ 都會往階梯爬一格，停 1.5 秒不按就重置
+    val SEEK_LADDER_MS = longArrayOf(10_000L, 30_000L, 60_000L, 300_000L, 600_000L) // 10s/30s/1m/5m/10m
+    const val SEEK_LADDER_RESET_MS = 1500L
+
     const val CONTROLS_AUTO_HIDE_MS = 5_000L
     const val POSITION_POLL_MS = 500L
     val PLAYBACK_SPEEDS = floatArrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)

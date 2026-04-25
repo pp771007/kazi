@@ -293,6 +293,27 @@ fun PlayerScreen(
         runCatching { keyFocusRequester.requestFocus() }
     }
 
+    // DPAD 連按 ←/→ 加速 seek：階梯從 10s → 30s → 1m → 5m → 10m，停按 1.5 秒重置
+    var seekLadderIdx by remember { mutableIntStateOf(0) }
+    var lastSeekKeyMs by remember { mutableLongStateOf(0L) }
+
+    fun nextSeekStep(): Long {
+        val now = System.currentTimeMillis()
+        val ladder = PlayerConfig.SEEK_LADDER_MS
+        seekLadderIdx = if (now - lastSeekKeyMs > PlayerConfig.SEEK_LADDER_RESET_MS) 0
+            else (seekLadderIdx + 1).coerceAtMost(ladder.size - 1)
+        lastSeekKeyMs = now
+        return ladder[seekLadderIdx]
+    }
+
+    fun cyclePlaybackSpeed(forward: Boolean) {
+        val speeds = PlayerConfig.PLAYBACK_SPEEDS
+        val curIdx = speeds.indexOfFirst { it == speed }.let { if (it < 0) speeds.size / 2 else it }
+        val nextIdx = if (forward) (curIdx + 1).coerceAtMost(speeds.size - 1)
+            else (curIdx - 1).coerceAtLeast(0)
+        speed = speeds[nextIdx]
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -308,14 +329,36 @@ fun PlayerScreen(
                         if (player.isPlaying) player.pause() else player.play(); true
                     }
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                        player.seekTo(
-                            (player.currentPosition - PlayerConfig.SEEK_STEP_MS).coerceAtLeast(0)
-                        ); true
+                        val step = nextSeekStep()
+                        val target = (player.currentPosition - step).coerceAtLeast(0)
+                        player.seekTo(target)
+                        gestureIndicator = GestureIndicator.Seek(
+                            targetMs = target,
+                            deltaMs = -step,
+                            durationMs = player.duration,
+                        )
+                        true
                     }
                     KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                        player.seekTo(
-                            (player.currentPosition + PlayerConfig.SEEK_STEP_MS).coerceAtMost(player.duration)
-                        ); true
+                        val step = nextSeekStep()
+                        val target = (player.currentPosition + step).coerceAtMost(player.duration)
+                        player.seekTo(target)
+                        gestureIndicator = GestureIndicator.Seek(
+                            targetMs = target,
+                            deltaMs = step,
+                            durationMs = player.duration,
+                        )
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        cyclePlaybackSpeed(forward = true)
+                        gestureIndicator = GestureIndicator.Speed(speed)
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        cyclePlaybackSpeed(forward = false)
+                        gestureIndicator = GestureIndicator.Speed(speed)
+                        true
                     }
                     KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_PAGE_DOWN -> {
                         val src = details?.sources?.getOrNull(currentSourceIdx) ?: return@onPreviewKeyEvent false
@@ -519,6 +562,7 @@ private sealed class GestureIndicator {
     data class Seek(val targetMs: Long, val deltaMs: Long, val durationMs: Long) : GestureIndicator()
     data class Brightness(val value: Float) : GestureIndicator()
     data class Volume(val current: Int, val max: Int) : GestureIndicator()
+    data class Speed(val value: Float) : GestureIndicator()
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -552,6 +596,14 @@ private fun GestureOverlay(indicator: GestureIndicator, modifier: Modifier = Mod
             is GestureIndicator.Volume -> {
                 Text(
                     "音量 ${indicator.current} / ${indicator.max}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            is GestureIndicator.Speed -> {
+                Text(
+                    "倍速 ${indicator.value}x",
                     color = Color.White,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
@@ -642,7 +694,7 @@ private fun ControlsBar(
             }
         }
         Text(
-            "遙控器：OK=暫停／←→=${PlayerConfig.SEEK_STEP_MS / 1000}秒／頻道±=切集。手機：左右滑=進度／左滑直=亮度／右滑直=音量／雙擊=暫停",
+            "遙控器：OK=暫停／←→=快轉（連按加速 10s→30s→1m→5m→10m）／↑↓=切倍速／頻道±=切集。手機：左右滑=進度／左滑直=亮度／右滑直=音量／雙擊=暫停",
             color = Color(0x88FFFFFF),
             style = MaterialTheme.typography.labelSmall,
         )
