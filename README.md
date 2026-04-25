@@ -2,7 +2,9 @@
 
 原生 Android 影片聚合播放器，後端串接 MacCMS 開放 API。一次搜多站、聚合同名來源、支援電視盒遙控與手機觸控雙界面。
 
-> APK 自用，目前未發行 Play Store。要的話自己 build 一下。
+> APK 自用，目前未發行 Play Store。
+>
+> 想下載直接抓 [最新 release](https://github.com/pp771007/kazi/releases/latest) 裡的 `kazi-<version>.apk`；想自己 build 看下面 [Build](#build)。
 
 ## 主要功能
 
@@ -64,16 +66,20 @@ APK 在 `app/build/outputs/apk/debug/app-debug.apk`。
 打 `v*` 標籤就會觸發 GitHub Actions 自動 build APK 並掛到 GitHub Release：
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
-Workflow 會：
+幾分鐘後到 [Releases](https://github.com/pp771007/kazi/releases) 抓 APK。
+
+Workflow（`.github/workflows/release.yml`）會：
 
 1. 把 `gradle-wrapper.properties` 從本機 `file://` 路徑改回公開 distribution URL
-2. 用 tag 後面的數字蓋過 `versionName`（傳 `-PversionName=0.2.0`）
-3. Build debug APK，重新命名為 `kazi-<version>.apk`
-4. 建立 GitHub Release，附 APK 跟自動 changelog
+2. 從 `gradle.properties` 砍掉本機寫死的 `org.gradle.java.home`（指向 Android Studio JBR，CI 上沒這個檔）
+3. `chmod +x ./gradlew`（Windows commit 上來沒 exec bit）
+4. 用 tag 後面的數字蓋過 `versionName`（傳 `-PversionName=0.3.0`）
+5. Build debug APK，重新命名為 `kazi-<version>.apk`
+6. 建立 GitHub Release，附 APK 跟自動 changelog
 
 也可以從 Actions 頁面手動觸發（不會建 release，只會留 artifact）。
 

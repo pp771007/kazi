@@ -64,6 +64,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
     val sites by container.siteRepository.sites.collectAsState()
     val history by container.historyRepository.items.collectAsState()
     val favorites by container.favoriteRepository.items.collectAsState()
+    val incognito by container.incognito.collectAsState()
     val scope = rememberCoroutineScope()
 
     // 從 SearchScreen 聚合卡帶進來的同名他站（一次性），DetailScreen 進入時 consume。
@@ -187,6 +188,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
             onPeerPick = onPeerPick,
             episodesReversed = episodesReversed,
             onToggleReversed = { episodesReversed = !episodesReversed },
+            incognito = incognito,
         )
     } else {
         WideLayout(
@@ -210,6 +212,25 @@ fun DetailScreen(siteId: Long, vodId: Long) {
             onPeerPick = onPeerPick,
             episodesReversed = episodesReversed,
             onToggleReversed = { episodesReversed = !episodesReversed },
+            incognito = incognito,
+        )
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun IncognitoBadge() {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color(0x33FFFFFF))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Text(
+            "🕶 無痕模式",
+            color = AppColors.OnBg,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
         )
     }
 }
@@ -235,6 +256,7 @@ private fun CompactLayout(
     onPeerPick: (tw.pp.kazi.data.Video) -> Unit,
     episodesReversed: Boolean,
     onToggleReversed: () -> Unit,
+    incognito: Boolean,
 ) {
     val context = LocalContext.current
     val v = d.video
@@ -247,7 +269,10 @@ private fun CompactLayout(
             .padding(horizontal = pagePad, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             AppButton(
                 text = "返回",
                 icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -260,6 +285,7 @@ private fun CompactLayout(
                 onClick = onToggleFavorite,
                 primary = isFavorited,
             )
+            if (incognito) IncognitoBadge()
         }
 
         PeerRow(peers = peers, currentSiteId = siteId, onPeerPick = onPeerPick)
@@ -385,6 +411,7 @@ private fun WideLayout(
     onPeerPick: (tw.pp.kazi.data.Video) -> Unit,
     episodesReversed: Boolean,
     onToggleReversed: () -> Unit,
+    incognito: Boolean,
 ) {
     val context = LocalContext.current
     val v = d.video
@@ -400,7 +427,10 @@ private fun WideLayout(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 AppButton(
                     text = "返回",
                     icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -413,6 +443,7 @@ private fun WideLayout(
                     onClick = onToggleFavorite,
                     primary = isFavorited,
                 )
+                if (incognito) IncognitoBadge()
             }
             PeerRow(peers = peers, currentSiteId = siteId, onPeerPick = onPeerPick)
             Box(

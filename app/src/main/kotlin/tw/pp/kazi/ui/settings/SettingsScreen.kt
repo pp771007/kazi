@@ -2,8 +2,6 @@ package tw.pp.kazi.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -16,14 +14,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
-import tw.pp.kazi.data.ViewMode
 import tw.pp.kazi.ui.LocalAppContainer
 import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.components.AppButton
-import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.GradientTopBar
 import tw.pp.kazi.ui.components.SectionHeader
 import tw.pp.kazi.ui.isCompact
@@ -40,10 +35,8 @@ fun SettingsScreen() {
     val container = LocalAppContainer.current
     val nav = LocalNavController.current
     val windowSize = LocalWindowSize.current
-    val settings by container.configRepository.settings.collectAsState()
     val sites by container.siteRepository.sites.collectAsState()
     val lanState by container.lanState.collectAsState()
-    val scope = rememberCoroutineScope()
 
     Column(modifier = Modifier.fillMaxSize()) {
         GradientTopBar(
@@ -68,24 +61,18 @@ fun SettingsScreen() {
             verticalArrangement = Arrangement.spacedBy(windowSize.sectionGap()),
         ) {
             Card {
-                SectionHeader(title = "影片網格顯示")
+                SectionHeader(title = "遠端遙控")
                 Text(
-                    "切換卡片比例與欄數",
-                    color = AppColors.OnBgMuted,
+                    if (lanState.running) "已啟用：${lanState.url ?: "-"}" else "未啟用",
+                    color = if (lanState.running) AppColors.Success else AppColors.OnBgMuted,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(ViewMode.entries.toList()) { mode ->
-                        FocusableTag(
-                            text = "${mode.emoji} ${mode.label}",
-                            selected = mode == settings.viewMode,
-                            onClick = {
-                                scope.launch { container.configRepository.updateViewMode(mode) }
-                            },
-                        )
-                    }
-                }
+                AppButton(
+                    text = "開啟遠端遙控設定",
+                    icon = Icons.Filled.QrCode2,
+                    onClick = { nav.navigate(Routes.LanShare) },
+                )
             }
 
             Card {
@@ -117,21 +104,6 @@ fun SettingsScreen() {
                     icon = Icons.Filled.BugReport,
                     onClick = { nav.navigate(Routes.Logs) },
                     primary = false,
-                )
-            }
-
-            Card {
-                SectionHeader(title = "遠端遙控")
-                Text(
-                    if (lanState.running) "已啟用：${lanState.url ?: "-"}" else "未啟用",
-                    color = if (lanState.running) AppColors.Success else AppColors.OnBgMuted,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
-                AppButton(
-                    text = "開啟遠端遙控設定",
-                    icon = Icons.Filled.QrCode2,
-                    onClick = { nav.navigate(Routes.LanShare) },
                 )
             }
 

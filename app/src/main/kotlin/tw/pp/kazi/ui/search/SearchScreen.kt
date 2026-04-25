@@ -71,6 +71,7 @@ fun SearchScreen(
     val windowSize = LocalWindowSize.current
     val sites by container.siteRepository.sites.collectAsState()
     val settings by container.configRepository.settings.collectAsState()
+    val incognito by container.incognito.collectAsState()
     val scope = rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
     val focusManager = LocalFocusManager.current
@@ -154,9 +155,11 @@ fun SearchScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        val baseSubtitle = submittedKeyword?.let { "「$it」結果" } ?: "同時搜所有已啟用站點"
+        val subtitleText = if (incognito) "🕶 無痕模式  · $baseSubtitle" else baseSubtitle
         GradientTopBar(
             title = "搜尋",
-            subtitle = submittedKeyword?.let { "「$it」結果" } ?: "同時搜所有已啟用站點",
+            subtitle = subtitleText,
             trailing = {
                 AppButton(
                     text = "返回",

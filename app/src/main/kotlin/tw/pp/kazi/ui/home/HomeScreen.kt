@@ -150,8 +150,9 @@ fun HomeScreen() {
         topBar = {
             val baseSubtitle = selectedSite?.name ?: "請先到設定新增站點"
             val subtitle = buildString {
+                // 無痕模式擺最前面：站名可能很長被截掉，提醒不能跟著消失
+                if (incognito) append("🕶 無痕模式  · ")
                 append(baseSubtitle)
-                if (incognito) append("  · 🕶 無痕模式")
                 if (lanState.running) append("  · 🟢 遠端遙控啟用中")
             }
             GradientTopBar(
