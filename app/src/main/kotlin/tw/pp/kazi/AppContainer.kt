@@ -1,6 +1,11 @@
 package tw.pp.kazi
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network as AndroidNetwork
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,6 +49,7 @@ class AppContainer(private val context: Context) {
     val siteScanner = SiteScanner(macCmsApi)
 
     private var lanServer: LanServer? = null
+    private var lanNetworkCallback: ConnectivityManager.NetworkCallback? = null
 
     private val _lanState = MutableStateFlow(
         LanState(running = false, url = null, port = LanConfig.DEFAULT_PORT)
@@ -143,13 +149,58 @@ class AppContainer(private val context: Context) {
             port = actualPort,
         )
         Logger.i("LAN share started at ${_lanState.value.url}")
+        registerLanNetworkCallback(actualPort)
         return true
     }
 
     fun stopLan() {
+        unregisterLanNetworkCallback()
         lanServer?.safeStop()
         lanServer = null
         _lanState.value = LanState(running = false, url = null, port = LanConfig.DEFAULT_PORT)
+    }
+
+    /**
+     * 監聽預設網路變化（換 WiFi、IP 重新分配、熱點切換），有變動就重算 URL，
+     * 不然 QR 一啟動只抓一次 IP，使用者換房間後 QR 會指到死位址。
+     */
+    private fun registerLanNetworkCallback(port: Int) {
+        unregisterLanNetworkCallback()
+        val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onLinkPropertiesChanged(network: AndroidNetwork, linkProperties: LinkProperties) {
+                refreshLanUrl(port)
+            }
+            override fun onAvailable(network: AndroidNetwork) {
+                refreshLanUrl(port)
+            }
+            override fun onLost(network: AndroidNetwork) {
+                refreshLanUrl(port)
+            }
+        }
+        runCatching { cm.registerNetworkCallback(request, cb) }
+            .onSuccess { lanNetworkCallback = cb }
+            .onFailure { Logger.w("registerNetworkCallback failed: ${it.message}") }
+    }
+
+    private fun unregisterLanNetworkCallback() {
+        val cb = lanNetworkCallback ?: return
+        val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        runCatching { cm?.unregisterNetworkCallback(cb) }
+        lanNetworkCallback = null
+    }
+
+    private fun refreshLanUrl(port: Int) {
+        val ip = Network.localIp()
+        val newUrl = if (ip != null) "http://$ip:$port" else null
+        if (newUrl != _lanState.value.url) {
+            _lanState.value = _lanState.value.copy(url = newUrl)
+            Logger.i("LAN URL refreshed to $newUrl")
+        }
     }
 
     companion object {

@@ -315,7 +315,11 @@ class MacCmsApi {
     }
 
     private fun request(url: String, params: Map<String, String>, sslVerify: Boolean): String? {
-        val builder = url.toHttpUrlOrNull()?.newBuilder() ?: return null
+        val builder = url.toHttpUrlOrNull()?.newBuilder()
+            ?: run {
+                tw.pp.kazi.util.Logger.w("MacCmsApi.request: malformed URL $url")
+                return null
+            }
         params.forEach { (k, v) -> builder.addQueryParameter(k, v) }
         val req = Request.Builder()
             .url(builder.build())
@@ -323,7 +327,16 @@ class MacCmsApi {
             .get()
             .build()
         HttpClients.forSite(sslVerify).newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) return null
+            if (!resp.isSuccessful) {
+                // 之前 silent return null，現在把 status / body prefix 也 log 出來，debug 看得到
+                val bodyPrefix = runCatching { resp.body?.string().orEmpty() }
+                    .getOrDefault("")
+                    .take(Spec.HTTP_ERROR_BODY_LOG_CHARS)
+                tw.pp.kazi.util.Logger.w(
+                    "MacCmsApi HTTP ${resp.code} on ${req.url}: ${bodyPrefix.replace("\n", " ").take(Spec.HTTP_ERROR_BODY_LOG_CHARS)}"
+                )
+                return null
+            }
             return resp.body?.string()?.trim()
         }
     }

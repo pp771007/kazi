@@ -16,6 +16,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import tw.pp.kazi.util.atomicWriteText
+import tw.pp.kazi.util.readJsonOrBackup
 import java.io.File
 
 data class AppSettings(
@@ -44,10 +46,9 @@ class ConfigRepository(context: Context) {
 
     suspend fun load() = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val raw = runCatching { configFile.readText() }.getOrNull()
-            val obj = raw?.takeIf { it.isNotBlank() }
-                ?.let { runCatching { AppJson.parseToJsonElement(it) }.getOrNull() as? JsonObject }
-                ?: JsonObject(emptyMap())
+            val obj = configFile.readJsonOrBackup(fallback = { JsonObject(emptyMap()) }) {
+                AppJson.parseToJsonElement(it) as? JsonObject ?: JsonObject(emptyMap())
+            }
 
             val historyArr = obj[ConfigKeys.SEARCH_HISTORY] as? JsonArray
             val history = historyArr?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList()
@@ -116,12 +117,7 @@ class ConfigRepository(context: Context) {
                 ),
             )
         )
-        val tmp = File(dataDir, "$CONFIG_FILE_NAME.tmp")
-        tmp.writeText(AppJson.encodeToString(JsonObject.serializer(), obj))
-        if (!tmp.renameTo(configFile)) {
-            configFile.writeText(tmp.readText())
-            tmp.delete()
-        }
+        configFile.atomicWriteText(AppJson.encodeToString(JsonObject.serializer(), obj))
     }
 
     companion object {

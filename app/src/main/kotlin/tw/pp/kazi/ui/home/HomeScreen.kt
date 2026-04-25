@@ -1,5 +1,6 @@
 package tw.pp.kazi.ui.home
 
+import tw.pp.kazi.util.Logger
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -269,12 +270,17 @@ fun HomeScreen() {
                         text = "遠端遙控",
                         icon = Icons.Filled.QrCode2,
                         onClick = {
-                            // 一鍵：沒開就順手 enable，已開直接秀 QR 頁
                             container.homeTopBarFocusKey = "lan"
                             scope.launch {
+                                // 一鍵：沒開就順手 enable，但要等 startLan 真的成功才寫 settings + 導頁
+                                // 失敗時還是導去 LanShareScreen 讓使用者看到「未啟用」+ 可手動重試
                                 if (!lanState.running) {
-                                    container.startLan()
-                                    container.configRepository.updateLanShare(true)
+                                    val ok = container.startLan()
+                                    if (ok) {
+                                        container.configRepository.updateLanShare(true)
+                                    } else {
+                                        Logger.w("startLan failed from Home one-tap; navigating to LanShareScreen so user sees the failure")
+                                    }
                                 }
                                 nav.navigate(Routes.LanShare)
                             }
@@ -345,11 +351,12 @@ fun HomeScreen() {
             }
 
             Box(modifier = Modifier.weight(1f)) {
+                val err = errorMsg
                 when {
                     loading -> LoadingState()
-                    errorMsg != null -> EmptyState(
+                    err != null -> EmptyState(
                         title = "載入失敗",
-                        subtitle = errorMsg!!,
+                        subtitle = err,
                         icon = Icons.Filled.ErrorOutline,
                         action = {
                             AppButton(

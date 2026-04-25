@@ -9,6 +9,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
+import tw.pp.kazi.util.atomicWriteText
+import tw.pp.kazi.util.readJsonOrBackup
 import java.io.File
 
 class HistoryRepository(context: Context) {
@@ -23,11 +25,9 @@ class HistoryRepository(context: Context) {
 
     suspend fun load() = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val raw = runCatching { file.readText() }.getOrNull()
-            _items.value = raw?.takeIf { it.isNotBlank() }
-                ?.let { runCatching { AppJson.decodeFromString(listSerializer, it) }.getOrNull() }
-                ?.sortedByDescending { it.updatedAt }
-                ?: emptyList()
+            _items.value = file.readJsonOrBackup(fallback = { emptyList() }) {
+                AppJson.decodeFromString(listSerializer, it)
+            }.sortedByDescending { it.updatedAt }
         }
     }
 
@@ -79,12 +79,7 @@ class HistoryRepository(context: Context) {
         }
 
     private fun persist(items: List<HistoryItem>) {
-        val tmp = File(dataDir, "$HISTORY_FILE_NAME.tmp")
-        tmp.writeText(AppJson.encodeToString(listSerializer, items))
-        if (!tmp.renameTo(file)) {
-            file.writeText(tmp.readText())
-            tmp.delete()
-        }
+        file.atomicWriteText(AppJson.encodeToString(listSerializer, items))
     }
 
     companion object {

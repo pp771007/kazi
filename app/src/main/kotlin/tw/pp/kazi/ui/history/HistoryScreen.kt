@@ -80,7 +80,10 @@ fun HistoryScreen() {
                     icon = Icons.Filled.Refresh,
                     iconOnly = compact,
                     onClick = {
-                        scope.launch {
+                        // 用 container.appScope 不是 rememberCoroutineScope —— 使用者可能掃到一半就返回，
+                        // 那時 rememberCoroutineScope 會 cancel，markUpdateStatus 寫到一半的 row 不一致。
+                        // 用 appScope 確保整輪掃完才結束。
+                        container.appScope.launch {
                             checking = true
                             checkProgress = null
                             val sites = container.siteRepository.sites.value

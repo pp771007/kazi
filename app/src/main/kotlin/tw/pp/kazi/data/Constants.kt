@@ -21,6 +21,9 @@ object MacCmsApiSpec {
 
     const val DEFAULT_USER_AGENT =
         "Mozilla/5.0 (Linux; Android 10; KaziCinema) AppleWebKit/537.36 (KHTML, like Gecko) Mobile Safari/537.36"
+
+    // 站台 HTTP 失敗時 log 多少 body 出來幫 debug（避免 log 爆）
+    const val HTTP_ERROR_BODY_LOG_CHARS = 200
 }
 
 object NetworkConfig {
@@ -60,6 +63,8 @@ object PlayerConfig {
     const val LONG_PRESS_SPEED = 2.0f
     // 雙擊累加 seek 的 debounce：停止點擊多少毫秒後才實際 seek（省記憶體＋減少 buffer 抖動）
     const val SEEK_COMMIT_DELAY_MS = 700L
+    // 網路類錯誤自動 retry 前等多久（等網路 settle）
+    const val PLAYER_RETRY_DELAY_MS = 2000L
 
     // 影片比例偵測門檻：>1.1 視為橫向、<0.9 視為直向，之間不強制
     const val ORIENTATION_LANDSCAPE_THRESHOLD = 1.1f

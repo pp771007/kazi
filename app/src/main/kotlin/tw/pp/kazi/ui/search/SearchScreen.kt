@@ -254,21 +254,22 @@ fun SearchScreen(
         }
 
         Box(modifier = Modifier.weight(1f)) {
+            val r = result
             when {
                 loading -> LoadingState(label = "多站搜尋中⋯")
-                result == null -> EmptyState(
+                r == null -> EmptyState(
                     title = "請輸入關鍵字",
                     subtitle = "將同時搜尋已勾選的站點",
                     icon = Icons.Filled.Search,
                 )
-                result!!.videos.isEmpty() -> EmptyState(
+                r.videos.isEmpty() -> EmptyState(
                     title = "沒有找到相關影片",
                     subtitle = "試試其他關鍵字或按「簡」轉簡體",
                     icon = Icons.Filled.SearchOff,
                 )
                 else -> {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        StatsBar(result!!, aggregated.size, windowSize)
+                        StatsBar(r, aggregated.size, windowSize)
                         val vm = settings.viewMode
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(vm.columnsFor(windowSize)),

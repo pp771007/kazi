@@ -115,6 +115,20 @@ fun PlayerScreen(
     var pendingSeekStartPos by remember { mutableLongStateOf(0L) }
     var seekCommitTrigger by remember { mutableIntStateOf(0) }
 
+    // 長按 2x 速狀態：hoist 出來讓 drag handler 也能 reset，避免 long-press 跟 drag race 後 speed 卡住
+    var longPressActive by remember { mutableStateOf(false) }
+    var speedBeforeLongPress by remember { mutableFloatStateOf(PlayerConfig.DEFAULT_SPEED) }
+    fun cancelLongPressSpeed() {
+        if (longPressActive) {
+            speed = speedBeforeLongPress
+            longPressActive = false
+            gestureIndicator = null
+        }
+    }
+
+    // 網路錯誤時自動 retry 用的 token；onPlayerError 撞到網路類錯誤就 ++，LaunchedEffect 補一次 prepare
+    var playerRetryToken by remember { mutableIntStateOf(0) }
+
     val player = remember {
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(MacCmsApiSpec.DEFAULT_USER_AGENT)
@@ -143,6 +157,20 @@ fun PlayerScreen(
         loading = false
     }
 
+    // 網路錯誤後自動 retry：等 2 秒讓網路 settle，再 prepare + play 一次
+    LaunchedEffect(playerRetryToken) {
+        if (playerRetryToken == 0) return@LaunchedEffect
+        delay(PlayerConfig.PLAYER_RETRY_DELAY_MS)
+        playbackError = null
+        player.prepare()
+        player.play()
+    }
+
+    // 切集 / 切 source 的時候清掉 retry counter
+    LaunchedEffect(currentEpisode, currentSourceIdx) {
+        playerRetryToken = 0
+    }
+
     LaunchedEffect(currentEpisode) {
         val ep = currentEpisode ?: return@LaunchedEffect
         playbackError = null
@@ -168,12 +196,36 @@ fun PlayerScreen(
         object : Player.Listener {
             override fun onIsPlayingChanged(p: Boolean) { isPlaying = p }
             override fun onPlayerError(error: PlaybackException) {
-                playbackError = friendlyPlaybackError(error)
                 val epName = currentEpisode?.name.orEmpty()
                 val url = currentEpisode?.url.orEmpty()
                 tw.pp.kazi.util.Logger.w(
                     "Player error on '$epName' (${error.errorCodeName}): url=${url.take(PlayerConfig.URL_LOG_MAX_CHARS)}",
                 )
+                when (error.errorCode) {
+                    // 網路類：通常是暫時性，自動 retry 一次
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> {
+                        playerRetryToken += 1
+                    }
+                    // source 類錯誤（解析、解碼、HTTP 4xx/404）：這個 source 本身壞了，自動跳下一個
+                    PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+                    PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                    PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+                    PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED,
+                    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+                    PlaybackException.ERROR_CODE_DECODING_FAILED,
+                    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+                    PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> {
+                        val d = details
+                        if (d != null && currentSourceIdx < d.sources.size - 1) {
+                            currentSourceIdx += 1
+                            currentEpIdx = 0
+                            return
+                        }
+                        playbackError = friendlyPlaybackError(error)
+                    }
+                    else -> playbackError = friendlyPlaybackError(error)
+                }
             }
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED) {
@@ -423,19 +475,10 @@ fun PlayerScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .pointerInput(Unit) {
-                        // 用 var 紀錄長按啟動前的 speed，鬆手後還原
-                        var speedBeforeLongPress = speed
-                        var longPressActive = false
                         detectTapGestures(
                             onPress = { _ ->
-                                val released = tryAwaitRelease()
-                                if (longPressActive) {
-                                    speed = speedBeforeLongPress
-                                    longPressActive = false
-                                    gestureIndicator = null
-                                }
-                                // released 用來確認手勢被取消還是正常釋放，目前只關心釋放後恢復速度
-                                @Suppress("UNUSED_EXPRESSION") released
+                                tryAwaitRelease()
+                                cancelLongPressSpeed()
                             },
                             onLongPress = { _ ->
                                 speedBeforeLongPress = speed
@@ -493,6 +536,8 @@ fun PlayerScreen(
                         var startVolume = 0
                         detectDragGestures(
                             onDragStart = { offset: Offset ->
+                                // drag 接管手勢時，如果剛好正在長按 2x，要把 speed 還原（不然 speed 卡在 2x）
+                                cancelLongPressSpeed()
                                 mode = null
                                 startX = offset.x
                                 startY = offset.y

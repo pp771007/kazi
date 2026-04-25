@@ -9,6 +9,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
+import tw.pp.kazi.util.atomicWriteText
+import tw.pp.kazi.util.readJsonOrBackup
 import java.io.File
 import java.net.URI
 
@@ -29,11 +31,9 @@ class SiteRepository(context: Context) {
 
     suspend fun load() = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val raw = runCatching { sitesFile.readText() }.getOrNull()
-            _sites.value = raw?.takeIf { it.isNotBlank() }
-                ?.let { runCatching { AppJson.decodeFromString(listSerializer, it) }.getOrNull() }
-                ?.sortedBy { it.order }
-                ?: emptyList()
+            _sites.value = sitesFile.readJsonOrBackup(fallback = { emptyList() }) {
+                AppJson.decodeFromString(listSerializer, it)
+            }.sortedBy { it.order }
             _loaded.value = true
         }
     }
@@ -215,12 +215,7 @@ class SiteRepository(context: Context) {
     }
 
     private fun writeToDisk(sites: List<Site>) {
-        val tmp = File(dataDir, "$SITES_FILE_NAME.tmp")
-        tmp.writeText(AppJson.encodeToString(listSerializer, sites))
-        if (!tmp.renameTo(sitesFile)) {
-            sitesFile.writeText(tmp.readText())
-            tmp.delete()
-        }
+        sitesFile.atomicWriteText(AppJson.encodeToString(listSerializer, sites))
     }
 
     private fun autoName(cleanUrl: String): String {

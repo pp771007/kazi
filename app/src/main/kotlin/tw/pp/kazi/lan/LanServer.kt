@@ -2,8 +2,6 @@ package tw.pp.kazi.lan
 
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -30,7 +28,8 @@ class LanServer(
     private val appContext: Context,
 ) : NanoHTTPD(port) {
 
-    private val lock = Mutex()
+    // 注意：handler 內呼叫的 SiteRepository.* 都是 suspend + 自帶 mutex，
+    // 所以這裡不需要再額外加 outer lock；先前那層是冗餘的。
 
     fun safeStart(): Boolean = try {
         start(SOCKET_READ_TIMEOUT, false)
@@ -62,6 +61,9 @@ class LanServer(
                 uri.startsWith(PATH_API_SITE_PREFIX) && method == Method.PUT -> updateSite(session)
                 else -> newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found")
             }
+        } catch (e: TruncatedBodyException) {
+            Logger.w("LanServer truncated body: ${e.message}")
+            badRequest("Incomplete request body: ${e.message}")
         } catch (e: Exception) {
             Logger.e("LanServer handler error", e)
             jsonResponse(Response.Status.INTERNAL_ERROR, buildJsonObject {
@@ -85,7 +87,7 @@ class LanServer(
         val url = (obj["url"] as? JsonPrimitive)?.content
             ?: return@runBlocking badRequest("url required")
         val name = (obj["name"] as? JsonPrimitive)?.content
-        val result = lock.withLock { siteRepository.addSite(url, name) }
+        val result = siteRepository.addSite(url, name)
         result.fold(
             onSuccess = {
                 jsonResponse(Response.Status.CREATED, buildJsonObject {
@@ -110,14 +112,14 @@ class LanServer(
             enabled = (obj["enabled"] as? JsonPrimitive)?.content?.toBoolean() ?: existing.enabled,
             sslVerify = (obj["ssl_verify"] as? JsonPrimitive)?.content?.toBoolean() ?: existing.sslVerify,
         )
-        lock.withLock { siteRepository.updateSite(updated) }
+        siteRepository.updateSite(updated)
         jsonResponse(Response.Status.OK, buildJsonObject { put("status", STATUS_SUCCESS) })
     }
 
     private fun deleteSite(session: IHTTPSession): Response = runBlocking {
         val id = session.uri.removePrefix(PATH_API_SITE_PREFIX).toLongOrNull()
             ?: return@runBlocking badRequest("Invalid id")
-        lock.withLock { siteRepository.deleteSite(id) }
+        siteRepository.deleteSite(id)
         jsonResponse(Response.Status.OK, buildJsonObject { put("status", STATUS_SUCCESS) })
     }
 
@@ -131,7 +133,7 @@ class LanServer(
             "down" -> MoveDirection.Down
             else -> return@runBlocking badRequest("direction must be up or down")
         }
-        lock.withLock { siteRepository.moveSite(id, direction) }
+        siteRepository.moveSite(id, direction)
         jsonResponse(Response.Status.OK, buildJsonObject { put("status", STATUS_SUCCESS) })
     }
 
@@ -168,10 +170,8 @@ class LanServer(
         if (rawText.isBlank()) return@runBlocking badRequest("text required")
 
         val preview = siteRepository.parseImport(rawText)
-        if (preview.errorMessage != null) {
-            return@runBlocking badRequest(preview.errorMessage!!)
-        }
-        val result = lock.withLock { siteRepository.importApply(preview.toAdd) }
+        preview.errorMessage?.let { return@runBlocking badRequest(it) }
+        val result = siteRepository.importApply(preview.toAdd)
         jsonResponse(Response.Status.OK, buildJsonObject {
             put("status", STATUS_SUCCESS)
             put("added", result.added)
@@ -206,6 +206,8 @@ class LanServer(
     // NanoHTTPD 2.3.1 的 parseBody 會用 Content-Type 的 charset decode，
     // 沒帶 charset 時 fallback 成 US-ASCII，UTF-8 中文會被破壞成 replacement char。
     // 直接從 inputStream 以 UTF-8 讀取，繞開這個行為。
+    private class TruncatedBodyException(message: String) : Exception(message)
+
     private fun readBody(session: IHTTPSession): String {
         val contentLength = session.headers["content-length"]?.toIntOrNull() ?: return ""
         if (contentLength <= 0) return ""
@@ -216,6 +218,9 @@ class LanServer(
             val n = input.read(buf, off, contentLength - off)
             if (n < 0) break
             off += n
+        }
+        if (off < contentLength) {
+            throw TruncatedBodyException("expected $contentLength bytes, got $off")
         }
         return String(buf, 0, off, Charsets.UTF_8)
     }
