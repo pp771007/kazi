@@ -281,16 +281,32 @@ private fun HistoryRow(
                 style = MaterialTheme.typography.labelSmall,
             )
             Spacer(Modifier.height(6.dp))
+            // 手機（compact）寬度太窄，3 顆 button 會把「刪除」擠成兩行 → iconOnly
+            val compact = LocalWindowSize.current.isCompact
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 AppButton(
                     text = "繼續",
                     icon = Icons.Filled.PlayArrow,
                     onClick = onResume,
+                    iconOnly = compact,
                     modifier = if (focusRequester != null)
                         Modifier.focusRequester(focusRequester) else Modifier,
                 )
-                AppButton(text = "詳情", icon = Icons.Filled.Info, onClick = onOpen, primary = false)
-                AppButton(text = "刪除", icon = Icons.Filled.Delete, onClick = onDelete, primary = false, danger = true)
+                AppButton(
+                    text = "詳情",
+                    icon = Icons.Filled.Info,
+                    onClick = onOpen,
+                    iconOnly = compact,
+                    primary = false,
+                )
+                AppButton(
+                    text = "刪除",
+                    icon = Icons.Filled.Delete,
+                    onClick = onDelete,
+                    iconOnly = compact,
+                    primary = false,
+                    danger = true,
+                )
             }
         }
     }

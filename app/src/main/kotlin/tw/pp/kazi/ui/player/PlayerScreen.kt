@@ -554,9 +554,10 @@ fun PlayerScreen(
                 GestureOverlay(indicator, modifier = Modifier.align(Alignment.Center))
             }
 
-            // 控制列顯示時，畫面中央也放一顆大的 play/pause 按鈕（YT pattern）
+            // 控制列顯示時，畫面中央也放一顆大的 play/pause 按鈕（YT pattern）。
+            // gestureIndicator 出現時暫時藏掉，免得跟 seek 累加 indicator 疊在一起。
             AnimatedVisibility(
-                visible = controlsVisible,
+                visible = controlsVisible && gestureIndicator == null,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.Center),
@@ -768,10 +769,11 @@ private fun ControlsBar(
                 style = MaterialTheme.typography.labelMedium,
             )
             Spacer(Modifier.weight(1f))
-            Text(
-                if (isPlaying) "▶" else "⏸",
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
+            androidx.tv.material3.Icon(
+                if (isPlaying) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                contentDescription = null,
+                tint = AppColors.OnBgMuted,
+                modifier = Modifier.size(18.dp),
             )
             AppButton(
                 text = "${speed}x",
