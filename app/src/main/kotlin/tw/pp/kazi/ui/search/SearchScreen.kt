@@ -233,6 +233,15 @@ fun SearchScreen(
                     onToSimplified = { keyword = ChineseConverter.toSimplified(keyword, appContext) },
                     focusRequester = focusRequester,
                     compact = windowSize.isCompact,
+                    trailing = if (!selectorExpanded) {
+                        {
+                            CollapsedSelectorChip(
+                                selectedCount = selectedIds.size,
+                                totalCount = enabledSites.size,
+                                onExpand = { selectorExpanded = true },
+                            )
+                        }
+                    } else null,
                 )
                 if (parsedQuery.excludes.isNotEmpty()) {
                     ExcludeHint(parsedQuery.excludes)
@@ -254,12 +263,6 @@ fun SearchScreen(
                             onClear = { scope.launch { container.configRepository.clearSearchHistory() } },
                         )
                     }
-                } else {
-                    CollapsedSelectorChip(
-                        selectedCount = selectedIds.size,
-                        totalCount = enabledSites.size,
-                        onExpand = { selectorExpanded = true },
-                    )
                 }
             }
         }
@@ -367,6 +370,7 @@ private fun SearchField(
     onToSimplified: () -> Unit,
     focusRequester: FocusRequester,
     compact: Boolean,
+    trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -448,7 +452,10 @@ private fun SearchField(
     if (compact) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             InputBox(Modifier.fillMaxWidth())
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 AppButton(
                     text = "簡",
                     icon = Icons.Filled.Translate,
@@ -463,6 +470,7 @@ private fun SearchField(
                     enabled = value.isNotBlank(),
                     modifier = Modifier.weight(1f),
                 )
+                trailing?.invoke(this)
             }
         }
     } else {
@@ -484,6 +492,7 @@ private fun SearchField(
                 onClick = onSubmit,
                 enabled = value.isNotBlank(),
             )
+            trailing?.invoke(this)
         }
     }
 }
