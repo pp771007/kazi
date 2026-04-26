@@ -360,27 +360,29 @@ fun PlayerScreen(
         runCatching { keyFocusRequester.requestFocus() }
     }
 
-    // ←/→ 行為（參考 YouTube/Netflix 在 TV 上的做法）：
-    // - 單按一次（repeatCount=0）→ 永遠是 10s 小跳，不累積
-    // - 按住不放（OS 連發 repeat 事件）→ 階梯加速：10s → 20s → 30s → 1m → 2m → 5m
-    // - 換方向、或停按 1.5s → 階梯重置
-    var seekLadderIdx by remember { mutableIntStateOf(0) }
-    var lastSeekKeyMs by remember { mutableLongStateOf(0L) }
-    var lastSeekForward by remember { mutableStateOf<Boolean?>(null) }
+    // ←/→ 行為：
+    // - 第一下（repeatCount=0）→ 永遠是 10s 小跳
+    // - 按住每多 1 秒 step +1 秒（10 → 11 → 12 ⋯）
+    // - OS key repeat 速率不一定（30Hz+），用 100ms throttle 壓成 10Hz；換方向重置
+    var seekHoldStartMs by remember { mutableLongStateOf(0L) }
+    var seekHoldDirection by remember { mutableStateOf<Boolean?>(null) }
+    var lastSeekHandledMs by remember { mutableLongStateOf(0L) }
 
-    fun computeSeekStep(forward: Boolean, isHold: Boolean): Long {
+    // 回傳要 seek 的毫秒；null 代表本次事件被 throttle 跳過（不 seek 但仍然 consume）
+    fun computeSeekStep(forward: Boolean, repeatCount: Int): Long? {
         val now = System.currentTimeMillis()
-        val ladder = PlayerConfig.SEEK_LADDER_MS
-        val timedOut = now - lastSeekKeyMs > PlayerConfig.SEEK_LADDER_RESET_MS
-        val directionChanged = lastSeekForward != null && lastSeekForward != forward
-        seekLadderIdx = when {
-            !isHold -> 0
-            timedOut || directionChanged -> 0
-            else -> (seekLadderIdx + 1).coerceAtMost(ladder.size - 1)
+        val isFirstPress = repeatCount == 0
+        val directionChanged = seekHoldDirection != null && seekHoldDirection != forward
+        if (isFirstPress || directionChanged) {
+            seekHoldStartMs = now
+            seekHoldDirection = forward
+            lastSeekHandledMs = now
+            return PlayerConfig.SEEK_STEP_BASE_MS
         }
-        lastSeekKeyMs = now
-        lastSeekForward = forward
-        return ladder[seekLadderIdx]
+        if (now - lastSeekHandledMs < PlayerConfig.SEEK_HOLD_THROTTLE_MS) return null
+        lastSeekHandledMs = now
+        val heldSeconds = (now - seekHoldStartMs) / 1000
+        return PlayerConfig.SEEK_STEP_BASE_MS + heldSeconds * PlayerConfig.SEEK_HOLD_GROW_PER_SEC_MS
     }
 
     fun cyclePlaybackSpeed(forward: Boolean) {
@@ -406,27 +408,35 @@ fun PlayerScreen(
                         if (player.isPlaying) player.pause() else player.play(); true
                     }
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                        val isHold = keyEvent.nativeKeyEvent.repeatCount > 0
-                        val step = computeSeekStep(forward = false, isHold = isHold)
-                        val target = (player.currentPosition - step).coerceAtLeast(0)
-                        player.seekTo(target)
-                        gestureIndicator = GestureIndicator.Seek(
-                            targetMs = target,
-                            deltaMs = -step,
-                            durationMs = player.duration,
+                        val step = computeSeekStep(
+                            forward = false,
+                            repeatCount = keyEvent.nativeKeyEvent.repeatCount,
                         )
+                        if (step != null) {
+                            val target = (player.currentPosition - step).coerceAtLeast(0)
+                            player.seekTo(target)
+                            gestureIndicator = GestureIndicator.Seek(
+                                targetMs = target,
+                                deltaMs = -step,
+                                durationMs = player.duration,
+                            )
+                        }
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                        val isHold = keyEvent.nativeKeyEvent.repeatCount > 0
-                        val step = computeSeekStep(forward = true, isHold = isHold)
-                        val target = (player.currentPosition + step).coerceAtMost(player.duration)
-                        player.seekTo(target)
-                        gestureIndicator = GestureIndicator.Seek(
-                            targetMs = target,
-                            deltaMs = step,
-                            durationMs = player.duration,
+                        val step = computeSeekStep(
+                            forward = true,
+                            repeatCount = keyEvent.nativeKeyEvent.repeatCount,
                         )
+                        if (step != null) {
+                            val target = (player.currentPosition + step).coerceAtMost(player.duration)
+                            player.seekTo(target)
+                            gestureIndicator = GestureIndicator.Seek(
+                                targetMs = target,
+                                deltaMs = step,
+                                durationMs = player.duration,
+                            )
+                        }
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_UP -> {
