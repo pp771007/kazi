@@ -64,8 +64,8 @@ object UpdateChecker {
     }
 
     // 簡單的 semver 比較：用 . 跟 - 切，能轉 int 的取，逐段比；
-    // 0.5.1 > 0.5.0、0.5.0 == 0.5.0、0.5.0-rc1 視為 0.5.0.1（夠用）
-    private fun compareSemver(a: String, b: String): Int {
+    // 0.5.1 > 0.5.0、0.5.0 == 0.5.0、0.5.0-rc1 視為 0.5.0.1（夠用）。internal 為了 unit test 可呼叫
+    internal fun compareSemver(a: String, b: String): Int {
         val ap = a.split(".", "-").mapNotNull { it.toIntOrNull() }
         val bp = b.split(".", "-").mapNotNull { it.toIntOrNull() }
         val n = maxOf(ap.size, bp.size)

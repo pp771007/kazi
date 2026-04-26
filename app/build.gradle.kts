@@ -108,4 +108,7 @@ dependencies {
     implementation(libs.nanohttpd)
     implementation(libs.zxing.core)
     implementation(libs.coil.compose)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

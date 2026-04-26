@@ -58,6 +58,9 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Version: ${VERSION}"
 
+      - name: Run unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
       - name: Decode keystore
         run: |
           echo "${{ secrets.KAZI_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/kazi-release.jks"

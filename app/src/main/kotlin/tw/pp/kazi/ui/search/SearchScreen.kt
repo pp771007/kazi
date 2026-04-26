@@ -39,10 +39,15 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import tw.pp.kazi.data.AggregatedVideo
 import tw.pp.kazi.data.MultiSearchResult
+import tw.pp.kazi.data.SearchQuery
 import tw.pp.kazi.data.Site
 import tw.pp.kazi.data.SiteSearchStatus
 import tw.pp.kazi.data.Video
+import tw.pp.kazi.data.aggregateByName
+import tw.pp.kazi.data.applyExcludes
+import tw.pp.kazi.data.parseSearchQuery
 import tw.pp.kazi.ui.LocalAppContainer
 import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
@@ -471,68 +476,6 @@ private fun SearchField(
             )
         }
     }
-}
-
-/** 解析 `慶餘年 -第二季 -預告` 這類輸入。中文字串空白分詞。 */
-private data class SearchQuery(val include: String, val excludes: List<String>)
-
-private fun parseSearchQuery(raw: String): SearchQuery {
-    val trimmed = raw.trim()
-    if (trimmed.isEmpty()) return SearchQuery("", emptyList())
-    val tokens = trimmed.split(Regex("\\s+")).filter { it.isNotEmpty() }
-    val includeParts = mutableListOf<String>()
-    val excludeParts = mutableListOf<String>()
-    for (t in tokens) {
-        if (t.length > 1 && t.startsWith("-")) {
-            excludeParts += t.substring(1)
-        } else if (t != "-") {
-            includeParts += t
-        }
-    }
-    return SearchQuery(
-        include = includeParts.joinToString(" "),
-        excludes = excludeParts.distinct(),
-    )
-}
-
-private data class AggregatedVideo(
-    val name: String,
-    val pic: String,
-    val remarks: String,
-    val sources: List<Video>,
-)
-
-private fun aggregateByName(videos: List<Video>): List<AggregatedVideo> =
-    videos.groupBy { it.vodName }.map { (name, list) ->
-        AggregatedVideo(
-            name = name,
-            pic = list.firstOrNull { it.vodPic.isNotBlank() }?.vodPic ?: "",
-            remarks = list.firstOrNull { it.vodRemarks.isNotBlank() }?.vodRemarks ?: "",
-            sources = list,
-        )
-    }
-
-private fun applyExcludes(r: MultiSearchResult, excludes: List<String>): MultiSearchResult {
-    if (excludes.isEmpty()) return r
-    val filtered = r.videos.filterNot { video ->
-        excludes.any { ex -> video.vodName.contains(ex, ignoreCase = true) }
-    }
-    // 更新 perSite 的 count 為過濾後數量
-    val filteredCountBySiteId = filtered.groupingBy { it.fromSiteId ?: 0L }.eachCount()
-    val adjustedPerSite = r.perSite.map { s ->
-        val newCount = filteredCountBySiteId[s.siteId] ?: 0
-        when {
-            s.status == tw.pp.kazi.data.SiteSearchStatus.Failed -> s
-            newCount == 0 && s.count > 0 ->
-                s.copy(count = 0, status = tw.pp.kazi.data.SiteSearchStatus.Empty)
-            else -> s.copy(count = newCount)
-        }
-    }
-    return r.copy(
-        videos = filtered,
-        total = filtered.size,
-        perSite = adjustedPerSite,
-    )
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
