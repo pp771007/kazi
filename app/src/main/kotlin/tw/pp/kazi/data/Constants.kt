@@ -51,12 +51,14 @@ object PlayerConfig {
     const val SEEK_STEP_MS = 10_000L
     const val SEEK_STEP_LONG_MS = 60_000L
 
-    // DPAD ←/→ 按住時 seek 行為：第一下永遠 10 秒小跳；按住每多 1 秒、step +1 秒
-    // （0 秒 → 10s、1 秒後 → 11s、2 秒後 → 12s ⋯）。OS 的 key repeat 速率不一定（可能 30 Hz+），
-    // 我們用 100ms throttle 限制成 10 Hz，避免一秒內被觸發太多次飛過頭
-    const val SEEK_STEP_BASE_MS = 10_000L
+    // DPAD ←/→ 按住時 seek 行為：
+    // - 第一下永遠 10 秒小跳
+    // - 按住的 step 公式：base(10) + held + held²/5  （秒）
+    //   早期接近線性 +1/s（held=1→11s、3→13.8s），後期二次加速明顯（held=10→40s、20→110s、30→220s）
+    // - 100ms throttle 把 OS 任意 key repeat 速率（30Hz+）壓成一致的 10Hz
+    const val SEEK_STEP_BASE_S = 10L
+    const val SEEK_HOLD_QUAD_DIVISOR = 5L
     const val SEEK_HOLD_THROTTLE_MS = 100L
-    const val SEEK_HOLD_GROW_PER_SEC_MS = 1_000L
 
     const val CONTROLS_AUTO_HIDE_MS = 5_000L
     const val POSITION_POLL_MS = 500L

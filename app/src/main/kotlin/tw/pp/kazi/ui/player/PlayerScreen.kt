@@ -360,10 +360,8 @@ fun PlayerScreen(
         runCatching { keyFocusRequester.requestFocus() }
     }
 
-    // ←/→ 行為：
-    // - 第一下（repeatCount=0）→ 永遠是 10s 小跳
-    // - 按住每多 1 秒 step +1 秒（10 → 11 → 12 ⋯）
-    // - OS key repeat 速率不一定（30Hz+），用 100ms throttle 壓成 10Hz；換方向重置
+    // ←/→ 行為：第一下 10 秒小跳；按住時 step = 10 + held + held²/5（秒）
+    // 早期 ~+1/s 跟使用者預期接近，後期二次方項加速明顯飛快。throttle 100ms 壓成 10Hz；換方向重置
     var seekHoldStartMs by remember { mutableLongStateOf(0L) }
     var seekHoldDirection by remember { mutableStateOf<Boolean?>(null) }
     var lastSeekHandledMs by remember { mutableLongStateOf(0L) }
@@ -377,12 +375,13 @@ fun PlayerScreen(
             seekHoldStartMs = now
             seekHoldDirection = forward
             lastSeekHandledMs = now
-            return PlayerConfig.SEEK_STEP_BASE_MS
+            return PlayerConfig.SEEK_STEP_BASE_S * 1000L
         }
         if (now - lastSeekHandledMs < PlayerConfig.SEEK_HOLD_THROTTLE_MS) return null
         lastSeekHandledMs = now
-        val heldSeconds = (now - seekHoldStartMs) / 1000
-        return PlayerConfig.SEEK_STEP_BASE_MS + heldSeconds * PlayerConfig.SEEK_HOLD_GROW_PER_SEC_MS
+        val held = (now - seekHoldStartMs) / 1000
+        val stepSec = PlayerConfig.SEEK_STEP_BASE_S + held + (held * held) / PlayerConfig.SEEK_HOLD_QUAD_DIVISOR
+        return stepSec * 1000L
     }
 
     fun cyclePlaybackSpeed(forward: Boolean) {
