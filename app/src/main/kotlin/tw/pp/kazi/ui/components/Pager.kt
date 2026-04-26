@@ -12,6 +12,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.KeyboardDoubleArrowRight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +32,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import tw.pp.kazi.ui.WindowSize
+import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.pagePadding
 import tw.pp.kazi.ui.theme.AppColors
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -48,7 +53,8 @@ fun Pager(
     windowSize: WindowSize,
     modifier: Modifier = Modifier,
 ) {
-    // page 變動時把 input 清掉，避免使用者輸入完按下「跳」之後欄位殘留舊值
+    val compact = windowSize.isCompact
+    // page 變動時把 input 清掉，避免使用者輸入完按下「跳轉」之後欄位殘留舊值
     var jumpInput by remember(page) { mutableStateOf("") }
     val parsedJump = jumpInput.toIntOrNull()
     val canJump = parsedJump != null && parsedJump in 1..pageCount && parsedJump != page
@@ -61,10 +67,17 @@ fun Pager(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = windowSize.pagePadding(), vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AppButton(text = "上頁", onClick = onPrev, enabled = page > 1, primary = false)
+        AppButton(
+            text = "上一頁",
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
+            onClick = onPrev,
+            enabled = page > 1,
+            primary = false,
+            iconOnly = compact,
+        )
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(999.dp))
@@ -77,7 +90,14 @@ fun Pager(
                 style = MaterialTheme.typography.labelMedium,
             )
         }
-        AppButton(text = "下頁", onClick = onNext, enabled = page < pageCount, primary = false)
+        AppButton(
+            text = "下一頁",
+            icon = Icons.AutoMirrored.Filled.ArrowForward,
+            onClick = onNext,
+            enabled = page < pageCount,
+            primary = false,
+            iconOnly = compact,
+        )
         Spacer(Modifier.weight(1f))
         BasicTextField(
             value = jumpInput,
@@ -116,10 +136,12 @@ fun Pager(
             modifier = Modifier.width(JUMP_INPUT_WIDTH),
         )
         AppButton(
-            text = "跳",
+            text = "跳轉",
+            icon = Icons.Filled.KeyboardDoubleArrowRight,
             onClick = ::submitJump,
             enabled = canJump,
             primary = false,
+            iconOnly = compact,
         )
     }
 }
