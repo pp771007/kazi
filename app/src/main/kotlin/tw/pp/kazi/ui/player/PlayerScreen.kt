@@ -222,8 +222,13 @@ fun PlayerScreen(
                     PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> {
                         val d = details
                         if (d != null && currentSourceIdx < d.sources.size - 1) {
-                            currentSourceIdx += 1
-                            currentEpIdx = 0
+                            // 換到下一個 source；盡量保留原本的 ep idx（同一部戲不同源通常集數對齊），
+                            // 新源集數不夠時 clamp 到最後一集。原本寫死 0 會讓使用者選第 4 集失敗自動跳到第 1 集
+                            val nextIdx = currentSourceIdx + 1
+                            val nextSrc = d.sources.getOrNull(nextIdx)
+                            val maxEp = (nextSrc?.episodes?.size ?: 1) - 1
+                            currentSourceIdx = nextIdx
+                            currentEpIdx = currentEpIdx.coerceIn(0, maxEp.coerceAtLeast(0))
                             return
                         }
                         playbackError = friendlyPlaybackError(error)
