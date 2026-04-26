@@ -251,7 +251,9 @@ fun HomeScreen() {
             }
         } else null,
         trailing = {
-                    val compact = windowSize.isCompact
+                    // Compact (手機直立) 跟 Medium (手機橫躺) 都用 icon-only — 7 顆按鈕全文字會把
+                    // 標題列的「無痕 / 遠端遙控」status pill 擠到看不清；Expanded（平板/電視）才顯示文字
+                    val compact = windowSize != WindowSize.Expanded
                     AppButton(
                         text = "搜尋",
                         icon = Icons.Filled.Search,
