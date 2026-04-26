@@ -366,7 +366,7 @@ class LanServer(
   <div class="card">
     <label>關鍵字</label>
     <div style="display:flex; gap:8px; align-items:stretch;">
-      <input id="kw" type="text" placeholder="例如：慶餘年" autocomplete="off" autocapitalize="off" style="flex:1">
+      <input id="kw" type="text" placeholder="例如：片名" autocomplete="off" autocapitalize="off" style="flex:1">
       <button class="secondary small" onclick="toSimp()" title="繁體轉簡體"
               style="margin-top:0; padding:0 14px; font-weight:bold;">簡</button>
     </div>

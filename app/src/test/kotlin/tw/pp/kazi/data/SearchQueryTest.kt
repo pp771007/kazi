@@ -24,21 +24,21 @@ class SearchQueryTest {
 
     @Test
     fun `單一 token 進 include`() {
-        val q = parseSearchQuery("慶餘年")
-        assertEquals("慶餘年", q.include)
+        val q = parseSearchQuery("測試片")
+        assertEquals("測試片", q.include)
         assertTrue(q.excludes.isEmpty())
     }
 
     @Test
     fun `多個正向 token 用空白合併`() {
-        val q = parseSearchQuery("慶餘年 第一季")
-        assertEquals("慶餘年 第一季", q.include)
+        val q = parseSearchQuery("測試片 第一季")
+        assertEquals("測試片 第一季", q.include)
     }
 
     @Test
     fun `負向 token 進 excludes`() {
-        val q = parseSearchQuery("慶餘年 -第二季 -預告")
-        assertEquals("慶餘年", q.include)
+        val q = parseSearchQuery("測試片 -第二季 -預告")
+        assertEquals("測試片", q.include)
         assertEquals(listOf("第二季", "預告"), q.excludes)
     }
 
@@ -71,14 +71,14 @@ class SearchQueryTest {
     @Test
     fun `aggregateByName 同名合併 sources`() {
         val list = listOf(
-            video(1, "慶餘年"),
-            video(2, "慶餘年"),
+            video(1, "測試片"),
+            video(2, "測試片"),
             video(3, "其他片"),
         )
         val agg = aggregateByName(list)
         assertEquals(2, agg.size)
-        val qing = agg.first { it.name == "慶餘年" }
-        assertEquals(2, qing.sources.size)
+        val target = agg.first { it.name == "測試片" }
+        assertEquals(2, target.sources.size)
     }
 
     @Test
@@ -121,9 +121,9 @@ class SearchQueryTest {
     @Test
     fun `applyExcludes 過濾 vodName 含排除詞的影片`() {
         val r = result(listOf(
-            video(1, "慶餘年第一季"),
-            video(2, "慶餘年第二季預告"),
-            video(3, "慶餘年第三季"),
+            video(1, "測試片第一季"),
+            video(2, "測試片第二季預告"),
+            video(3, "測試片第三季"),
         ))
         val out = applyExcludes(r, listOf("預告"))
         assertEquals(2, out.videos.size)

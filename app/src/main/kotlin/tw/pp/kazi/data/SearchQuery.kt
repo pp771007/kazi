@@ -2,7 +2,7 @@ package tw.pp.kazi.data
 
 /**
  * 搜尋輸入解析後的結果。
- * `慶餘年 -第二季 -預告` → SearchQuery(include="慶餘年", excludes=["第二季", "預告"])
+ * `關鍵字 -排除1 -排除2` → SearchQuery(include="關鍵字", excludes=["排除1", "排除2"])
  */
 data class SearchQuery(val include: String, val excludes: List<String>)
 

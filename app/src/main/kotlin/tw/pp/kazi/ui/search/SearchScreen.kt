@@ -414,7 +414,7 @@ private fun SearchField(
                     decorationBox = { inner ->
                         if (value.isEmpty()) {
                             Text(
-                                "關鍵字（用 -詞 可排除，例：慶餘年 -第二季）",
+                                "關鍵字（用 -詞 可排除）",
                                 color = AppColors.OnBgDim,
                                 style = MaterialTheme.typography.bodyLarge,
                             )
