@@ -1006,11 +1006,25 @@ private fun saveHistoryIfReady(
     durationMs: Long,
     scope: kotlinx.coroutines.CoroutineScope,
 ) {
-    if (container.incognito.value) return
     val s = site ?: return
     val d = details ?: return
     if (positionMs <= 0 || durationMs <= 0) return
     val src = d.sources.getOrNull(sourceIdx)
+
+    // 無痕模式：只追記「已收藏 / 已有觀看紀錄」的影片進度。
+    // 新片（沒收藏沒紀錄）才是真正的「探索狀態」，維持完全無痕；已承諾過的片
+    // （主動收藏 / 看過一次）就讓進度記下來方便 resume，不然使用者會在收藏頁看不到進度感到困惑。
+    if (container.incognito.value) {
+        val key = vodId to s.id
+        val isFavorite = container.favoriteRepository.items.value.any {
+            it.videoId == key.first && it.siteId == key.second
+        }
+        val isInHistory = container.historyRepository.items.value.any {
+            it.videoId == key.first && it.siteId == key.second
+        }
+        if (!isFavorite && !isInHistory) return
+    }
+
     scope.launch {
         container.historyRepository.record(
             HistoryItem(
