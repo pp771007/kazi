@@ -413,30 +413,29 @@ fun GradientTopBar(
                 ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TitleColumn(title = title, subtitle = subtitle, titleBadges = titleBadges, compact = true)
-            if (trailing != null || onBack != null) {
-                // 返回拆出來釘最右邊；其他 action 留在原本 LazyRow，可橫向捲動
-                Row(
+            // 標題那行直接收掉返回按鈕，省掉「返回單獨佔一排靠右」那個浪費空間的版面
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    TitleColumn(title = title, subtitle = subtitle, titleBadges = titleBadges, compact = true)
+                }
+                if (onBack != null) BackButton(iconOnly = true)
+            }
+            // 有 trailing action（檢查更新 / 清空 等）時才另起一行給它，可以橫向捲動避免擠不下
+            if (trailing != null) {
+                LazyRow(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (trailing != null) {
-                        LazyRow(
-                            modifier = Modifier.weight(1f),
+                    item {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            item {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) { trailing() }
-                            }
-                        }
-                    } else {
-                        Spacer(Modifier.weight(1f))
+                        ) { trailing() }
                     }
-                    if (onBack != null) BackButton(iconOnly = true)
                 }
             }
         }

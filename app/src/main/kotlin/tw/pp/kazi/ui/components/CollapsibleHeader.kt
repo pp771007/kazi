@@ -29,9 +29,10 @@ class CollapsibleHeaderState {
 
     val nestedScrollConnection: NestedScrollConnection = object : NestedScrollConnection {
         override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-            // 只對「使用者拖曳」收合頂列。TV D-pad 移到下一行 → focus 觸發 bringIntoView →
-            // 這個 scroll 是 SideEffect，會跟頂列收合形成 feedback loop（橫式短 card 第 2/3 行特別明顯，畫面整片抖動）
-            if (source != NestedScrollSource.UserInput) return Offset.Zero
+            // 排除 SideEffect（程式碼觸發的 scroll，例如 TV D-pad focus 的 bringIntoView，
+            // 跟頂列收合會形成 feedback loop 害短 card 抖動）。Fling / Wheel / UserInput 都接受
+            // — 之前用「只接受 UserInput」會擋掉 fling，使用者快滑時頂列只展開一半就卡住
+            if (source == NestedScrollSource.SideEffect) return Offset.Zero
             val h = heightPx.floatValue
             if (h > 0f && available.y != 0f) {
                 val newOffset = (offsetPx.floatValue + available.y).coerceIn(-h, 0f)
