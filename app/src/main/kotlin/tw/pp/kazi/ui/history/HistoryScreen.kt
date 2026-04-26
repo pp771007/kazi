@@ -235,8 +235,11 @@ private fun HistoryRow(
             contentAlignment = Alignment.BottomStart,
         ) {
             if (item.videoPic.isNotBlank()) {
+                val imageRequest = remember(item.videoPic) {
+                    ImageRequest.Builder(context).data(item.videoPic).crossfade(true).build()
+                }
                 AsyncImage(
-                    model = ImageRequest.Builder(context).data(item.videoPic).crossfade(true).build(),
+                    model = imageRequest,
                     contentDescription = item.videoName,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),

@@ -323,8 +323,11 @@ private fun CompactLayout(
                     .background(AppColors.BgCard),
             ) {
                 if (v.vodPic.isNotBlank()) {
+                    val imageRequest = remember(v.vodPic) {
+                        ImageRequest.Builder(context).data(v.vodPic).crossfade(true).build()
+                    }
                     AsyncImage(
-                        model = ImageRequest.Builder(context).data(v.vodPic).crossfade(true).build(),
+                        model = imageRequest,
                         contentDescription = v.vodName,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
@@ -481,8 +484,11 @@ private fun WideLayout(
                 contentAlignment = Alignment.Center,
             ) {
                 if (v.vodPic.isNotBlank()) {
+                    val imageRequest = remember(v.vodPic) {
+                        ImageRequest.Builder(context).data(v.vodPic).crossfade(true).build()
+                    }
                     AsyncImage(
-                        model = ImageRequest.Builder(context).data(v.vodPic).crossfade(true).build(),
+                        model = imageRequest,
                         contentDescription = v.vodName,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),

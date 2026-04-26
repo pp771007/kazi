@@ -217,8 +217,12 @@ fun PosterCard(
                 .background(AppColors.ShimmerStart),
         ) {
             if (imageUrl.isNotBlank()) {
+                // memoize ImageRequest，避免每次 recompose 都生新 model 讓 AsyncImage 重跑流程
+                val imageRequest = remember(imageUrl) {
+                    ImageRequest.Builder(context).data(imageUrl).crossfade(true).build()
+                }
                 AsyncImage(
-                    model = ImageRequest.Builder(context).data(imageUrl).crossfade(true).build(),
+                    model = imageRequest,
                     contentDescription = title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
