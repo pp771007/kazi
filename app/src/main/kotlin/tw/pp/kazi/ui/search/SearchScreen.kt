@@ -55,12 +55,14 @@ import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.ui.columnsFor
 import tw.pp.kazi.ui.components.AppButton
+import tw.pp.kazi.ui.components.CollapsibleHeader
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.GradientTopBar
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
+import tw.pp.kazi.ui.components.rememberCollapsibleHeaderState
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.pagePadding
@@ -207,15 +209,22 @@ fun SearchScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        GradientTopBar(
-            title = "搜尋",
-            subtitle = submittedKeyword?.let { "「$it」結果" } ?: "同時搜所有已啟用站點",
-            titleBadges = if (incognito) {
-                { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會留紀錄）") }
-            } else null,
-            onBack = { nav.popBackStack() },
-        )
+    val headerState = rememberCollapsibleHeaderState()
+
+    CollapsibleHeader(
+        state = headerState,
+        topBar = {
+            GradientTopBar(
+                title = "搜尋",
+                subtitle = submittedKeyword?.let { "「$it」結果" } ?: "同時搜所有已啟用站點",
+                titleBadges = if (incognito) {
+                    { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會留紀錄）") }
+                } else null,
+                onBack = { nav.popBackStack() },
+            )
+        },
+    ) { innerPadding ->
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
 
         // 搜尋輸入 + 站點選擇 + 排除提示 + 搜尋紀錄。出現在 grid header（有結果）或頂部 sticky（無結果/載入/錯誤）
         val searchControls: @Composable () -> Unit = {
@@ -233,15 +242,6 @@ fun SearchScreen(
                     onToSimplified = { keyword = ChineseConverter.toSimplified(keyword, appContext) },
                     focusRequester = focusRequester,
                     compact = windowSize.isCompact,
-                    trailing = if (!selectorExpanded) {
-                        {
-                            CollapsedSelectorChip(
-                                selectedCount = selectedIds.size,
-                                totalCount = enabledSites.size,
-                                onExpand = { selectorExpanded = true },
-                            )
-                        }
-                    } else null,
                 )
                 if (parsedQuery.excludes.isNotEmpty()) {
                     ExcludeHint(parsedQuery.excludes)
@@ -263,6 +263,12 @@ fun SearchScreen(
                             onClear = { scope.launch { container.configRepository.clearSearchHistory() } },
                         )
                     }
+                } else {
+                    CollapsedSelectorChip(
+                        selectedCount = selectedIds.size,
+                        totalCount = enabledSites.size,
+                        onExpand = { selectorExpanded = true },
+                    )
                 }
             }
         }
@@ -357,8 +363,8 @@ fun SearchScreen(
                 }
             }
         }
+        }
     }
-
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

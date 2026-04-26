@@ -21,9 +21,11 @@ import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.columnsFor
 import tw.pp.kazi.ui.components.AppButton
+import tw.pp.kazi.ui.components.CollapsibleHeader
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.GradientTopBar
 import tw.pp.kazi.ui.components.PosterCard
+import tw.pp.kazi.ui.components.rememberCollapsibleHeaderState
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.pagePadding
@@ -38,51 +40,58 @@ fun FavoritesScreen() {
     val settings by container.configRepository.settings.collectAsState()
     val scope = rememberCoroutineScope()
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        GradientTopBar(
-            title = "我的收藏",
-            subtitle = "${favorites.size} 部影片",
-            trailing = {
-                tw.pp.kazi.ui.components.ConfirmDeleteButton(
-                    text = "清空",
-                    icon = Icons.Filled.DeleteSweep,
-                    onConfirm = { scope.launch { container.favoriteRepository.clear() } },
-                    enabled = favorites.isNotEmpty(),
-                    iconOnly = windowSize.isCompact,
-                )
-            },
-            onBack = { nav.popBackStack() },
-        )
+    val headerState = rememberCollapsibleHeaderState()
 
-        if (favorites.isEmpty()) {
-            EmptyState(
-                title = "還沒有收藏",
-                subtitle = "在影片詳情頁按「收藏」把喜歡的片加進來",
-                icon = Icons.Filled.StarBorder,
+    CollapsibleHeader(
+        state = headerState,
+        topBar = {
+            GradientTopBar(
+                title = "我的收藏",
+                subtitle = "${favorites.size} 部影片",
+                trailing = {
+                    tw.pp.kazi.ui.components.ConfirmDeleteButton(
+                        text = "清空",
+                        icon = Icons.Filled.DeleteSweep,
+                        onConfirm = { scope.launch { container.favoriteRepository.clear() } },
+                        enabled = favorites.isNotEmpty(),
+                        iconOnly = windowSize.isCompact,
+                    )
+                },
+                onBack = { nav.popBackStack() },
             )
-            return@Column
-        }
-
-        val vm = settings.viewMode
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(vm.columnsFor(windowSize)),
-            contentPadding = PaddingValues(
-                horizontal = windowSize.pagePadding(),
-                vertical = 12.dp,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
-            verticalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            items(favorites, key = { "${it.siteId}-${it.videoId}" }) { fav ->
-                PosterCard(
-                    title = fav.videoName,
-                    remarks = fav.vodRemarks,
-                    imageUrl = fav.videoPic,
-                    fromSite = fav.siteName,
-                    aspectRatio = vm.aspectRatio,
-                    onClick = { nav.navigate(Routes.detail(fav.siteId, fav.videoId)) },
+        },
+    ) { innerPadding ->
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            if (favorites.isEmpty()) {
+                EmptyState(
+                    title = "還沒有收藏",
+                    subtitle = "在影片詳情頁按「收藏」把喜歡的片加進來",
+                    icon = Icons.Filled.StarBorder,
                 )
+                return@Column
+            }
+
+            val vm = settings.viewMode
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(vm.columnsFor(windowSize)),
+                contentPadding = PaddingValues(
+                    horizontal = windowSize.pagePadding(),
+                    vertical = 12.dp,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
+                verticalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                items(favorites, key = { "${it.siteId}-${it.videoId}" }) { fav ->
+                    PosterCard(
+                        title = fav.videoName,
+                        remarks = fav.vodRemarks,
+                        imageUrl = fav.videoPic,
+                        fromSite = fav.siteName,
+                        aspectRatio = vm.aspectRatio,
+                        onClick = { nav.navigate(Routes.detail(fav.siteId, fav.videoId)) },
+                    )
+                }
             }
         }
     }
