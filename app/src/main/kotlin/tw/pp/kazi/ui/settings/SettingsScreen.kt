@@ -48,15 +48,7 @@ fun SettingsScreen() {
         GradientTopBar(
             title = "設定",
             subtitle = "站點 · 紀錄",
-            trailing = {
-                AppButton(
-                    text = "返回",
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    onClick = { nav.popBackStack() },
-                    primary = false,
-                    iconOnly = windowSize.isCompact,
-                )
-            },
+            onBack = { nav.popBackStack() },
         )
 
         Column(

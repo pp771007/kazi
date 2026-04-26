@@ -209,15 +209,7 @@ fun SearchScreen(
             titleBadges = if (incognito) {
                 { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會留紀錄）") }
             } else null,
-            trailing = {
-                AppButton(
-                    text = "返回",
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    onClick = { nav.popBackStack() },
-                    primary = false,
-                    iconOnly = windowSize.isCompact,
-                )
-            },
+            onBack = { nav.popBackStack() },
         )
 
         Column(

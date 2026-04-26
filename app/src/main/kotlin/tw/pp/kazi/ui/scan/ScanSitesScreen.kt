@@ -215,15 +215,7 @@ fun ScanSitesScreen() {
         GradientTopBar(
             title = "掃描站台",
             subtitle = "Google 搜尋 MacCMS 介面",
-            trailing = {
-                AppButton(
-                    text = "返回",
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    onClick = { nav.popBackStack() },
-                    primary = false,
-                    iconOnly = true,
-                )
-            },
+            onBack = { nav.popBackStack() },
         )
 
         Row(

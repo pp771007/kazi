@@ -117,14 +117,8 @@ fun HistoryScreen() {
                     enabled = items.isNotEmpty(),
                     iconOnly = compact,
                 )
-                AppButton(
-                    text = "返回",
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    onClick = { nav.popBackStack() },
-                    primary = false,
-                    iconOnly = compact,
-                )
             },
+            onBack = { nav.popBackStack() },
         )
 
         checkProgress?.let {

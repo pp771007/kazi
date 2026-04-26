@@ -77,15 +77,7 @@ fun LanShareScreen() {
         GradientTopBar(
             title = "遠端遙控",
             subtitle = "掃 QR 或用網址，手機／電腦協助",
-            trailing = {
-                AppButton(
-                    text = "返回",
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    onClick = { nav.popBackStack() },
-                    primary = false,
-                    iconOnly = compact,
-                )
-            },
+            onBack = { nav.popBackStack() },
         )
 
         if (compact) {

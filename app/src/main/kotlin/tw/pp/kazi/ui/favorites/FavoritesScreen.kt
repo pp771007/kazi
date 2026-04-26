@@ -50,14 +50,8 @@ fun FavoritesScreen() {
                     enabled = favorites.isNotEmpty(),
                     iconOnly = windowSize.isCompact,
                 )
-                AppButton(
-                    text = "返回",
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    onClick = { nav.popBackStack() },
-                    primary = false,
-                    iconOnly = windowSize.isCompact,
-                )
             },
+            onBack = { nav.popBackStack() },
         )
 
         if (favorites.isEmpty()) {

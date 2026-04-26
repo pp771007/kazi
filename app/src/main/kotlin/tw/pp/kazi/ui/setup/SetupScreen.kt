@@ -83,15 +83,7 @@ fun SetupScreen() {
         GradientTopBar(
             title = "站點管理",
             subtitle = "新增 / 編輯 / 排序",
-            trailing = {
-                AppButton(
-                    text = "返回",
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    onClick = { nav.popBackStack() },
-                    primary = false,
-                    iconOnly = compact,
-                )
-            },
+            onBack = { nav.popBackStack() },
         )
 
         val mainContent: @Composable ColumnScope.() -> Unit = {

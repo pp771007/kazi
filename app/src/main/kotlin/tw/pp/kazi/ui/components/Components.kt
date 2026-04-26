@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.runtime.*
@@ -385,9 +386,21 @@ fun GradientTopBar(
     modifier: Modifier = Modifier,
     titleBadges: (@Composable RowScope.() -> Unit)? = null,
     trailing: @Composable (RowScope.() -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
 ) {
     val windowSize = LocalWindowSize.current
     val bg = Brush.horizontalGradient(listOf(AppColors.BgElevated, AppColors.Bg))
+
+    @Composable
+    fun BackButton(iconOnly: Boolean) {
+        AppButton(
+            text = "返回",
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
+            onClick = onBack!!,
+            primary = false,
+            iconOnly = iconOnly,
+        )
+    }
 
     if (windowSize.isCompact) {
         Column(
@@ -401,14 +414,29 @@ fun GradientTopBar(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TitleColumn(title = title, subtitle = subtitle, titleBadges = titleBadges, compact = true)
-            if (trailing != null) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
+            if (trailing != null || onBack != null) {
+                // 返回拆出來釘最右邊；其他 action 留在原本 LazyRow，可橫向捲動
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (trailing != null) {
+                        LazyRow(
+                            modifier = Modifier.weight(1f),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) { trailing() }
+                        ) {
+                            item {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) { trailing() }
+                            }
+                        }
+                    } else {
+                        Spacer(Modifier.weight(1f))
                     }
+                    if (onBack != null) BackButton(iconOnly = true)
                 }
             }
         }
@@ -426,11 +454,14 @@ fun GradientTopBar(
             Column(modifier = Modifier.weight(1f)) {
                 TitleColumn(title = title, subtitle = subtitle, titleBadges = titleBadges, compact = false)
             }
-            if (trailing != null) {
+            if (trailing != null || onBack != null) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) { trailing() }
+                ) {
+                    if (trailing != null) trailing()
+                    if (onBack != null) BackButton(iconOnly = false)
+                }
             }
         }
     }

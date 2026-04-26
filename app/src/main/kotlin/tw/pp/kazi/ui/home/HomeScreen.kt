@@ -75,11 +75,15 @@ fun HomeScreen() {
 
     // 首頁是 nav stack 的根，按返回會直接 finish Activity；加雙擊確認避免誤退
     var lastBackTime by remember { mutableLongStateOf(0L) }
+    // didExit 旗標：finish() 之後 onDispose 還會跑，會把剛清的 snapshot 又從 selectedSite 寫回去；
+    // 設這個 flag 讓 onDispose 知道這次是「主動退出」要跳過儲存
+    var didExit by remember { mutableStateOf(false) }
     BackHandler {
         val now = System.currentTimeMillis()
         if (now - lastBackTime < BACK_EXIT_WINDOW_MS) {
             // 使用者主動退出：清掉所有 UI snapshot，讓下次重進是 fresh state
             // （process 沒被殺的話，AppContainer 裡的 snapshot 會殘留 → 站台選擇/搜尋結果都還在）
+            didExit = true
             container.homeSnapshot = null
             container.searchSnapshot = null
             container.historyLastFocusKey = null
@@ -174,6 +178,8 @@ fun HomeScreen() {
 
     DisposableEffect(Unit) {
         onDispose {
+            // 雙擊退出時 BackHandler 已經把 snapshot 清成 null，這裡就不要再寫回去
+            if (didExit) return@onDispose
             val site = selectedSite ?: return@onDispose
             container.homeSnapshot = tw.pp.kazi.HomeUiSnapshot(
                 selectedSiteId = site.id,
@@ -285,7 +291,6 @@ fun HomeScreen() {
                     )
                     ViewModeToggle(
                         current = settings.viewMode,
-                        compact = compact,
                         onPick = { scope.launch { container.configRepository.updateViewMode(it) } },
                     )
                     AppButton(
@@ -466,29 +471,17 @@ fun HomeScreen() {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun ViewModeToggle(current: ViewMode, compact: Boolean, onPick: (ViewMode) -> Unit) {
-    if (compact) {
-        // 手機：單顆按鈕點一次切下一個 mode，省頂列空間
-        FocusableTag(
-            text = current.emoji,
-            selected = false,
-            onClick = {
-                val entries = ViewMode.entries
-                val next = entries[(entries.indexOf(current) + 1) % entries.size]
-                onPick(next)
-            },
-        )
-    } else {
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            ViewMode.entries.forEach { mode ->
-                FocusableTag(
-                    text = mode.emoji,
-                    selected = mode == current,
-                    onClick = { onPick(mode) },
-                )
-            }
-        }
-    }
+private fun ViewModeToggle(current: ViewMode, onPick: (ViewMode) -> Unit) {
+    // 全平台統一：單顆按鈕循環切換（直 → 橫 → 方 → 直）；不再用 3 顆並排版
+    FocusableTag(
+        text = current.emoji,
+        selected = false,
+        onClick = {
+            val entries = ViewMode.entries
+            val next = entries[(entries.indexOf(current) + 1) % entries.size]
+            onPick(next)
+        },
+    )
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

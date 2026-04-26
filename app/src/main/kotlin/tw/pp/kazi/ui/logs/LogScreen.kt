@@ -87,14 +87,8 @@ fun LogScreen() {
                     onConfirm = { LogBuffer.clear() },
                     enabled = entries.isNotEmpty(),
                 )
-                AppButton(
-                    text = "返回",
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    iconOnly = windowSize.isCompact,
-                    onClick = { nav.popBackStack() },
-                    primary = false,
-                )
             },
+            onBack = { nav.popBackStack() },
         )
 
         Row(
