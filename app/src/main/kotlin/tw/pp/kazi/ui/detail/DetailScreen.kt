@@ -292,15 +292,10 @@ private fun CompactLayout(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AppButton(
-                text = "返回",
-                icon = Icons.AutoMirrored.Filled.ArrowBack,
-                onClick = onBack,
-                primary = false,
-            )
             AppButton(
                 text = if (isFavorited) "已收藏" else "收藏",
                 icon = if (isFavorited) Icons.Filled.Star else Icons.Filled.StarBorder,
@@ -308,6 +303,13 @@ private fun CompactLayout(
                 primary = isFavorited,
             )
             if (incognito) IncognitoBadge()
+            Spacer(Modifier.weight(1f))
+            AppButton(
+                text = "返回",
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                onClick = onBack,
+                primary = false,
+            )
         }
 
         PeerRow(peers = peers, currentSiteId = siteId, onPeerPick = onPeerPick)
@@ -457,15 +459,10 @@ private fun WideLayout(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AppButton(
-                    text = "返回",
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    onClick = onBack,
-                    primary = false,
-                )
                 AppButton(
                     text = if (isFavorited) "已收藏" else "收藏",
                     icon = if (isFavorited) Icons.Filled.Star else Icons.Filled.StarBorder,
@@ -473,6 +470,13 @@ private fun WideLayout(
                     primary = isFavorited,
                 )
                 if (incognito) IncognitoBadge()
+                Spacer(Modifier.weight(1f))
+                AppButton(
+                    text = "返回",
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    onClick = onBack,
+                    primary = false,
+                )
             }
             PeerRow(peers = peers, currentSiteId = siteId, onPeerPick = onPeerPick)
             Box(

@@ -131,6 +131,7 @@ fun SettingsScreen() {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(8.dp))
+                UpdateSection()
                 AppButton(
                     text = "GitHub 專案",
                     icon = Icons.AutoMirrored.Filled.OpenInNew,
@@ -141,7 +142,6 @@ fun SettingsScreen() {
                     },
                     primary = false,
                 )
-                UpdateSection()
             }
         }
     }

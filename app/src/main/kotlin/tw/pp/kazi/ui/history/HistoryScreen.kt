@@ -325,15 +325,15 @@ private fun HistoryRow(
                     modifier = if (focusRequester != null)
                         Modifier.focusRequester(focusRequester) else Modifier,
                 )
-                if (hasNextEp) {
-                    AppButton(
-                        text = "下一集",
-                        icon = Icons.Filled.SkipNext,
-                        onClick = onPlayNext,
-                        iconOnly = compact,
-                        primary = false,
-                    )
-                }
+                // 下一集 button 一律顯示佔位，沒下一集時 disabled，避免跟有下一集的 row 高度不一致
+                AppButton(
+                    text = "下一集",
+                    icon = Icons.Filled.SkipNext,
+                    onClick = onPlayNext,
+                    enabled = hasNextEp,
+                    iconOnly = compact,
+                    primary = false,
+                )
                 AppButton(
                     text = "詳情",
                     icon = Icons.Filled.Info,

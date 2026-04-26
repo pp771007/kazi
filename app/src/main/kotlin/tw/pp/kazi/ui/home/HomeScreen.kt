@@ -78,6 +78,13 @@ fun HomeScreen() {
     BackHandler {
         val now = System.currentTimeMillis()
         if (now - lastBackTime < BACK_EXIT_WINDOW_MS) {
+            // 使用者主動退出：清掉所有 UI snapshot，讓下次重進是 fresh state
+            // （process 沒被殺的話，AppContainer 裡的 snapshot 會殘留 → 站台選擇/搜尋結果都還在）
+            container.homeSnapshot = null
+            container.searchSnapshot = null
+            container.historyLastFocusKey = null
+            container.homeTopBarFocusKey = null
+            container.pendingDetailPeers = null
             (context as? Activity)?.finish()
         } else {
             lastBackTime = now
