@@ -19,11 +19,12 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +32,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.launch
 import tw.pp.kazi.data.GitHubAsset
 import tw.pp.kazi.data.GitHubRelease
@@ -40,7 +44,6 @@ import tw.pp.kazi.ui.theme.AppColors
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import java.io.File
 
 private sealed interface UpdateUiState {
     data object Idle : UpdateUiState
@@ -57,7 +60,8 @@ fun UpdateSection() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
-    var pendingApk by remember { mutableStateOf<File?>(null) }
+    // 沒授權時暫存使用者點的 asset，等他從系統設定回來後 ON_RESUME 自動開始下載
+    var pendingAsset by remember { mutableStateOf<GitHubAsset?>(null) }
     var showPermissionDialog by remember { mutableStateOf(false) }
 
     fun startCheck() {
@@ -81,15 +85,7 @@ fun UpdateSection() {
         }
     }
 
-    fun launchInstaller(file: File) {
-        if (UpdateChecker.canInstallApks(context)) {
-            UpdateChecker.installApk(context, file)
-        } else {
-            showPermissionDialog = true
-        }
-    }
-
-    fun startDownloadAndInstall(asset: GitHubAsset) {
+    fun startDownload(asset: GitHubAsset) {
         state = UpdateUiState.Downloading(0L, asset.size.coerceAtLeast(1L))
         scope.launch {
             runCatching {
@@ -98,14 +94,40 @@ fun UpdateSection() {
                 }
             }.fold(
                 onSuccess = { file ->
-                    pendingApk = file
-                    launchInstaller(file)
-                    // 留在 Idle，使用者可重新檢查 / 再裝一次（系統安裝對話框可能被關掉）
+                    UpdateChecker.installApk(context, file)
                     state = UpdateUiState.Idle
                 },
                 onFailure = { state = UpdateUiState.Error(it.message ?: "下載失敗") },
             )
         }
+    }
+
+    fun startDownloadAndInstall(asset: GitHubAsset) {
+        // 先檢查權限再下載，免得使用者下載完才被擋下、要再下一次
+        if (!UpdateChecker.canInstallApks(context)) {
+            pendingAsset = asset
+            showPermissionDialog = true
+            return
+        }
+        startDownload(asset)
+    }
+
+    // 使用者去系統設定打開「允許安裝其他 app」回來時，ON_RESUME 觸發；
+    // 如果剛才有被卡住的下載，現在自動開始
+    val currentDownload = rememberUpdatedState(::startDownload)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val asset = pendingAsset
+                if (asset != null && UpdateChecker.canInstallApks(context)) {
+                    pendingAsset = null
+                    currentDownload.value(asset)
+                }
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -187,19 +209,17 @@ fun UpdateSection() {
 
     if (showPermissionDialog) {
         InstallPermissionDialog(
-            onDismiss = { showPermissionDialog = false },
+            onDismiss = {
+                // 使用者按取消 = 不繼續，把 pending 清掉避免之後 ON_RESUME 誤觸發下載
+                showPermissionDialog = false
+                pendingAsset = null
+            },
             onOpenSettings = {
                 UpdateChecker.openInstallPermissionSettings(context)
                 showPermissionDialog = false
+                // pendingAsset 留著，回來時 ON_RESUME 觀察者會自動續接下載
             },
         )
-    }
-
-    // 從系統設定授權回來後，自動把剛剛下好的 APK 再丟給 installer 一次，免得使用者要手動重來
-    LaunchedEffect(showPermissionDialog) {
-        if (!showPermissionDialog && pendingApk != null && UpdateChecker.canInstallApks(context)) {
-            pendingApk?.let { UpdateChecker.installApk(context, it) }
-        }
     }
 }
 
