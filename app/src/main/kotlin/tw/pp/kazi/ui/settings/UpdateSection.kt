@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +29,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -130,6 +133,14 @@ fun UpdateSection() {
         onDispose { lifecycle.removeObserver(observer) }
     }
 
+    // state 變動後 focus 會掉（按鈕 composable 被換掉，TV 上 focus 預設會跳走），
+    // 用 FocusRequester 抓回來，讓「檢查更新 → 檢查中 → 下載並安裝」連續按下去 focus 不會跳出 UpdateSection
+    val mainButtonFocus = remember { FocusRequester() }
+    LaunchedEffect(state) {
+        kotlinx.coroutines.delay(50)  // 等新按鈕 attach 到 layout
+        runCatching { mainButtonFocus.requestFocus() }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when (val s = state) {
             UpdateUiState.Idle -> AppButton(
@@ -137,6 +148,7 @@ fun UpdateSection() {
                 icon = Icons.Filled.SystemUpdate,
                 onClick = ::startCheck,
                 primary = false,
+                modifier = Modifier.focusRequester(mainButtonFocus),
             )
 
             UpdateUiState.Checking -> AppButton(
@@ -144,6 +156,7 @@ fun UpdateSection() {
                 onClick = {},
                 enabled = false,
                 primary = false,
+                modifier = Modifier.focusRequester(mainButtonFocus),
             )
 
             is UpdateUiState.UpToDate -> {
@@ -157,6 +170,7 @@ fun UpdateSection() {
                     icon = Icons.Filled.Refresh,
                     onClick = ::startCheck,
                     primary = false,
+                    modifier = Modifier.focusRequester(mainButtonFocus),
                 )
             }
 
@@ -178,6 +192,7 @@ fun UpdateSection() {
                     text = "下載並安裝",
                     icon = Icons.Filled.Download,
                     onClick = { startDownloadAndInstall(s.asset) },
+                    modifier = Modifier.focusRequester(mainButtonFocus),
                 )
             }
 
@@ -202,6 +217,7 @@ fun UpdateSection() {
                     icon = Icons.Filled.Refresh,
                     onClick = ::startCheck,
                     primary = false,
+                    modifier = Modifier.focusRequester(mainButtonFocus),
                 )
             }
         }

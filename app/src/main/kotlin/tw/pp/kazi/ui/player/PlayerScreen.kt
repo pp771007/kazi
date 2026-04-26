@@ -100,6 +100,10 @@ fun PlayerScreen(
     var currentEpIdx by remember(siteId, vodId) { mutableIntStateOf(episodeIdx) }
     var loading by remember(siteId, vodId) { mutableStateOf(details == null) }
     var controlsVisible by remember { mutableStateOf(true) }
+    // bumped 在每次「使用者活動」時 tick 一下，讓 auto-hide 計時器從最後一次活動重新算
+    // （之前用 LaunchedEffect(controlsVisible) 當 key，setter 把 true 寫成 true 不會 restart，
+    // 所以按住時計時器是從第一次按下算起，不是最後一次）
+    var controlsActivityTick by remember { mutableIntStateOf(0) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var isPlaying by remember { mutableStateOf(true) }
@@ -321,7 +325,7 @@ fun PlayerScreen(
         onDispose { /* 還原放在外層 onDispose */ }
     }
 
-    LaunchedEffect(controlsVisible) {
+    LaunchedEffect(controlsVisible, controlsActivityTick) {
         if (controlsVisible) {
             delay(PlayerConfig.CONTROLS_AUTO_HIDE_MS)
             controlsVisible = false
@@ -401,6 +405,7 @@ fun PlayerScreen(
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 controlsVisible = true
+                controlsActivityTick++
                 when (keyEvent.nativeKeyEvent.keyCode) {
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
                     KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> {
@@ -495,8 +500,12 @@ fun PlayerScreen(
                                 longPressActive = true
                                 gestureIndicator = GestureIndicator.Speed(speed)
                                 controlsVisible = true
+                                controlsActivityTick++
                             },
-                            onTap = { controlsVisible = !controlsVisible },
+                            onTap = {
+                                controlsVisible = !controlsVisible
+                                if (controlsVisible) controlsActivityTick++
+                            },
                             onDoubleTap = { offset ->
                                 val w = size.width.toFloat().coerceAtLeast(1f)
                                 val step = PlayerConfig.SEEK_STEP_MS
@@ -533,6 +542,7 @@ fun PlayerScreen(
                                     seekCommitTrigger += 1 // 重新計時 debounce
                                 }
                                 controlsVisible = true
+                                controlsActivityTick++
                             },
                         )
                     }
@@ -566,6 +576,7 @@ fun PlayerScreen(
                                         mode = if (startX < w / HALF_DIVIDER) DragMode.BRIGHTNESS
                                             else DragMode.VOLUME
                                         controlsVisible = true
+                                        controlsActivityTick++
                                     }
                                 }
                                 when (mode) {
@@ -621,6 +632,7 @@ fun PlayerScreen(
                     onClick = {
                         if (player.isPlaying) player.pause() else player.play()
                         controlsVisible = true
+                        controlsActivityTick++
                     },
                 )
             }
@@ -647,6 +659,7 @@ fun PlayerScreen(
                         player.seekTo(clamped)
                         positionMs = clamped
                         controlsVisible = true
+                        controlsActivityTick++
                     },
                 )
             }

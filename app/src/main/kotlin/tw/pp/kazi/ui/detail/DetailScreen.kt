@@ -360,7 +360,7 @@ private fun CompactLayout(
 
         if (historyItem != null && historyItem.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) {
             AppButton(
-                text = "繼續觀看：${historyItem.episodeName}",
+                text = "繼續觀看：${historyItem.episodeName.ifBlank { "第 ${historyItem.episodeIndex + 1} 集" }}",
                 icon = Icons.Filled.PlayArrow,
                 onClick = { onResume(historyItem) },
                 modifier = Modifier.fillMaxWidth(),
@@ -530,7 +530,7 @@ private fun WideLayout(
             if (historyItem != null && historyItem.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) {
                 Spacer(Modifier.height(4.dp))
                 AppButton(
-                    text = "繼續觀看：${historyItem.episodeName}",
+                    text = "繼續觀看：${historyItem.episodeName.ifBlank { "第 ${historyItem.episodeIndex + 1} 集" }}",
                     icon = Icons.Filled.PlayArrow,
                     onClick = { onResume(historyItem) },
                 )
