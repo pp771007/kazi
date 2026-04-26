@@ -23,10 +23,8 @@ import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.components.AppButton
-import tw.pp.kazi.ui.components.CollapsibleHeader
-import tw.pp.kazi.ui.components.GradientTopBar
+import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.components.SectionHeader
-import tw.pp.kazi.ui.components.rememberCollapsibleHeaderState
 import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.pagePadding
 import tw.pp.kazi.ui.sectionGap
@@ -46,17 +44,10 @@ fun SettingsScreen() {
     val context = LocalContext.current
     val sites by container.siteRepository.sites.collectAsState()
 
-    val headerState = rememberCollapsibleHeaderState()
-
-    CollapsibleHeader(
-        state = headerState,
-        topBar = {
-            GradientTopBar(
-                title = "設定",
-                subtitle = "站點 · 紀錄",
-                onBack = { nav.popBackStack() },
-            )
-        },
+    ScreenScaffold(
+        title = "設定",
+        subtitle = "站點 · 紀錄",
+        onBack = { nav.popBackStack() },
     ) { innerPadding ->
         Column(
             modifier = Modifier

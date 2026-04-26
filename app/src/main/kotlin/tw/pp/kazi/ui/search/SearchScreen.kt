@@ -55,14 +55,12 @@ import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.ui.columnsFor
 import tw.pp.kazi.ui.components.AppButton
-import tw.pp.kazi.ui.components.CollapsibleHeader
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
-import tw.pp.kazi.ui.components.GradientTopBar
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
-import tw.pp.kazi.ui.components.rememberCollapsibleHeaderState
+import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.pagePadding
@@ -209,20 +207,13 @@ fun SearchScreen(
         }
     }
 
-    val headerState = rememberCollapsibleHeaderState()
-
-    CollapsibleHeader(
-        state = headerState,
-        topBar = {
-            GradientTopBar(
-                title = "搜尋",
-                subtitle = submittedKeyword?.let { "「$it」結果" } ?: "同時搜所有已啟用站點",
-                titleBadges = if (incognito) {
-                    { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會留紀錄）") }
-                } else null,
-                onBack = { nav.popBackStack() },
-            )
-        },
+    ScreenScaffold(
+        title = "搜尋",
+        subtitle = submittedKeyword?.let { "「$it」結果" } ?: "同時搜所有已啟用站點",
+        titleBadges = if (incognito) {
+            { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會留紀錄）") }
+        } else null,
+        onBack = { nav.popBackStack() },
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
 

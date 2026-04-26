@@ -43,14 +43,12 @@ import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.ui.columnsFor
 import tw.pp.kazi.ui.components.AppButton
-import tw.pp.kazi.ui.components.CollapsibleHeader
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
-import tw.pp.kazi.ui.components.GradientTopBar
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
-import tw.pp.kazi.ui.components.rememberCollapsibleHeaderState
+import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.pagePadding
@@ -228,36 +226,31 @@ fun HomeScreen() {
         }
     }
 
-    val headerState = rememberCollapsibleHeaderState()
-
-    CollapsibleHeader(
-        state = headerState,
-        topBar = {
-            GradientTopBar(
-                title = "咔滋影院",
-                subtitle = selectedSite?.name ?: "請先到設定新增站點",
-                titleBadges = if (incognito || lanState.running) {
-                    {
-                        if (incognito) {
-                            tw.pp.kazi.ui.components.StatusPill(
-                                text = "🕶 無痕",
-                                onClick = { container.setIncognito(false) },
-                            )
-                        }
-                        if (lanState.running) {
-                            tw.pp.kazi.ui.components.StatusPill(
-                                text = "🟢 遠端遙控",
-                                onClick = {
-                                    scope.launch {
-                                        container.stopLan()
-                                        container.configRepository.updateLanShare(false)
-                                    }
-                                },
-                            )
-                        }
-                    }
-                } else null,
-                trailing = {
+    ScreenScaffold(
+        title = "咔滋影院",
+        subtitle = selectedSite?.name ?: "請先到設定新增站點",
+        titleBadges = if (incognito || lanState.running) {
+            {
+                if (incognito) {
+                    tw.pp.kazi.ui.components.StatusPill(
+                        text = "🕶 無痕",
+                        onClick = { container.setIncognito(false) },
+                    )
+                }
+                if (lanState.running) {
+                    tw.pp.kazi.ui.components.StatusPill(
+                        text = "🟢 遠端遙控",
+                        onClick = {
+                            scope.launch {
+                                container.stopLan()
+                                container.configRepository.updateLanShare(false)
+                            }
+                        },
+                    )
+                }
+            }
+        } else null,
+        trailing = {
                     val compact = windowSize.isCompact
                     AppButton(
                         text = "搜尋",
@@ -332,13 +325,12 @@ fun HomeScreen() {
                             container.homeTopBarFocusKey = "settings"
                             nav.navigate(Routes.Settings)
                         },
-                        primary = false,
-                        iconOnly = compact,
-                        modifier = Modifier.focusRequester(settingsFocusRequester),
-                    )
-                },
+                primary = false,
+                iconOnly = compact,
+                modifier = Modifier.focusRequester(settingsFocusRequester),
             )
         },
+        onBack = null,
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             // 等站台檔案讀完才判斷 empty，不然 App 一進來會閃一下「還沒有啟用的站點」
@@ -378,6 +370,8 @@ fun HomeScreen() {
                         categories = emptyList()
                         selectedCategory = null
                         page = 1
+                        // 切站 → 分類列表會被換掉，舊的捲動位置在新的列表上沒意義，回到開頭
+                        scope.launch { categoryStripState.scrollToItem(0) }
                     },
                     windowSize = windowSize,
                     listState = siteStripState,

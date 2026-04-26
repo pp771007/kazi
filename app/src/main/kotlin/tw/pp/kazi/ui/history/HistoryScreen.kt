@@ -32,10 +32,8 @@ import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.components.AppButton
-import tw.pp.kazi.ui.components.CollapsibleHeader
 import tw.pp.kazi.ui.components.EmptyState
-import tw.pp.kazi.ui.components.GradientTopBar
-import tw.pp.kazi.ui.components.rememberCollapsibleHeaderState
+import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.pagePadding
 import tw.pp.kazi.ui.theme.AppColors
@@ -69,18 +67,14 @@ fun HistoryScreen() {
         }
     }
 
-    val headerState = rememberCollapsibleHeaderState()
-
-    CollapsibleHeader(
-        state = headerState,
-        topBar = {
-        GradientTopBar(
-            title = "觀看歷史",
-            subtitle = "${items.size} 筆紀錄",
-            titleBadges = if (incognito) {
-                { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會新增）") }
-            } else null,
-            trailing = {
+    ScreenScaffold(
+        title = "觀看歷史",
+        subtitle = "${items.size} 筆紀錄",
+        titleBadges = if (incognito) {
+            { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會新增）") }
+        } else null,
+        onBack = { nav.popBackStack() },
+        trailing = {
                 AppButton(
                     text = if (checking) "檢查中" else "檢查更新",
                     icon = Icons.Filled.Refresh,
@@ -123,9 +117,6 @@ fun HistoryScreen() {
                     enabled = items.isNotEmpty(),
                     iconOnly = compact,
                 )
-            },
-            onBack = { nav.popBackStack() },
-        )
         },
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {

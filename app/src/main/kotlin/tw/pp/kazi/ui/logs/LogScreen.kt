@@ -28,11 +28,9 @@ import tw.pp.kazi.ui.LocalAppContainer
 import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.components.AppButton
-import tw.pp.kazi.ui.components.CollapsibleHeader
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
-import tw.pp.kazi.ui.components.GradientTopBar
-import tw.pp.kazi.ui.components.rememberCollapsibleHeaderState
+import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.pagePadding
 import tw.pp.kazi.ui.theme.AppColors
@@ -66,35 +64,28 @@ fun LogScreen() {
         }
     }
 
-    val headerState = rememberCollapsibleHeaderState()
-
-    CollapsibleHeader(
-        state = headerState,
-        topBar = {
-            GradientTopBar(
-                title = "錯誤紀錄",
-                subtitle = "${entries.size} 筆，最多保留 300 筆",
-                trailing = {
-                    AppButton(
-                        text = "複製全部",
-                        icon = Icons.Filled.ContentCopy,
-                        iconOnly = windowSize.isCompact,
-                        onClick = {
-                            val text = buildReport(entries, container)
-                            clipboard.setText(AnnotatedString(text))
-                            Toast.makeText(context, "已複製 ${entries.size} 筆紀錄到剪貼簿", Toast.LENGTH_SHORT).show()
-                        },
-                        enabled = entries.isNotEmpty(),
-                    )
-                    tw.pp.kazi.ui.components.ConfirmDeleteButton(
-                        text = "清空",
-                        icon = Icons.Filled.DeleteSweep,
-                        iconOnly = windowSize.isCompact,
-                        onConfirm = { LogBuffer.clear() },
-                        enabled = entries.isNotEmpty(),
-                    )
+    ScreenScaffold(
+        title = "錯誤紀錄",
+        subtitle = "${entries.size} 筆，最多保留 300 筆",
+        onBack = { nav.popBackStack() },
+        trailing = {
+            AppButton(
+                text = "複製全部",
+                icon = Icons.Filled.ContentCopy,
+                iconOnly = windowSize.isCompact,
+                onClick = {
+                    val text = buildReport(entries, container)
+                    clipboard.setText(AnnotatedString(text))
+                    Toast.makeText(context, "已複製 ${entries.size} 筆紀錄到剪貼簿", Toast.LENGTH_SHORT).show()
                 },
-                onBack = { nav.popBackStack() },
+                enabled = entries.isNotEmpty(),
+            )
+            tw.pp.kazi.ui.components.ConfirmDeleteButton(
+                text = "清空",
+                icon = Icons.Filled.DeleteSweep,
+                iconOnly = windowSize.isCompact,
+                onConfirm = { LogBuffer.clear() },
+                enabled = entries.isNotEmpty(),
             )
         },
     ) { innerPadding ->

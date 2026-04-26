@@ -21,11 +21,9 @@ import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.columnsFor
 import tw.pp.kazi.ui.components.AppButton
-import tw.pp.kazi.ui.components.CollapsibleHeader
 import tw.pp.kazi.ui.components.EmptyState
-import tw.pp.kazi.ui.components.GradientTopBar
 import tw.pp.kazi.ui.components.PosterCard
-import tw.pp.kazi.ui.components.rememberCollapsibleHeaderState
+import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.pagePadding
@@ -40,26 +38,19 @@ fun FavoritesScreen() {
     val settings by container.configRepository.settings.collectAsState()
     val scope = rememberCoroutineScope()
 
-    val headerState = rememberCollapsibleHeaderState()
-
-    CollapsibleHeader(
-        state = headerState,
-        topBar = {
-            GradientTopBar(
-                title = "我的收藏",
-                subtitle = "${favorites.size} 部影片",
-                trailing = {
-                    tw.pp.kazi.ui.components.ConfirmDeleteButton(
-                        text = "清空",
-                        icon = Icons.Filled.DeleteSweep,
-                        onConfirm = { scope.launch { container.favoriteRepository.clear() } },
-                        enabled = favorites.isNotEmpty(),
-                        iconOnly = windowSize.isCompact,
-                    )
-                },
-                onBack = { nav.popBackStack() },
+    ScreenScaffold(
+        title = "我的收藏",
+        subtitle = "${favorites.size} 部影片",
+        trailing = {
+            tw.pp.kazi.ui.components.ConfirmDeleteButton(
+                text = "清空",
+                icon = Icons.Filled.DeleteSweep,
+                onConfirm = { scope.launch { container.favoriteRepository.clear() } },
+                enabled = favorites.isNotEmpty(),
+                iconOnly = windowSize.isCompact,
             )
         },
+        onBack = { nav.popBackStack() },
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             if (favorites.isEmpty()) {
