@@ -247,24 +247,25 @@ fun SearchScreen(
                         onSelectAll = { selectedIds = enabledSites.map { s -> s.id }.toSet() },
                         onSelectNone = { selectedIds = emptySet() },
                     )
-                    if (settings.searchHistory.isNotEmpty()) {
-                        HistoryPills(
-                            items = settings.searchHistory,
-                            onPick = { kw ->
-                                // 點 pill 時把 IME 收起來（電視盒上 BasicTextField 會被 focus 到，不收會彈鍵盤）
-                                keyboardController?.hide()
-                                focusManager.clearFocus()
-                                keyword = kw
-                                runSearch()
-                            },
-                            onClear = { scope.launch { container.configRepository.clearSearchHistory() } },
-                        )
-                    }
                 } else {
                     CollapsedSelectorChip(
                         selectedCount = selectedIds.size,
                         totalCount = enabledSites.size,
                         onExpand = { selectorExpanded = true },
+                    )
+                }
+                // 最近搜尋 pills 跟 selectorExpanded 無關，一律放外面，搜過 / 沒搜過都看得到
+                if (settings.searchHistory.isNotEmpty()) {
+                    HistoryPills(
+                        items = settings.searchHistory,
+                        onPick = { kw ->
+                            // 點 pill 時把 IME 收起來（電視盒上 BasicTextField 會被 focus 到，不收會彈鍵盤）
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
+                            keyword = kw
+                            runSearch()
+                        },
+                        onClear = { scope.launch { container.configRepository.clearSearchHistory() } },
                     )
                 }
             }
