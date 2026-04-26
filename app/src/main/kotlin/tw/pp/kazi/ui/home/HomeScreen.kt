@@ -1,6 +1,9 @@
 package tw.pp.kazi.ui.home
 
+import android.app.Activity
+import android.widget.Toast
 import tw.pp.kazi.util.Logger
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -23,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import tw.pp.kazi.data.ApiResult
@@ -53,18 +57,33 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
+private const val BACK_EXIT_WINDOW_MS = 2000L
+
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen() {
     val container = LocalAppContainer.current
     val nav = LocalNavController.current
     val windowSize = LocalWindowSize.current
+    val context = LocalContext.current
     val sites by container.siteRepository.sites.collectAsState()
     val sitesLoaded by container.siteRepository.loaded.collectAsState()
     val settings by container.configRepository.settings.collectAsState()
     val lanState by container.lanState.collectAsState()
     val incognito by container.incognito.collectAsState()
     val scope = rememberCoroutineScope()
+
+    // 首頁是 nav stack 的根，按返回會直接 finish Activity；加雙擊確認避免誤退
+    var lastBackTime by remember { mutableLongStateOf(0L) }
+    BackHandler {
+        val now = System.currentTimeMillis()
+        if (now - lastBackTime < BACK_EXIT_WINDOW_MS) {
+            (context as? Activity)?.finish()
+        } else {
+            lastBackTime = now
+            Toast.makeText(context, "再按一次返回退出", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val enabledSites = remember(sites) { sites.filter { it.enabled }.sortedBy { it.order } }
 
