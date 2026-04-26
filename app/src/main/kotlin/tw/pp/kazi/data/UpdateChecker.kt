@@ -134,4 +134,17 @@ object UpdateChecker {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
         context.startActivity(intent)
     }
+
+    /**
+     * App 啟動時呼叫：把 cache 裡留下來的 APK 清掉。
+     *
+     * 流程：使用者下載 → 安裝 → app 被新版取代 → 新版 bootstrap → cleanupCache。
+     * 這時 cache 裡那顆 APK 就沒用了（它是上一版的安裝來源），刪掉省 ~15 MB。
+     * 半下載失敗或使用者沒按確認的殘檔也順便一起清。
+     */
+    fun cleanupCache(context: Context) {
+        val dir = File(context.cacheDir, DOWNLOAD_DIR)
+        if (!dir.exists()) return
+        dir.listFiles()?.forEach { it.delete() }
+    }
 }

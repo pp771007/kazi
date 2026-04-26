@@ -1,5 +1,7 @@
 package tw.pp.kazi.ui.settings
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -7,11 +9,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import tw.pp.kazi.ui.LocalAppContainer
@@ -29,12 +33,15 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
+private const val GITHUB_REPO_URL = "https://github.com/pp771007/kazi"
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun SettingsScreen() {
     val container = LocalAppContainer.current
     val nav = LocalNavController.current
     val windowSize = LocalWindowSize.current
+    val context = LocalContext.current
     val sites by container.siteRepository.sites.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -124,6 +131,16 @@ fun SettingsScreen() {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(8.dp))
+                AppButton(
+                    text = "GitHub 專案",
+                    icon = Icons.AutoMirrored.Filled.OpenInNew,
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_REPO_URL))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    },
+                    primary = false,
+                )
                 UpdateSection()
             }
         }

@@ -25,6 +25,7 @@ import tw.pp.kazi.data.MultiSearchResult
 import tw.pp.kazi.data.RemoteSearchRequest
 import tw.pp.kazi.data.SiteRepository
 import tw.pp.kazi.data.SiteScanner
+import tw.pp.kazi.data.UpdateChecker
 import tw.pp.kazi.data.Video
 import tw.pp.kazi.data.VideoDetails
 import tw.pp.kazi.lan.LanServer
@@ -118,6 +119,7 @@ class AppContainer(private val context: Context) {
         favoriteRepository.load()
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             ChineseConverter.preload(appContext)
+            UpdateChecker.cleanupCache(appContext)
         }
         if (configRepository.settings.value.lanShareEnabled) startLan()
     }
