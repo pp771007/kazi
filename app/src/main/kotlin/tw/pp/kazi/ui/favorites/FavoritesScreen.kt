@@ -36,11 +36,15 @@ fun FavoritesScreen() {
     val windowSize = LocalWindowSize.current
     val favorites by container.favoriteRepository.items.collectAsState()
     val settings by container.configRepository.settings.collectAsState()
+    val incognito by container.incognito.collectAsState()
     val scope = rememberCoroutineScope()
 
     ScreenScaffold(
         title = "我的收藏",
         subtitle = "${favorites.size} 部影片",
+        titleBadges = if (incognito) {
+            { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不影響收藏）") }
+        } else null,
         trailing = {
             tw.pp.kazi.ui.components.ConfirmDeleteButton(
                 text = "清空",
