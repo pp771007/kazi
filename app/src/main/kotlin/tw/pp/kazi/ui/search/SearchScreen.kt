@@ -217,129 +217,139 @@ fun SearchScreen(
             onBack = { nav.popBackStack() },
         )
 
-        Column(
-            modifier = Modifier.padding(
-                horizontal = windowSize.pagePadding(),
-                vertical = if (windowSize.isCompact) 6.dp else 8.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(if (windowSize.isCompact) 6.dp else 10.dp),
-        ) {
-            SearchField(
-                value = keyword,
-                onChange = { keyword = it },
-                onSubmit = { runSearch() },
-                onToSimplified = { keyword = ChineseConverter.toSimplified(keyword, appContext) },
-                focusRequester = focusRequester,
-                compact = windowSize.isCompact,
-            )
-            if (parsedQuery.excludes.isNotEmpty()) {
-                ExcludeHint(parsedQuery.excludes)
-            }
-            if (selectorExpanded) {
-                SiteSelector(
-                    sites = enabledSites,
-                    selected = selectedIds,
-                    onToggle = {
-                        selectedIds = if (it in selectedIds) selectedIds - it else selectedIds + it
-                    },
-                    onSelectAll = { selectedIds = enabledSites.map { s -> s.id }.toSet() },
-                    onSelectNone = { selectedIds = emptySet() },
+        // 搜尋輸入 + 站點選擇 + 排除提示 + 搜尋紀錄。出現在 grid header（有結果）或頂部 sticky（無結果/載入/錯誤）
+        val searchControls: @Composable () -> Unit = {
+            Column(
+                modifier = Modifier.padding(
+                    horizontal = windowSize.pagePadding(),
+                    vertical = if (windowSize.isCompact) 6.dp else 8.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(if (windowSize.isCompact) 6.dp else 10.dp),
+            ) {
+                SearchField(
+                    value = keyword,
+                    onChange = { keyword = it },
+                    onSubmit = { runSearch() },
+                    onToSimplified = { keyword = ChineseConverter.toSimplified(keyword, appContext) },
+                    focusRequester = focusRequester,
+                    compact = windowSize.isCompact,
                 )
-                if (settings.searchHistory.isNotEmpty() && result == null) {
-                    HistoryPills(
-                        items = settings.searchHistory,
-                        onPick = { keyword = it; runSearch() },
-                        onClear = { scope.launch { container.configRepository.clearSearchHistory() } },
+                if (parsedQuery.excludes.isNotEmpty()) {
+                    ExcludeHint(parsedQuery.excludes)
+                }
+                if (selectorExpanded) {
+                    SiteSelector(
+                        sites = enabledSites,
+                        selected = selectedIds,
+                        onToggle = {
+                            selectedIds = if (it in selectedIds) selectedIds - it else selectedIds + it
+                        },
+                        onSelectAll = { selectedIds = enabledSites.map { s -> s.id }.toSet() },
+                        onSelectNone = { selectedIds = emptySet() },
+                    )
+                    if (settings.searchHistory.isNotEmpty() && result == null) {
+                        HistoryPills(
+                            items = settings.searchHistory,
+                            onPick = { keyword = it; runSearch() },
+                            onClear = { scope.launch { container.configRepository.clearSearchHistory() } },
+                        )
+                    }
+                } else {
+                    CollapsedSelectorChip(
+                        selectedCount = selectedIds.size,
+                        totalCount = enabledSites.size,
+                        onExpand = { selectorExpanded = true },
                     )
                 }
-            } else {
-                CollapsedSelectorChip(
-                    selectedCount = selectedIds.size,
-                    totalCount = enabledSites.size,
-                    onExpand = { selectorExpanded = true },
-                )
             }
         }
 
-        Box(modifier = Modifier.weight(1f)) {
-            val r = result
-            when {
-                loading -> LoadingState(label = "多站搜尋中⋯")
-                r == null -> EmptyState(
-                    title = "請輸入關鍵字",
-                    subtitle = "將同時搜尋已勾選的站點",
-                    icon = Icons.Filled.Search,
-                )
-                r.videos.isEmpty() -> EmptyState(
-                    title = "沒有找到相關影片",
-                    subtitle = "試試其他關鍵字或按「簡」轉簡體",
-                    icon = Icons.Filled.SearchOff,
-                )
-                else -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        StatsBar(r, aggregated.size, windowSize)
-                        val vm = settings.viewMode
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(vm.columnsFor(windowSize)),
-                            contentPadding = PaddingValues(
-                                horizontal = windowSize.pagePadding(),
-                                vertical = 12.dp,
-                            ),
-                            horizontalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
-                            verticalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            itemsIndexed(
-                                aggregated,
-                                key = { _, agg -> agg.name },
-                            ) { idx, agg ->
-                                PosterCard(
-                                    title = agg.name,
-                                    remarks = agg.remarks,
-                                    imageUrl = agg.pic,
-                                    fromSite = if (agg.sources.size > 1) "${agg.sources.size} 來源"
-                                        else agg.sources.firstOrNull()?.fromSite,
-                                    aspectRatio = vm.aspectRatio,
-                                    onClick = {
-                                        val first = agg.sources.firstOrNull() ?: return@PosterCard
-                                        val sid = first.fromSiteId ?: return@PosterCard
-                                        container.pendingDetailPeers =
-                                            if (agg.sources.size > 1) agg.sources else null
-                                        // 記下這次點的影片名（用名字做 key 因為聚合後沒有單一 vodId）
-                                        container.searchSnapshot = container.searchSnapshot
-                                            ?.copy(lastClickedAggName = agg.name)
-                                            ?: tw.pp.kazi.SearchUiSnapshot(
-                                                keyword = keyword,
-                                                submittedKeyword = submittedKeyword,
-                                                selectedIds = selectedIds,
-                                                result = result,
-                                                selectorExpanded = selectorExpanded,
-                                                page = page,
-                                                pageCount = pageCount,
-                                                lastClickedAggName = agg.name,
-                                            )
-                                        nav.navigate(Routes.detail(sid, first.vodId))
-                                    },
-                                    focusRequester = when {
-                                        restoreClickedAggName != null && agg.name == restoreClickedAggName -> clickedResultFocus
-                                        idx == 0 -> firstResultFocus
-                                        else -> null
-                                    },
+        val r = result
+        val showResults = !loading && r != null && r.videos.isNotEmpty()
+
+        if (!showResults) {
+            // 載入中/沒結果/還沒搜尋 → 搜尋輸入區釘頂部讓使用者好操作
+            searchControls()
+            Box(modifier = Modifier.weight(1f)) {
+                when {
+                    loading -> LoadingState(label = "多站搜尋中⋯")
+                    r == null -> EmptyState(
+                        title = "請輸入關鍵字",
+                        subtitle = "將同時搜尋已勾選的站點",
+                        icon = Icons.Filled.Search,
+                    )
+                    else -> EmptyState(
+                        title = "沒有找到相關影片",
+                        subtitle = "試試其他關鍵字或按「簡」轉簡體",
+                        icon = Icons.Filled.SearchOff,
+                    )
+                }
+            }
+        } else {
+            // 有結果 → 搜尋輸入 + 統計列塞進 grid header，跟著影片一起捲，省垂直空間
+            val vm = settings.viewMode
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(vm.columnsFor(windowSize)),
+                contentPadding = PaddingValues(
+                    horizontal = windowSize.pagePadding(),
+                    vertical = 12.dp,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
+                verticalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }) { searchControls() }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    StatsBar(r!!, aggregated.size, windowSize)
+                }
+                itemsIndexed(
+                    aggregated,
+                    key = { _, agg -> agg.name },
+                ) { idx, agg ->
+                    PosterCard(
+                        title = agg.name,
+                        remarks = agg.remarks,
+                        imageUrl = agg.pic,
+                        fromSite = if (agg.sources.size > 1) "${agg.sources.size} 來源"
+                            else agg.sources.firstOrNull()?.fromSite,
+                        aspectRatio = vm.aspectRatio,
+                        onClick = {
+                            val first = agg.sources.firstOrNull() ?: return@PosterCard
+                            val sid = first.fromSiteId ?: return@PosterCard
+                            container.pendingDetailPeers =
+                                if (agg.sources.size > 1) agg.sources else null
+                            // 記下這次點的影片名（用名字做 key 因為聚合後沒有單一 vodId）
+                            container.searchSnapshot = container.searchSnapshot
+                                ?.copy(lastClickedAggName = agg.name)
+                                ?: tw.pp.kazi.SearchUiSnapshot(
+                                    keyword = keyword,
+                                    submittedKeyword = submittedKeyword,
+                                    selectedIds = selectedIds,
+                                    result = result,
+                                    selectorExpanded = selectorExpanded,
+                                    page = page,
+                                    pageCount = pageCount,
+                                    lastClickedAggName = agg.name,
                                 )
-                            }
-                            if (pageCount > 1 && !loading) {
-                                item(span = { GridItemSpan(maxLineSpan) }) {
-                                    Pager(
-                                        page = page,
-                                        pageCount = pageCount,
-                                        onPrev = { if (page > 1) runSearch(page - 1) },
-                                        onNext = { if (page < pageCount) runSearch(page + 1) },
-                                        onJump = { target -> runSearch(target) },
-                                        windowSize = windowSize,
-                                    )
-                                }
-                            }
-                        }
+                            nav.navigate(Routes.detail(sid, first.vodId))
+                        },
+                        focusRequester = when {
+                            restoreClickedAggName != null && agg.name == restoreClickedAggName -> clickedResultFocus
+                            idx == 0 -> firstResultFocus
+                            else -> null
+                        },
+                    )
+                }
+                if (pageCount > 1) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Pager(
+                            page = page,
+                            pageCount = pageCount,
+                            onPrev = { if (page > 1) runSearch(page - 1) },
+                            onNext = { if (page < pageCount) runSearch(page + 1) },
+                            onJump = { target -> runSearch(target) },
+                            windowSize = windowSize,
+                        )
                     }
                 }
             }
