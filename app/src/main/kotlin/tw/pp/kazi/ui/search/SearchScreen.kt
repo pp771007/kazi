@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -53,6 +54,7 @@ import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.GradientTopBar
 import tw.pp.kazi.ui.components.LoadingState
+import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
@@ -328,15 +330,18 @@ fun SearchScreen(
                                     },
                                 )
                             }
-                        }
-                        if (pageCount > 1 && !loading) {
-                            SearchPager(
-                                page = page,
-                                pageCount = pageCount,
-                                onPrev = { if (page > 1) runSearch(page - 1) },
-                                onNext = { if (page < pageCount) runSearch(page + 1) },
-                                windowSize = windowSize,
-                            )
+                            if (pageCount > 1 && !loading) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    Pager(
+                                        page = page,
+                                        pageCount = pageCount,
+                                        onPrev = { if (page > 1) runSearch(page - 1) },
+                                        onNext = { if (page < pageCount) runSearch(page + 1) },
+                                        onJump = { target -> runSearch(target) },
+                                        windowSize = windowSize,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -344,40 +349,6 @@ fun SearchScreen(
         }
     }
 
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun SearchPager(
-    page: Int,
-    pageCount: Int,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
-    windowSize: tw.pp.kazi.ui.WindowSize,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = windowSize.pagePadding(), vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        AppButton(text = "上頁", onClick = onPrev, enabled = page > 1, primary = false)
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(999.dp))
-                .background(Color(0x22FFFFFF))
-                .padding(horizontal = 14.dp, vertical = 7.dp),
-        ) {
-            Text(
-                "$page / $pageCount",
-                color = AppColors.OnBg,
-                style = MaterialTheme.typography.labelMedium,
-            )
-        }
-        AppButton(text = "下頁", onClick = onNext, enabled = page < pageCount, primary = false)
-        Spacer(Modifier.weight(1f))
-    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

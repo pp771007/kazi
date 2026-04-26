@@ -674,23 +674,27 @@ private fun SiteRow(
             androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 item {
                     AppButton(
-                        text = if (busy) "⋯" else "檢",
+                        text = if (busy) "檢查中" else "檢查",
+                        icon = if (busy) Icons.Filled.HourglassTop else Icons.Filled.HealthAndSafety,
                         onClick = onCheck,
                         enabled = !busy,
                         primary = false,
+                        iconOnly = true,
                     )
                 }
-                item { AppButton(text = "編", onClick = onEdit, primary = false) }
-                item { AppButton(text = "▲", onClick = onMoveUp, primary = false) }
-                item { AppButton(text = "▼", onClick = onMoveDown, primary = false) }
+                item { AppButton(text = "編輯", icon = Icons.Filled.Edit, onClick = onEdit, primary = false, iconOnly = true) }
+                item { AppButton(text = "上移", icon = Icons.Filled.ArrowUpward, onClick = onMoveUp, primary = false, iconOnly = true) }
+                item { AppButton(text = "下移", icon = Icons.Filled.ArrowDownward, onClick = onMoveDown, primary = false, iconOnly = true) }
                 item {
                     AppButton(
-                        text = if (site.enabled) "停" else "啟",
+                        text = if (site.enabled) "停用" else "啟用",
+                        icon = if (site.enabled) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                         onClick = onToggle,
                         primary = false,
+                        iconOnly = true,
                     )
                 }
-                item { tw.pp.kazi.ui.components.ConfirmDeleteButton(text = "刪", icon = Icons.Filled.Delete, onConfirm = onDelete) }
+                item { tw.pp.kazi.ui.components.ConfirmDeleteButton(text = "刪除", icon = Icons.Filled.Delete, onConfirm = onDelete, iconOnly = true) }
             }
         }
     } else {
@@ -740,20 +744,23 @@ private fun SiteRow(
             }
             AppButton(
                 text = if (busy) "檢查中" else "檢查",
-                icon = Icons.Filled.HealthAndSafety,
+                icon = if (busy) Icons.Filled.HourglassTop else Icons.Filled.HealthAndSafety,
                 onClick = onCheck,
                 enabled = !busy,
                 primary = false,
+                iconOnly = true,
             )
-            AppButton(text = "編輯", icon = Icons.Filled.Edit, onClick = onEdit, primary = false)
-            AppButton(text = "▲", onClick = onMoveUp, primary = false)
-            AppButton(text = "▼", onClick = onMoveDown, primary = false)
+            AppButton(text = "編輯", icon = Icons.Filled.Edit, onClick = onEdit, primary = false, iconOnly = true)
+            AppButton(text = "上移", icon = Icons.Filled.ArrowUpward, onClick = onMoveUp, primary = false, iconOnly = true)
+            AppButton(text = "下移", icon = Icons.Filled.ArrowDownward, onClick = onMoveDown, primary = false, iconOnly = true)
             AppButton(
                 text = if (site.enabled) "停用" else "啟用",
+                icon = if (site.enabled) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                 onClick = onToggle,
                 primary = false,
+                iconOnly = true,
             )
-            tw.pp.kazi.ui.components.ConfirmDeleteButton(text = "刪除", icon = Icons.Filled.Delete, onConfirm = onDelete)
+            tw.pp.kazi.ui.components.ConfirmDeleteButton(text = "刪除", icon = Icons.Filled.Delete, onConfirm = onDelete, iconOnly = true)
         }
     }
 }

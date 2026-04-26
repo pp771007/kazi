@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -40,6 +42,7 @@ import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.GradientTopBar
 import tw.pp.kazi.ui.components.LoadingState
+import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
 import tw.pp.kazi.ui.components.rememberCollapsibleHeaderState
 import tw.pp.kazi.ui.gridGap
@@ -326,88 +329,109 @@ fun HomeScreen() {
                 return@Column
             }
 
-            SiteStrip(
-                sites = enabledSites,
-                selected = selectedSite,
-                onPick = {
-                    selectedSite = it
-                    categories = emptyList()
-                    selectedCategory = null
-                    page = 1
-                },
-                windowSize = windowSize,
-            )
-
-            if (categories.isNotEmpty()) {
-                CategoryStrip(
-                    categories = categories,
-                    selected = selectedCategory,
+            // 站點 / 類別兩條 strip 是「跟著內容捲」的—正常顯示影片時塞進 grid 當 header，
+            // loading / 載入失敗 / 該分類沒內容時則保留釘在頂部的舊版（這時使用者反而需要切站台逃出來）
+            val strips: @Composable () -> Unit = {
+                SiteStrip(
+                    sites = enabledSites,
+                    selected = selectedSite,
                     onPick = {
-                        selectedCategory = it
+                        selectedSite = it
+                        categories = emptyList()
+                        selectedCategory = null
                         page = 1
                     },
                     windowSize = windowSize,
                 )
-            }
-
-            Box(modifier = Modifier.weight(1f)) {
-                val err = errorMsg
-                when {
-                    loading -> LoadingState()
-                    err != null -> EmptyState(
-                        title = "載入失敗",
-                        subtitle = err,
-                        icon = Icons.Filled.ErrorOutline,
-                        action = {
-                            AppButton(
-                                text = "重試",
-                                icon = Icons.Filled.Refresh,
-                                onClick = { retryKey += 1 },
-                            )
+                if (categories.isNotEmpty()) {
+                    CategoryStrip(
+                        categories = categories,
+                        selected = selectedCategory,
+                        onPick = {
+                            selectedCategory = it
+                            page = 1
                         },
-                    )
-                    videos.isEmpty() -> EmptyState(
-                        title = "這個分類下沒有內容",
-                        subtitle = "試試切換其他分類或搜尋",
-                        icon = Icons.Filled.MovieFilter,
-                    )
-                    else -> VideoGrid(
-                        videos = videos,
-                        viewMode = settings.viewMode,
                         windowSize = windowSize,
-                        firstItemFocus = firstVideoFocus,
-                        clickedVodId = restoreClickedVodId,
-                        clickedItemFocus = clickedVideoFocus,
-                        onClick = { v ->
-                            val site = selectedSite ?: return@VideoGrid
-                            // 記下這次點的 vodId，從 detail 返回時 focus 會自動回到這張
-                            container.homeSnapshot = container.homeSnapshot?.copy(lastClickedVodId = v.vodId)
-                                ?: tw.pp.kazi.HomeUiSnapshot(
-                                    selectedSiteId = site.id,
-                                    selectedCategoryTypeId = selectedCategory?.typeId,
-                                    categories = categories,
-                                    videos = videos,
-                                    page = page,
-                                    pageCount = pageCount,
-                                    lastClickedVodId = v.vodId,
-                                )
-                            nav.navigate(Routes.detail(site.id, v.vodId))
-                        },
                     )
                 }
             }
 
-            if (pageCount > 1 && !loading) {
-                Pager(
-                    page = page,
-                    pageCount = pageCount,
-                    onPrev = {
-                        if (page > 1) { page--; pendingFirstVideoFocus = true }
-                    },
-                    onNext = {
-                        if (page < pageCount) { page++; pendingFirstVideoFocus = true }
-                    },
+            val err = errorMsg
+            val showVideos = !loading && err == null && videos.isNotEmpty()
+
+            if (!showVideos) {
+                strips()
+                Box(modifier = Modifier.weight(1f)) {
+                    when {
+                        loading -> LoadingState()
+                        err != null -> EmptyState(
+                            title = "載入失敗",
+                            subtitle = err,
+                            icon = Icons.Filled.ErrorOutline,
+                            action = {
+                                AppButton(
+                                    text = "重試",
+                                    icon = Icons.Filled.Refresh,
+                                    onClick = { retryKey += 1 },
+                                )
+                            },
+                        )
+                        else -> EmptyState(
+                            title = "這個分類下沒有內容",
+                            subtitle = "試試切換其他分類或搜尋",
+                            icon = Icons.Filled.MovieFilter,
+                        )
+                    }
+                }
+            } else {
+                VideoGrid(
+                    videos = videos,
+                    viewMode = settings.viewMode,
                     windowSize = windowSize,
+                    firstItemFocus = firstVideoFocus,
+                    clickedVodId = restoreClickedVodId,
+                    clickedItemFocus = clickedVideoFocus,
+                    onClick = { v ->
+                        val site = selectedSite ?: return@VideoGrid
+                        // 記下這次點的 vodId，從 detail 返回時 focus 會自動回到這張
+                        container.homeSnapshot = container.homeSnapshot?.copy(lastClickedVodId = v.vodId)
+                            ?: tw.pp.kazi.HomeUiSnapshot(
+                                selectedSiteId = site.id,
+                                selectedCategoryTypeId = selectedCategory?.typeId,
+                                categories = categories,
+                                videos = videos,
+                                page = page,
+                                pageCount = pageCount,
+                                lastClickedVodId = v.vodId,
+                            )
+                        nav.navigate(Routes.detail(site.id, v.vodId))
+                    },
+                    header = {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Column { strips() }
+                        }
+                    },
+                    footer = if (pageCount > 1) {
+                        {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Pager(
+                                    page = page,
+                                    pageCount = pageCount,
+                                    onPrev = {
+                                        if (page > 1) { page--; pendingFirstVideoFocus = true }
+                                    },
+                                    onNext = {
+                                        if (page < pageCount) { page++; pendingFirstVideoFocus = true }
+                                    },
+                                    onJump = { target ->
+                                        page = target
+                                        pendingFirstVideoFocus = true
+                                    },
+                                    windowSize = windowSize,
+                                )
+                            }
+                        }
+                    } else null,
                 )
             }
         }
@@ -525,6 +549,8 @@ private fun VideoGrid(
     clickedVodId: Long?,
     clickedItemFocus: FocusRequester,
     onClick: (Video) -> Unit,
+    header: (LazyGridScope.() -> Unit)? = null,
+    footer: (LazyGridScope.() -> Unit)? = null,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(viewMode.columnsFor(windowSize)),
@@ -536,6 +562,7 @@ private fun VideoGrid(
         verticalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
         modifier = Modifier.fillMaxSize(),
     ) {
+        header?.invoke(this)
         itemsIndexed(videos, key = { _, v -> v.vodId }) { idx, v ->
             PosterCard(
                 title = v.vodName,
@@ -551,33 +578,6 @@ private fun VideoGrid(
                 },
             )
         }
-    }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun Pager(page: Int, pageCount: Int, onPrev: () -> Unit, onNext: () -> Unit, windowSize: WindowSize) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = windowSize.pagePadding(), vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        AppButton(text = "上頁", onClick = onPrev, enabled = page > 1, primary = false)
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(999.dp))
-                .background(Color(0x22FFFFFF))
-                .padding(horizontal = 14.dp, vertical = 7.dp),
-        ) {
-            Text(
-                "$page / $pageCount",
-                color = AppColors.OnBg,
-                style = MaterialTheme.typography.labelMedium,
-            )
-        }
-        AppButton(text = "下頁", onClick = onNext, enabled = page < pageCount, primary = false)
-        Spacer(Modifier.weight(1f))
+        footer?.invoke(this)
     }
 }
