@@ -8,7 +8,9 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
@@ -360,6 +362,11 @@ fun HomeScreen() {
                 return@Column
             }
 
+            // 站台 / 類別 strip 的捲動位置 hoist 到這層，避免 CategoryStrip 因暫時 categories=[]
+            // 從 composition 拔掉再重掛時把 scroll position 弄丟（同樣道理 SiteStrip 在 grid header 重組時也保險）
+            val siteStripState = rememberLazyListState()
+            val categoryStripState = rememberLazyListState()
+
             // 站點 / 類別兩條 strip 是「跟著內容捲」的—正常顯示影片時塞進 grid 當 header，
             // loading / 載入失敗 / 該分類沒內容時則保留釘在頂部的舊版（這時使用者反而需要切站台逃出來）
             val strips: @Composable () -> Unit = {
@@ -373,6 +380,7 @@ fun HomeScreen() {
                         page = 1
                     },
                     windowSize = windowSize,
+                    listState = siteStripState,
                 )
                 if (categories.isNotEmpty()) {
                     CategoryStrip(
@@ -383,6 +391,7 @@ fun HomeScreen() {
                             page = 1
                         },
                         windowSize = windowSize,
+                        listState = categoryStripState,
                     )
                 }
             }
@@ -486,7 +495,13 @@ private fun ViewModeToggle(current: ViewMode, onPick: (ViewMode) -> Unit) {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun SiteStrip(sites: List<Site>, selected: Site?, onPick: (Site) -> Unit, windowSize: WindowSize) {
+private fun SiteStrip(
+    sites: List<Site>,
+    selected: Site?,
+    onPick: (Site) -> Unit,
+    windowSize: WindowSize,
+    listState: LazyListState,
+) {
     val compact = windowSize.isCompact
     Column(
         modifier = Modifier
@@ -501,6 +516,7 @@ private fun SiteStrip(sites: List<Site>, selected: Site?, onPick: (Site) -> Unit
             )
         }
         LazyRow(
+            state = listState,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 2.dp),
         ) {
@@ -522,6 +538,7 @@ private fun CategoryStrip(
     selected: Category?,
     onPick: (Category?) -> Unit,
     windowSize: WindowSize,
+    listState: LazyListState,
 ) {
     val compact = windowSize.isCompact
     Column(
@@ -537,6 +554,7 @@ private fun CategoryStrip(
             )
         }
         LazyRow(
+            state = listState,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(vertical = 2.dp),
         ) {
