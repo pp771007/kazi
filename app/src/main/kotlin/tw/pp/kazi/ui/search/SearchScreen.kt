@@ -132,12 +132,10 @@ fun SearchScreen(
 
     fun runSearch(targetPage: Int = 1) {
         val kw = keyword.trim()
-        if (kw.isBlank() || selectedIds.isEmpty()) return
+        if (selectedIds.isEmpty()) return
         val parsed = parseSearchQuery(kw)
-        if (parsed.include.isBlank()) {
-            // 只有排除詞、沒有可搜尋的正向詞
-            return
-        }
+        // 完全空 → 抓站台最新列表；只有排除詞、沒可搜尋的正向詞 → 不搜（避免拉全站再過濾）
+        if (kw.isNotEmpty() && parsed.include.isBlank()) return
         keyboardController?.hide()
         focusManager.clearFocus()
         scope.launch {
@@ -145,8 +143,9 @@ fun SearchScreen(
             submittedKeyword = kw
             selectorExpanded = false
             page = targetPage
-            if (targetPage == 1 && !container.incognito.value) {
-                container.configRepository.addSearchKeyword(kw)
+            if (targetPage == 1) {
+                // addSearchKeyword 內部會 trim 並忽略空字串，不必另外擋
+                if (!container.incognito.value) container.configRepository.addSearchKeyword(kw)
             }
             val serverResult = container.macCmsApi.multiSiteSearch(
                 sites = enabledSites.filter { it.id in selectedIds },
@@ -209,7 +208,11 @@ fun SearchScreen(
 
     ScreenScaffold(
         title = "搜尋",
-        subtitle = submittedKeyword?.let { "「$it」結果" } ?: "同時搜所有已啟用站點",
+        subtitle = when {
+            submittedKeyword == null -> "同時搜所有已啟用站點"
+            submittedKeyword!!.isBlank() -> "最新列表"
+            else -> "「${submittedKeyword}」結果"
+        },
         titleBadges = if (incognito) {
             { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會留紀錄）") }
         } else null,
@@ -233,6 +236,7 @@ fun SearchScreen(
                     onToSimplified = { keyword = ChineseConverter.toSimplified(keyword, appContext) },
                     focusRequester = focusRequester,
                     compact = windowSize.isCompact,
+                    incognito = incognito,
                 )
                 if (parsedQuery.excludes.isNotEmpty()) {
                     ExcludeHint(parsedQuery.excludes)
@@ -281,8 +285,8 @@ fun SearchScreen(
                 when {
                     loading -> LoadingState(label = "多站搜尋中⋯")
                     r == null -> EmptyState(
-                        title = "請輸入關鍵字",
-                        subtitle = "將同時搜尋已勾選的站點",
+                        title = "輸入關鍵字或直接搜尋",
+                        subtitle = "不輸入關鍵字會顯示各站最新列表",
                         icon = Icons.Filled.Search,
                     )
                     else -> EmptyState(
@@ -374,6 +378,7 @@ private fun SearchField(
     onToSimplified: () -> Unit,
     focusRequester: FocusRequester,
     compact: Boolean,
+    incognito: Boolean,
     trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -407,7 +412,13 @@ private fun SearchField(
                     singleLine = true,
                     textStyle = TextStyle(color = AppColors.OnBg, fontSize = 16.sp),
                     cursorBrush = SolidColor(AppColors.Primary),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    // 無痕時關掉自動修正/建議，連帶要求 IME 不要把輸入內容學進個人字典。
+                    // 註：IME_FLAG_NO_PERSONALIZED_LEARNING 在 Compose KeyboardOptions 沒有直接對應參數，
+                    // autoCorrect=false 是 Compose 層能做到的最接近設定（會關掉 suggestions / 多數 IME 的學習行為）。
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Search,
+                        autoCorrectEnabled = !incognito,
+                    ),
                     keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
                     interactionSource = interaction,
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
@@ -471,7 +482,6 @@ private fun SearchField(
                     text = "搜尋",
                     icon = Icons.Filled.Search,
                     onClick = onSubmit,
-                    enabled = value.isNotBlank(),
                     modifier = Modifier.weight(1f),
                 )
                 trailing?.invoke(this)
@@ -494,7 +504,6 @@ private fun SearchField(
                 text = "搜尋",
                 icon = Icons.Filled.Search,
                 onClick = onSubmit,
-                enabled = value.isNotBlank(),
             )
             trailing?.invoke(this)
         }

@@ -2,6 +2,7 @@ package tw.pp.kazi.ui.detail
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -337,15 +338,18 @@ private fun CompactLayout(
                 }
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                var titleExpanded by rememberSaveable { mutableStateOf(false) }
                 Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         v.vodName,
                         color = AppColors.OnBg,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
+                        maxLines = if (titleExpanded) Int.MAX_VALUE else 2,
+                        overflow = if (titleExpanded) TextOverflow.Visible else TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { titleExpanded = !titleExpanded },
                     )
                     CopyTextButton(text = v.vodName)
                 }
