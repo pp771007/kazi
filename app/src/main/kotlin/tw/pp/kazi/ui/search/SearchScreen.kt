@@ -73,6 +73,10 @@ import androidx.tv.material3.Text
 // 多站聚合後一次顯示太多卡，使用者要捲很久才能到下一個畫面 → 客戶端切片，每頁 24 筆
 private const val INNER_PAGE_SIZE = 24
 
+// LazyVerticalGrid header 順序固定：searchControls / StatsBar / 內層 Pager（頂）/ 卡片⋯
+// 內層換頁時要捲到第一張卡的位置（不是 0，否則會把搜尋欄也帶進來）
+private const val FIRST_CARD_INDEX = 3
+
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SearchScreen(
@@ -324,7 +328,19 @@ fun SearchScreen(
         } else {
             // 有結果 → 搜尋輸入 + 統計列塞進 grid header，跟著影片一起捲，省垂直空間
             val vm = settings.viewMode
+            val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+            // 內層換頁：捲回卡片列起點 + focus 第一張卡（避免使用者按完底部翻頁鈕還停在底部）
+            // FIRST_CARD_INDEX = searchControls(0) + StatsBar(1) + 頂部 Pager(2) → 3
+            val goToInnerPage: (Int) -> Unit = { target ->
+                val clamped = target.coerceIn(1, innerPageCount)
+                if (clamped != displayPage) {
+                    displayPage = clamped
+                    pendingResultFocus = true
+                    scope.launch { gridState.animateScrollToItem(FIRST_CARD_INDEX) }
+                }
+            }
             LazyVerticalGrid(
+                state = gridState,
                 columns = GridCells.Fixed(vm.columnsFor(windowSize)),
                 contentPadding = PaddingValues(
                     horizontal = windowSize.pagePadding(),
@@ -344,22 +360,9 @@ fun SearchScreen(
                         Pager(
                             page = displayPage,
                             pageCount = innerPageCount,
-                            onPrev = {
-                                if (displayPage > 1) {
-                                    displayPage -= 1
-                                    pendingResultFocus = true
-                                }
-                            },
-                            onNext = {
-                                if (displayPage < innerPageCount) {
-                                    displayPage += 1
-                                    pendingResultFocus = true
-                                }
-                            },
-                            onJump = { target ->
-                                displayPage = target.coerceIn(1, innerPageCount)
-                                pendingResultFocus = true
-                            },
+                            onPrev = { goToInnerPage(displayPage - 1) },
+                            onNext = { goToInnerPage(displayPage + 1) },
+                            onJump = { target -> goToInnerPage(target) },
                             windowSize = windowSize,
                         )
                     }
@@ -408,22 +411,9 @@ fun SearchScreen(
                         Pager(
                             page = displayPage,
                             pageCount = innerPageCount,
-                            onPrev = {
-                                if (displayPage > 1) {
-                                    displayPage -= 1
-                                    pendingResultFocus = true
-                                }
-                            },
-                            onNext = {
-                                if (displayPage < innerPageCount) {
-                                    displayPage += 1
-                                    pendingResultFocus = true
-                                }
-                            },
-                            onJump = { target ->
-                                displayPage = target.coerceIn(1, innerPageCount)
-                                pendingResultFocus = true
-                            },
+                            onPrev = { goToInnerPage(displayPage - 1) },
+                            onNext = { goToInnerPage(displayPage + 1) },
+                            onJump = { target -> goToInnerPage(target) },
                             windowSize = windowSize,
                         )
                     }
