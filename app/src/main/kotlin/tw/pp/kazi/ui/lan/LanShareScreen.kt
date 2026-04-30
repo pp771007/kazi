@@ -92,8 +92,13 @@ fun LanShareScreen() {
                 stepsPanel()
             }
         } else {
+            // Phone landscape (Medium) 高度只有 ~360dp，QR + 按鈕加起來會超過螢幕高度，
+            // 沒有 verticalScroll 會被切掉看不到啟用按鈕
             Row(
-                modifier = Modifier.fillMaxSize().padding(windowSize.pagePadding()),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(windowSize.pagePadding()),
                 horizontalArrangement = Arrangement.spacedBy(20.dp),
             ) {
                 Box(modifier = Modifier.width(QR_COL_WIDTH)) { qrPanel() }

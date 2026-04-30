@@ -245,8 +245,23 @@ fun SearchScreen(
             submittedKeyword!!.isBlank() -> "最新列表"
             else -> "「${submittedKeyword}」結果"
         },
-        titleBadges = if (incognito) {
-            { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會留紀錄）") }
+        titleBadges = if (incognito || lanState.running) {
+            {
+                if (incognito) {
+                    tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會留紀錄）")
+                }
+                if (lanState.running) {
+                    tw.pp.kazi.ui.components.StatusPill(
+                        text = "🟢 遠端遙控",
+                        onClick = {
+                            scope.launch {
+                                container.stopLan()
+                                container.configRepository.updateLanShare(false)
+                            }
+                        },
+                    )
+                }
+            }
         } else null,
         trailing = {
             // 跟 home 同一組 trailing（去掉「搜尋」因為已經在搜尋頁了），方便從搜尋直接跳其他畫面
