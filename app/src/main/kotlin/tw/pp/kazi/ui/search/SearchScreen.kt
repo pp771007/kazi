@@ -70,6 +70,9 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
+// 多站聚合後一次顯示太多卡，使用者要捲很久才能到下一個畫面 → 客戶端切片，每頁 24 筆
+private const val INNER_PAGE_SIZE = 24
+
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SearchScreen(
@@ -128,6 +131,21 @@ fun SearchScreen(
         result?.videos?.let(::aggregateByName) ?: emptyList()
     }
 
+    // 客戶端內層分頁：把 aggregated 切成 INNER_PAGE_SIZE 一塊，避免一次塞太多卡（特別是空 keyword 抓最新時）
+    var displayPage by remember { mutableIntStateOf(1) }
+    val innerPageCount = remember(aggregated) {
+        ((aggregated.size + INNER_PAGE_SIZE - 1) / INNER_PAGE_SIZE).coerceAtLeast(1)
+    }
+    // displayPage 不能超過實際頁數（aggregated 變小時要 clamp）
+    LaunchedEffect(innerPageCount) {
+        if (displayPage > innerPageCount) displayPage = innerPageCount
+    }
+    val displayedSlice = remember(aggregated, displayPage) {
+        val from = ((displayPage - 1) * INNER_PAGE_SIZE).coerceAtLeast(0)
+        val to = (from + INNER_PAGE_SIZE).coerceAtMost(aggregated.size)
+        if (from >= aggregated.size) emptyList() else aggregated.subList(from, to)
+    }
+
     val parsedQuery = remember(keyword) { parseSearchQuery(keyword) }
 
     fun runSearch(targetPage: Int = 1) {
@@ -155,6 +173,7 @@ fun SearchScreen(
             val applied = applyExcludes(serverResult, parsed.excludes)
             result = applied
             pageCount = applied.pageCount.coerceAtLeast(1)
+            displayPage = 1
             loading = false
             pendingResultFocus = true
         }
@@ -172,19 +191,25 @@ fun SearchScreen(
         if (initialKeyword.isNotBlank() && initialSnapshot == null) runSearch()
     }
 
-    // 搜完 / 換頁完 → focus 第一個結果（避免 focus 卡在 input 鍵盤又彈出來）
-    LaunchedEffect(aggregated) {
-        if (pendingResultFocus && aggregated.isNotEmpty()) {
+    // 搜完 / 換頁（外層 or 內層） → focus 第一個結果（避免 focus 卡在 input 鍵盤又彈出來）
+    LaunchedEffect(displayedSlice) {
+        if (pendingResultFocus && displayedSlice.isNotEmpty()) {
             kotlinx.coroutines.delay(50)
             runCatching { firstResultFocus.requestFocus() }
             pendingResultFocus = false
         }
     }
 
-    // 從 detail 返回 → focus 剛才點進去那張卡
-    LaunchedEffect(aggregated) {
-        if (pendingClickedFocus && restoreClickedAggName != null
-            && aggregated.any { it.name == restoreClickedAggName }) {
+    // 從 detail 返回 → 先把內層頁切到那張卡所在頁，再 focus 它
+    LaunchedEffect(aggregated, displayPage) {
+        if (pendingClickedFocus && restoreClickedAggName != null) {
+            val idx = aggregated.indexOfFirst { it.name == restoreClickedAggName }
+            if (idx < 0) return@LaunchedEffect
+            val targetPage = (idx / INNER_PAGE_SIZE) + 1
+            if (displayPage != targetPage) {
+                displayPage = targetPage
+                return@LaunchedEffect
+            }
             kotlinx.coroutines.delay(50)
             runCatching { clickedResultFocus.requestFocus() }
             pendingClickedFocus = false
@@ -313,8 +338,34 @@ fun SearchScreen(
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     StatsBar(r!!, aggregated.size, windowSize)
                 }
+                // 內層分頁鈕（頂）：只有 aggregated 多到要切時才出現
+                if (innerPageCount > 1) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Pager(
+                            page = displayPage,
+                            pageCount = innerPageCount,
+                            onPrev = {
+                                if (displayPage > 1) {
+                                    displayPage -= 1
+                                    pendingResultFocus = true
+                                }
+                            },
+                            onNext = {
+                                if (displayPage < innerPageCount) {
+                                    displayPage += 1
+                                    pendingResultFocus = true
+                                }
+                            },
+                            onJump = { target ->
+                                displayPage = target.coerceIn(1, innerPageCount)
+                                pendingResultFocus = true
+                            },
+                            windowSize = windowSize,
+                        )
+                    }
+                }
                 itemsIndexed(
-                    aggregated,
+                    displayedSlice,
                     key = { _, agg -> agg.name },
                 ) { idx, agg ->
                     PosterCard(
@@ -350,6 +401,32 @@ fun SearchScreen(
                             else -> null
                         },
                     )
+                }
+                // 內層分頁鈕（底）：跟頂部同一組
+                if (innerPageCount > 1) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Pager(
+                            page = displayPage,
+                            pageCount = innerPageCount,
+                            onPrev = {
+                                if (displayPage > 1) {
+                                    displayPage -= 1
+                                    pendingResultFocus = true
+                                }
+                            },
+                            onNext = {
+                                if (displayPage < innerPageCount) {
+                                    displayPage += 1
+                                    pendingResultFocus = true
+                                }
+                            },
+                            onJump = { target ->
+                                displayPage = target.coerceIn(1, innerPageCount)
+                                pendingResultFocus = true
+                            },
+                            windowSize = windowSize,
+                        )
+                    }
                 }
                 if (pageCount > 1) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
