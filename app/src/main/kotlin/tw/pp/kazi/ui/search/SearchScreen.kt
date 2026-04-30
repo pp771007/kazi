@@ -67,6 +67,7 @@ import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.pagePadding
 import tw.pp.kazi.ui.theme.AppColors
 import tw.pp.kazi.util.ChineseConverter
+import tw.pp.kazi.util.Logger
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -90,6 +91,7 @@ fun SearchScreen(
     val sites by container.siteRepository.sites.collectAsState()
     val settings by container.configRepository.settings.collectAsState()
     val incognito by container.incognito.collectAsState()
+    val lanState by container.lanState.collectAsState()
     val scope = rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
     val focusManager = LocalFocusManager.current
@@ -247,9 +249,58 @@ fun SearchScreen(
             { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會留紀錄）") }
         } else null,
         trailing = {
+            // 跟 home 同一組 trailing（去掉「搜尋」因為已經在搜尋頁了），方便從搜尋直接跳其他畫面
+            val compact = windowSize != WindowSize.Expanded
+            AppButton(
+                text = "歷史",
+                icon = Icons.Filled.History,
+                onClick = { nav.navigate(Routes.History) },
+                primary = false,
+                iconOnly = compact,
+            )
+            AppButton(
+                text = "收藏",
+                icon = Icons.Filled.Star,
+                onClick = { nav.navigate(Routes.Favorites) },
+                primary = false,
+                iconOnly = compact,
+            )
             ViewModeToggle(
                 current = settings.viewMode,
                 onPick = { scope.launch { container.configRepository.updateViewMode(it) } },
+            )
+            AppButton(
+                text = if (incognito) "無痕中" else "無痕",
+                icon = Icons.Filled.VisibilityOff,
+                onClick = { container.setIncognito(!incognito) },
+                primary = incognito,
+                iconOnly = compact,
+            )
+            AppButton(
+                text = "遠端遙控",
+                icon = Icons.Filled.QrCode2,
+                onClick = {
+                    scope.launch {
+                        if (!lanState.running) {
+                            val ok = container.startLan()
+                            if (ok) {
+                                container.configRepository.updateLanShare(true)
+                            } else {
+                                Logger.w("startLan failed from Search one-tap; navigating to LanShareScreen so user sees the failure")
+                            }
+                        }
+                        nav.navigate(Routes.LanShare)
+                    }
+                },
+                primary = lanState.running,
+                iconOnly = compact,
+            )
+            AppButton(
+                text = "設定",
+                icon = Icons.Filled.Settings,
+                onClick = { nav.navigate(Routes.Settings) },
+                primary = false,
+                iconOnly = compact,
             )
         },
         onBack = { nav.popBackStack() },
