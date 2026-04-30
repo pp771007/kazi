@@ -362,8 +362,10 @@ fun SearchScreen(
                             pageCount = innerPageCount,
                             onPrev = { goToInnerPage(displayPage - 1) },
                             onNext = { goToInnerPage(displayPage + 1) },
-                            onJump = { target -> goToInnerPage(target) },
                             windowSize = windowSize,
+                            simplified = true,
+                            accent = true,
+                            label = "顯示頁",
                         )
                     }
                 }
@@ -413,8 +415,10 @@ fun SearchScreen(
                             pageCount = innerPageCount,
                             onPrev = { goToInnerPage(displayPage - 1) },
                             onNext = { goToInnerPage(displayPage + 1) },
-                            onJump = { target -> goToInnerPage(target) },
                             windowSize = windowSize,
+                            simplified = true,
+                            accent = true,
+                            label = "顯示頁",
                         )
                     }
                 }
@@ -427,6 +431,7 @@ fun SearchScreen(
                             onNext = { if (page < pageCount) runSearch(page + 1) },
                             onJump = { target -> runSearch(target) },
                             windowSize = windowSize,
+                            label = "資料頁",
                         )
                     }
                 }

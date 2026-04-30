@@ -49,8 +49,13 @@ fun Pager(
     pageCount: Int,
     onPrev: () -> Unit,
     onNext: () -> Unit,
-    onJump: (Int) -> Unit,
     windowSize: WindowSize,
+    onJump: (Int) -> Unit = {},
+    // simplified: 不顯示「頁碼輸入 + 跳轉」，只剩上下頁。給「客戶端切片翻頁」這種頁數通常 < 10 的場景用
+    simplified: Boolean = false,
+    // accent: 整顆 Pager 包淡 primary 底色 + 圓框，跟旁邊的「外層 API 翻頁」視覺上分開
+    accent: Boolean = false,
+    label: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val compact = windowSize.isCompact
@@ -63,13 +68,31 @@ fun Pager(
         if (canJump) parsedJump?.let(onJump)
     }
 
-    Row(
-        modifier = modifier
+    val outer = if (accent) {
+        modifier
             .fillMaxWidth()
-            .padding(horizontal = windowSize.pagePadding(), vertical = 12.dp),
+            .padding(horizontal = windowSize.pagePadding(), vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(AppColors.Primary.copy(alpha = 0.12f))
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    } else {
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = windowSize.pagePadding(), vertical = 12.dp)
+    }
+
+    Row(
+        modifier = outer,
         horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (label != null) {
+            Text(
+                label,
+                color = AppColors.OnBgMuted,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
         AppButton(
             text = "上一頁",
             icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -98,50 +121,52 @@ fun Pager(
             primary = false,
             iconOnly = compact,
         )
-        Spacer(Modifier.weight(1f))
-        BasicTextField(
-            value = jumpInput,
-            onValueChange = { jumpInput = it.filter { c -> c.isDigit() }.take(JUMP_INPUT_MAX_DIGITS) },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Number,
-                imeAction = ImeAction.Done,
-            ),
-            keyboardActions = KeyboardActions(onDone = { submitJump() }),
-            textStyle = TextStyle(
-                color = AppColors.OnBg,
-                fontSize = MaterialTheme.typography.labelMedium.fontSize,
-                textAlign = TextAlign.Center,
-            ),
-            cursorBrush = SolidColor(AppColors.Primary),
-            decorationBox = { inner ->
-                Box(
-                    modifier = Modifier
-                        .width(JUMP_INPUT_WIDTH)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(AppColors.BgElevated)
-                        .padding(horizontal = 10.dp, vertical = 7.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (jumpInput.isEmpty()) {
-                        Text(
-                            "頁碼",
-                            color = AppColors.OnBgDim,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
+        if (!simplified) {
+            Spacer(Modifier.weight(1f))
+            BasicTextField(
+                value = jumpInput,
+                onValueChange = { jumpInput = it.filter { c -> c.isDigit() }.take(JUMP_INPUT_MAX_DIGITS) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = { submitJump() }),
+                textStyle = TextStyle(
+                    color = AppColors.OnBg,
+                    fontSize = MaterialTheme.typography.labelMedium.fontSize,
+                    textAlign = TextAlign.Center,
+                ),
+                cursorBrush = SolidColor(AppColors.Primary),
+                decorationBox = { inner ->
+                    Box(
+                        modifier = Modifier
+                            .width(JUMP_INPUT_WIDTH)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(AppColors.BgElevated)
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (jumpInput.isEmpty()) {
+                            Text(
+                                "頁碼",
+                                color = AppColors.OnBgDim,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                        inner()
                     }
-                    inner()
-                }
-            },
-            modifier = Modifier.width(JUMP_INPUT_WIDTH),
-        )
-        AppButton(
-            text = "跳轉",
-            icon = Icons.Filled.KeyboardDoubleArrowRight,
-            onClick = ::submitJump,
-            enabled = canJump,
-            primary = false,
-            iconOnly = compact,
-        )
+                },
+                modifier = Modifier.width(JUMP_INPUT_WIDTH),
+            )
+            AppButton(
+                text = "跳轉",
+                icon = Icons.Filled.KeyboardDoubleArrowRight,
+                onClick = ::submitJump,
+                enabled = canJump,
+                primary = false,
+                iconOnly = compact,
+            )
+        }
     }
 }
