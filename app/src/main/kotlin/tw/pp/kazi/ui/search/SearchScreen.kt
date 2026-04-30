@@ -329,14 +329,21 @@ fun SearchScreen(
             // 有結果 → 搜尋輸入 + 統計列塞進 grid header，跟著影片一起捲，省垂直空間
             val vm = settings.viewMode
             val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
-            // 內層換頁：捲回卡片列起點 + focus 第一張卡（避免使用者按完底部翻頁鈕還停在底部）
+            // 內層換頁：先換 displayPage、捲回卡片列起點、等動畫＋一個 layout frame 再 focus 第一張卡。
+            // 之前用 pendingResultFocus + LaunchedEffect(displayedSlice) 那條路，會跟 animateScroll 比賽：
+            // 動畫還沒結束、新第一張卡還沒被 LazyGrid compose 出來時 requestFocus 就被丟掉，焦點時有時無。
+            // 把 scroll → focus 串成同一個 coroutine 並等動畫完成才 focus，順序就保證了。
             // FIRST_CARD_INDEX = searchControls(0) + StatsBar(1) + 頂部 Pager(2) → 3
             val goToInnerPage: (Int) -> Unit = { target ->
                 val clamped = target.coerceIn(1, innerPageCount)
                 if (clamped != displayPage) {
                     displayPage = clamped
-                    pendingResultFocus = true
-                    scope.launch { gridState.animateScrollToItem(FIRST_CARD_INDEX) }
+                    scope.launch {
+                        gridState.animateScrollToItem(FIRST_CARD_INDEX)
+                        // 動畫結束後再給 LazyGrid 一格時間 attach focusRequester
+                        kotlinx.coroutines.delay(50)
+                        runCatching { firstResultFocus.requestFocus() }
+                    }
                 }
             }
             LazyVerticalGrid(
