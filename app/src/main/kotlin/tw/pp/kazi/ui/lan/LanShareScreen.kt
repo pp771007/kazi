@@ -22,9 +22,11 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import androidx.compose.ui.unit.Dp
 import tw.pp.kazi.ui.LocalAppContainer
 import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
+import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.GradientTopBar
 import tw.pp.kazi.ui.components.SectionHeader
@@ -51,6 +53,10 @@ fun LanShareScreen() {
         state.url?.let { runCatching { QrCode.encode(it, QR_PX) }.getOrNull() }
     }
 
+    // 只有 Expanded（平板/TV）才用大 QR；Compact 直立 + Medium 橫向手機都用小的
+    // ——landscape 手機 ~360dp 高度容不下 300dp QR 完整顯示，掃不到
+    val qrSize = if (windowSize == WindowSize.Expanded) QR_DISPLAY_WIDE else QR_DISPLAY_COMPACT
+
     val qrPanel: @Composable () -> Unit = {
         QrPanel(
             running = state.running,
@@ -68,7 +74,7 @@ fun LanShareScreen() {
                     }
                 }
             },
-            compact = compact,
+            qrSize = qrSize,
         )
     }
     val stepsPanel: @Composable () -> Unit = { StepsPanel(compact = compact) }
@@ -115,9 +121,8 @@ private fun QrPanel(
     url: String?,
     qrBitmap: ImageBitmap?,
     onToggle: () -> Unit,
-    compact: Boolean,
+    qrSize: Dp,
 ) {
-    val qrSize = if (compact) QR_DISPLAY_COMPACT else QR_DISPLAY_WIDE
     Column(
         modifier = Modifier
             .fillMaxWidth()
