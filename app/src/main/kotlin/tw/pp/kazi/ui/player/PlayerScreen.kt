@@ -504,8 +504,9 @@ fun PlayerScreen(
                                 speed = PlayerConfig.LONG_PRESS_SPEED
                                 longPressActive = true
                                 gestureIndicator = GestureIndicator.Speed(speed)
-                                controlsVisible = true
-                                controlsActivityTick++
+                                // 不要在這裡 set controlsVisible — speed 提示靠 gestureIndicator overlay 自己顯示，
+                                // 一但把 controlsVisible 設 true，700ms 後 gesture indicator 淡掉時，
+                                // 中央暫停按鈕會跟著彈出來（bug）
                             },
                             onTap = {
                                 controlsVisible = !controlsVisible
@@ -621,7 +622,13 @@ fun PlayerScreen(
             }
 
             gestureIndicator?.let { indicator ->
-                GestureOverlay(indicator, modifier = Modifier.align(Alignment.Center))
+                // Speed 提示靠上方一些，避免擋到正在播的內容；其他（亮度/音量/seek）維持置中
+                val alignment = if (indicator is GestureIndicator.Speed) Alignment.TopCenter else Alignment.Center
+                val topPad = if (indicator is GestureIndicator.Speed) GESTURE_INDICATOR_TOP_PAD else 0.dp
+                GestureOverlay(
+                    indicator,
+                    modifier = Modifier.align(alignment).padding(top = topPad),
+                )
             }
 
             // 控制列顯示時，畫面中央也放一顆大的 play/pause 按鈕（YT pattern）。
@@ -1082,3 +1089,6 @@ private val SEEKBAR_THUMB_IDLE = 12.dp
 private val SEEKBAR_THUMB_DRAG = 18.dp
 private val SEEKBAR_TOOLTIP_HALF = 30.dp
 private val SEEKBAR_TOOLTIP_OFFSET_Y = 32.dp
+
+// Speed 加速提示距離畫面頂端的距離
+private val GESTURE_INDICATOR_TOP_PAD = 80.dp

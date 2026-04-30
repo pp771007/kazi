@@ -235,7 +235,7 @@ fun PosterCard(
                         .align(Alignment.TopEnd)
                         .padding(5.dp)
                         .clip(RoundedCornerShape(5.dp))
-                        .background(Color(0xCC000000))
+                        .background(Color(0x99000000))
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 ) {
                     Text(
@@ -251,7 +251,7 @@ fun PosterCard(
                         .align(Alignment.BottomStart)
                         .padding(5.dp)
                         .clip(RoundedCornerShape(5.dp))
-                        .background(AppColors.Primary.copy(alpha = 0.85f))
+                        .background(AppColors.Primary.copy(alpha = 0.6f))
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 ) {
                     Text(

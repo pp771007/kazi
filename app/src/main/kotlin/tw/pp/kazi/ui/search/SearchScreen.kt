@@ -45,6 +45,7 @@ import tw.pp.kazi.data.SearchQuery
 import tw.pp.kazi.data.Site
 import tw.pp.kazi.data.SiteSearchStatus
 import tw.pp.kazi.data.Video
+import tw.pp.kazi.data.ViewMode
 import tw.pp.kazi.data.aggregateByName
 import tw.pp.kazi.data.applyExcludes
 import tw.pp.kazi.data.parseSearchQuery
@@ -245,6 +246,12 @@ fun SearchScreen(
         titleBadges = if (incognito) {
             { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會留紀錄）") }
         } else null,
+        trailing = {
+            ViewModeToggle(
+                current = settings.viewMode,
+                onPick = { scope.launch { container.configRepository.updateViewMode(it) } },
+            )
+        },
         onBack = { nav.popBackStack() },
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
@@ -744,6 +751,20 @@ private fun statusOrder(s: SiteSearchStatus): Int = when (s) {
     SiteSearchStatus.Success -> 0
     SiteSearchStatus.Empty -> 1
     SiteSearchStatus.Failed -> 2
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun ViewModeToggle(current: ViewMode, onPick: (ViewMode) -> Unit) {
+    FocusableTag(
+        text = current.emoji,
+        selected = false,
+        onClick = {
+            val entries = ViewMode.entries
+            val next = entries[(entries.indexOf(current) + 1) % entries.size]
+            onPick(next)
+        },
+    )
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
