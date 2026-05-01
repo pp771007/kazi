@@ -134,9 +134,15 @@ fun UpdateSection() {
     }
 
     // state 變動後 focus 會掉（按鈕 composable 被換掉，TV 上 focus 預設會跳走），
-    // 用 FocusRequester 抓回來，讓「檢查更新 → 檢查中 → 下載並安裝」連續按下去 focus 不會跳出 UpdateSection
+    // 用 FocusRequester 抓回來，讓「檢查更新 → 檢查中 → 下載並安裝」連續按下去 focus 不會跳出 UpdateSection。
+    // 跳過初次 composition 那一發（state=Idle）— 不然進設定頁就會搶走 focus，蓋過外層想 focus 「站點管理」的需求
     val mainButtonFocus = remember { FocusRequester() }
+    var skipFirstFocus by remember { mutableStateOf(true) }
     LaunchedEffect(state) {
+        if (skipFirstFocus) {
+            skipFirstFocus = false
+            return@LaunchedEffect
+        }
         kotlinx.coroutines.delay(50)  // 等新按鈕 attach 到 layout
         runCatching { mainButtonFocus.requestFocus() }
     }

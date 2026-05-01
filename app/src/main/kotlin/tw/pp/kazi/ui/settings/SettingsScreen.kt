@@ -15,6 +15,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -44,6 +46,13 @@ fun SettingsScreen() {
     val context = LocalContext.current
     val sites by container.siteRepository.sites.collectAsState()
 
+    // 進設定頁預設 focus 到「站點管理」(主要操作)；不要讓 UpdateSection 預設搶走 focus
+    val siteManagementFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(50)  // 等 layout 把 focusable attach 完成
+        runCatching { siteManagementFocus.requestFocus() }
+    }
+
     ScreenScaffold(
         title = "設定",
         subtitle = "站點 · 紀錄",
@@ -69,6 +78,7 @@ fun SettingsScreen() {
                     text = "站點管理",
                     icon = Icons.Filled.Dns,
                     onClick = { nav.navigate(Routes.Setup) },
+                    modifier = Modifier.focusRequester(siteManagementFocus),
                 )
             }
 
