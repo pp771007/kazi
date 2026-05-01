@@ -2,6 +2,7 @@ package tw.pp.kazi.ui.lan
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,6 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -57,6 +60,14 @@ fun LanShareScreen() {
     // ——landscape 手機 ~360dp 高度容不下 300dp QR 完整顯示，掃不到
     val qrSize = if (windowSize == WindowSize.Expanded) QR_DISPLAY_WIDE else QR_DISPLAY_COMPACT
 
+    // QR Box 自己也是 focusable — 進頁面預設停在這，避免 TV 預設搶到下方「啟用/停止」
+    // 按鈕、bringIntoView 把 QR 推出可視範圍而使用者按上又回不去（QR 不可 focus 就接不到 D-pad）
+    val qrFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(50)
+        runCatching { qrFocus.requestFocus() }
+    }
+
     val qrPanel: @Composable () -> Unit = {
         QrPanel(
             running = state.running,
@@ -75,6 +86,7 @@ fun LanShareScreen() {
                 }
             },
             qrSize = qrSize,
+            qrFocus = qrFocus,
         )
     }
     val stepsPanel: @Composable () -> Unit = { StepsPanel(compact = compact) }
@@ -122,6 +134,7 @@ private fun QrPanel(
     qrBitmap: ImageBitmap?,
     onToggle: () -> Unit,
     qrSize: Dp,
+    qrFocus: FocusRequester,
 ) {
     Column(
         modifier = Modifier
@@ -138,6 +151,8 @@ private fun QrPanel(
                     .size(qrSize)
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color.White)
+                    .focusRequester(qrFocus)
+                    .focusable()
                     .padding(10.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -184,7 +199,9 @@ private fun QrPanel(
                 modifier = Modifier
                     .size(qrSize)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF0D0D15)),
+                    .background(Color(0xFF0D0D15))
+                    .focusRequester(qrFocus)
+                    .focusable(),
                 contentAlignment = Alignment.Center,
             ) {
                 androidx.tv.material3.Icon(
