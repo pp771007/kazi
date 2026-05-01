@@ -88,6 +88,9 @@ fun DetailScreen(siteId: Long, vodId: Long) {
     var selectedSource by remember(currentSiteId, currentVodId) { mutableIntStateOf(0) }
     var episodesReversed by rememberSaveable { mutableStateOf(false) }
     val firstEpisodeFocus = remember { FocusRequester() }
+    val resumeFocus = remember { FocusRequester() }
+    // 進入頁面只 focus 一次；切 peer (currentSiteId/vodId 變動) 視為重新進入，要重新搶焦
+    var pendingInitialFocus by remember(currentSiteId, currentVodId) { mutableStateOf(true) }
 
     val historyItem = remember(history, currentSiteId, currentVodId) {
         history.firstOrNull { it.siteId == currentSiteId && it.videoId == currentVodId }
@@ -117,8 +120,24 @@ fun DetailScreen(siteId: Long, vodId: Long) {
         loading = false
     }
 
-    LaunchedEffect(details, episodesReversed) {
-        if (details != null) runCatching { firstEpisodeFocus.requestFocus() }
+    // 載入完才 focus；歷史有效就 focus 繼續觀看，否則 fallback 第一集。
+    // delay 50ms 等 focusable 真的 attach 到 layout，否則 request 會在 attach 前打到 → 失效
+    LaunchedEffect(details) {
+        if (details == null || !pendingInitialFocus) return@LaunchedEffect
+        kotlinx.coroutines.delay(50)
+        val canResume = historyItem != null
+            && historyItem.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS
+        val target = if (canResume) resumeFocus else firstEpisodeFocus
+        runCatching { target.requestFocus() }
+        pendingInitialFocus = false
+    }
+
+    // 反序切換：focus 顯示順序的第一集（保留原本行為），但只在初次 focus 已完成後才生效，
+    // 不然 details 第一次載入時這條跟初次 focus 那條會搶
+    LaunchedEffect(episodesReversed) {
+        if (details == null || pendingInitialFocus) return@LaunchedEffect
+        kotlinx.coroutines.delay(50)
+        runCatching { firstEpisodeFocus.requestFocus() }
     }
 
     if (loading) { LoadingState(); return }
@@ -166,6 +185,19 @@ fun DetailScreen(siteId: Long, vodId: Long) {
         }
     }
 
+    // 「下一集」相對於 history 紀錄的源跟集數；對齊「繼續觀看」的 source（不是當前 selectedSource，
+    // 不然切 source 後 下一集 含意會跟 繼續觀看 脫節）。沒下一集就 null，layout 不渲染按鈕
+    val onPlayNext: (() -> Unit)? = run {
+        val h = historyItem ?: return@run null
+        val src = d.sources.getOrNull(h.sourceIndex) ?: return@run null
+        val nextIdx = h.episodeIndex + 1
+        if (nextIdx !in src.episodes.indices) return@run null
+        val handler: () -> Unit = {
+            nav.navigate(Routes.player(currentSiteId, currentVodId, h.sourceIndex, nextIdx))
+        }
+        handler
+    }
+
     if (windowSize.isCompact) {
         CompactLayout(
             d = d, site = site, siteId = currentSiteId, vodId = currentVodId,
@@ -173,6 +205,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
             onSourcePick = { selectedSource = it },
             historyItem = historyItem,
             firstEpisodeFocus = firstEpisodeFocus,
+            resumeFocus = resumeFocus,
             isFavorited = isFavorited,
             onToggleFavorite = onToggleFavorite,
             onBack = { nav.popBackStack() },
@@ -184,6 +217,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
             onEpisode = { idx ->
                 nav.navigate(Routes.player(currentSiteId, currentVodId, selectedSource, idx))
             },
+            onPlayNext = onPlayNext,
             pagePad = windowSize.pagePadding(),
             peers = peers,
             onPeerPick = onPeerPick,
@@ -198,6 +232,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
             onSourcePick = { selectedSource = it },
             historyItem = historyItem,
             firstEpisodeFocus = firstEpisodeFocus,
+            resumeFocus = resumeFocus,
             isFavorited = isFavorited,
             onToggleFavorite = onToggleFavorite,
             onBack = { nav.popBackStack() },
@@ -209,6 +244,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
             onEpisode = { idx ->
                 nav.navigate(Routes.player(currentSiteId, currentVodId, selectedSource, idx))
             },
+            onPlayNext = onPlayNext,
             peers = peers,
             onPeerPick = onPeerPick,
             episodesReversed = episodesReversed,
@@ -269,11 +305,13 @@ private fun CompactLayout(
     onSourcePick: (Int) -> Unit,
     historyItem: HistoryItem?,
     firstEpisodeFocus: FocusRequester,
+    resumeFocus: FocusRequester,
     isFavorited: Boolean,
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
     onResume: (HistoryItem) -> Unit,
     onEpisode: (Int) -> Unit,
+    onPlayNext: (() -> Unit)?,
     pagePad: Dp,
     peers: List<tw.pp.kazi.data.Video>?,
     onPeerPick: (tw.pp.kazi.data.Video) -> Unit,
@@ -363,12 +401,27 @@ private fun CompactLayout(
         }
 
         if (historyItem != null && historyItem.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) {
-            AppButton(
-                text = "繼續觀看：${historyItem.episodeName.ifBlank { "第 ${historyItem.episodeIndex + 1} 集" }}",
-                icon = Icons.Filled.PlayArrow,
-                onClick = { onResume(historyItem) },
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-            )
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AppButton(
+                    text = "繼續觀看：${historyItem.episodeName.ifBlank { "第 ${historyItem.episodeIndex + 1} 集" }}",
+                    icon = Icons.Filled.PlayArrow,
+                    onClick = { onResume(historyItem) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(resumeFocus),
+                )
+                if (onPlayNext != null) {
+                    AppButton(
+                        text = "下一集",
+                        icon = Icons.Filled.SkipNext,
+                        onClick = onPlayNext,
+                        primary = false,
+                    )
+                }
+            }
         }
 
         if (v.vodActor.isNotBlank()) InfoLine("演員", v.vodActor, maxLines = 2)
@@ -437,11 +490,13 @@ private fun WideLayout(
     onSourcePick: (Int) -> Unit,
     historyItem: HistoryItem?,
     firstEpisodeFocus: FocusRequester,
+    resumeFocus: FocusRequester,
     isFavorited: Boolean,
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
     onResume: (HistoryItem) -> Unit,
     onEpisode: (Int) -> Unit,
+    onPlayNext: (() -> Unit)?,
     peers: List<tw.pp.kazi.data.Video>?,
     onPeerPick: (tw.pp.kazi.data.Video) -> Unit,
     episodesReversed: Boolean,
@@ -530,15 +585,6 @@ private fun WideLayout(
             InfoLine(label = "導演", value = v.vodDirector)
             InfoLine(label = "演員", value = v.vodActor, maxLines = 3)
             InfoLine(label = "站點", value = site?.name ?: "-")
-
-            if (historyItem != null && historyItem.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) {
-                Spacer(Modifier.height(4.dp))
-                AppButton(
-                    text = "繼續觀看：${historyItem.episodeName.ifBlank { "第 ${historyItem.episodeIndex + 1} 集" }}",
-                    icon = Icons.Filled.PlayArrow,
-                    onClick = { onResume(historyItem) },
-                )
-            }
         }
 
         Column(
@@ -549,6 +595,26 @@ private fun WideLayout(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
+            // 繼續觀看放在右欄最上方，進頁面就 focus 在這；下一集視 history 而定（沒就不渲染）
+            if (historyItem != null && historyItem.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppButton(
+                        text = "繼續觀看：${historyItem.episodeName.ifBlank { "第 ${historyItem.episodeIndex + 1} 集" }}",
+                        icon = Icons.Filled.PlayArrow,
+                        onClick = { onResume(historyItem) },
+                        modifier = Modifier.focusRequester(resumeFocus),
+                    )
+                    if (onPlayNext != null) {
+                        AppButton(
+                            text = "下一集",
+                            icon = Icons.Filled.SkipNext,
+                            onClick = onPlayNext,
+                            primary = false,
+                        )
+                    }
+                }
+            }
+
             if (v.vodContent.isNotBlank()) {
                 SectionHeader(title = "劇情簡介")
                 Text(
