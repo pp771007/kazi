@@ -49,6 +49,7 @@ import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
 import tw.pp.kazi.ui.components.ScreenScaffold
+import tw.pp.kazi.ui.components.ViewModeToggle
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.pagePadding
@@ -472,21 +473,6 @@ fun HomeScreen() {
             }
         }
     }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun ViewModeToggle(current: ViewMode, onPick: (ViewMode) -> Unit) {
-    // 全平台統一：單顆按鈕循環切換（直 → 橫 → 方 → 直）；不再用 3 顆並排版
-    FocusableTag(
-        text = current.emoji,
-        selected = false,
-        onClick = {
-            val entries = ViewMode.entries
-            val next = entries[(entries.indexOf(current) + 1) % entries.size]
-            onPick(next)
-        },
-    )
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

@@ -45,6 +45,7 @@ import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.ui.components.AppButton
+import tw.pp.kazi.ui.components.CopyTextButton
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.LoadingState
@@ -252,28 +253,6 @@ fun DetailScreen(siteId: Long, vodId: Long) {
             incognito = incognito,
         )
     }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun CopyTextButton(text: String) {
-    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-    var copied by remember { mutableStateOf(false) }
-    LaunchedEffect(copied) {
-        if (copied) {
-            kotlinx.coroutines.delay(1500)
-            copied = false
-        }
-    }
-    AppButton(
-        text = if (copied) "已複製" else "複製",
-        icon = if (copied) Icons.Filled.Check else Icons.Filled.ContentCopy,
-        onClick = {
-            clipboard.setText(androidx.compose.ui.text.AnnotatedString(text))
-            copied = true
-        },
-        primary = false,
-    )
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

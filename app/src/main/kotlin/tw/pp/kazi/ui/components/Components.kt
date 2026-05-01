@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,7 +38,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,6 +51,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import tw.pp.kazi.data.ViewMode
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.ui.isCompact
@@ -232,7 +236,7 @@ fun PosterCard(
             if (remarks.isNotBlank()) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
+                        .align(Alignment.BottomEnd)
                         .padding(5.dp)
                         .clip(RoundedCornerShape(5.dp))
                         .background(Color(0x99000000))
@@ -592,11 +596,57 @@ fun StatusPill(
     }
 }
 
+/**
+ * 影片版型循環切換（直 → 橫 → 方 → 直）— 統一一顆按鈕，避免 3 顆並排佔空間。
+ * Home / 搜尋頁的標題列 trailing 都用同一顆。
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun ViewModeToggle(current: ViewMode, onPick: (ViewMode) -> Unit) {
+    FocusableTag(
+        text = current.emoji,
+        selected = false,
+        onClick = {
+            val entries = ViewMode.entries
+            val next = entries[(entries.indexOf(current) + 1) % entries.size]
+            onPick(next)
+        },
+    )
+}
+
+/**
+ * 點下後把 [text] 寫進剪貼簿，按鈕暫時切到「已複製」+ Check icon，[COPY_FEEDBACK_MS] 後復原。
+ * 純文字內容（影片名 / URL 等）要讓使用者一鍵複製時都用這顆。
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun CopyTextButton(text: String, modifier: Modifier = Modifier) {
+    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            kotlinx.coroutines.delay(COPY_FEEDBACK_MS)
+            copied = false
+        }
+    }
+    AppButton(
+        text = if (copied) "已複製" else "複製",
+        icon = if (copied) Icons.Filled.Check else Icons.Filled.ContentCopy,
+        onClick = {
+            clipboard.setText(AnnotatedString(text))
+            copied = true
+        },
+        primary = false,
+        modifier = modifier,
+    )
+}
+
 val CardShape: Shape = RoundedCornerShape(14.dp)
 
 private val BUTTON_H_PAD = 14.dp
 private val BUTTON_V_PAD = 9.dp
 private val BUTTON_ICON_ONLY_SIZE = 44.dp
+private const val COPY_FEEDBACK_MS = 1500L
 
 /**
  * 呼吸燈 focus border：active 時 border 顏色的 alpha 在 0.45 ↔ 1.0 之間平滑往返，

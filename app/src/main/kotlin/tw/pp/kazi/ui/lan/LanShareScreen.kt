@@ -20,8 +20,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -31,6 +29,7 @@ import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.ui.components.AppButton
+import tw.pp.kazi.ui.components.CopyTextButton
 import tw.pp.kazi.ui.components.GradientTopBar
 import tw.pp.kazi.ui.components.SectionHeader
 import tw.pp.kazi.ui.isCompact
@@ -174,25 +173,7 @@ private fun QrPanel(
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.titleSmall,
                 )
-                url?.let { u ->
-                    val clipboard = LocalClipboardManager.current
-                    var copied by remember { mutableStateOf(false) }
-                    LaunchedEffect(copied) {
-                        if (copied) {
-                            kotlinx.coroutines.delay(1500)
-                            copied = false
-                        }
-                    }
-                    AppButton(
-                        text = if (copied) "已複製" else "複製",
-                        icon = if (copied) Icons.Filled.Check else Icons.Filled.ContentCopy,
-                        onClick = {
-                            clipboard.setText(AnnotatedString(u))
-                            copied = true
-                        },
-                        primary = false,
-                    )
-                }
+                url?.let { u -> CopyTextButton(text = u) }
             }
         } else {
             Box(
