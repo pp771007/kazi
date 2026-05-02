@@ -37,7 +37,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 開啟：Compose / kotlinx 大量 generic + lambda 經 inline / devirtualize 後
+            // 在低階 TV CPU 通常拿 10-20% 提升；shrinkResources 連帶把沒用到的資源砍掉
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

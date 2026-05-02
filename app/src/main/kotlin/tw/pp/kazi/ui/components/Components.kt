@@ -1,12 +1,8 @@
 package tw.pp.kazi.ui.components
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -197,15 +193,15 @@ fun PosterCard(
     val focused by interaction.collectIsFocusedAsState()
     val context = LocalContext.current
 
-    val scale by animateFloatAsState(if (focused) 1.08f else 1f, tween(200), label = "card-scale")
-    // border 寬度固定 3dp，只切換 brush（focus = 流光 / idle = 微透明灰），避免 layout 抖動
+    val scale by animateFloatAsState(if (focused) 1.08f else 1f, tween(120), label = "card-scale")
+    // 之前 focus 用 12dp Modifier.shadow（GPU blur）+ 3dp border，低階 TV GPU 跑不順。
+    // 改成「focus 加粗 border 到 5dp」表達立體感，去掉整條 shadow。視覺上 focus 更銳利、
+    // 跑分省一個 RenderNode + alpha blending pass
     val borderBrush = rememberFocusFlowBrush(active = focused, idleColor = Color(0x15FFFFFF))
-    val borderWidth = 3.dp
-    val elevation by animateDpAsState(if (focused) 12.dp else 0.dp, tween(160), label = "card-elev")
+    val borderWidth by animateDpAsState(if (focused) 5.dp else 3.dp, tween(120), label = "card-border-w")
 
     val baseModifier = modifier
         .scale(scale)
-        .shadow(elevation, RoundedCornerShape(12.dp))
         .clip(RoundedCornerShape(12.dp))
         .background(AppColors.BgCard)
         .border(BorderStroke(borderWidth, borderBrush), RoundedCornerShape(12.dp))
@@ -649,22 +645,11 @@ private val BUTTON_ICON_ONLY_SIZE = 44.dp
 private const val COPY_FEEDBACK_MS = 1500L
 
 /**
- * 呼吸燈 focus border：active 時 border 顏色的 alpha 在 0.45 ↔ 1.0 之間平滑往返，
- * 比流光那種會 slide 的視覺穩定很多，也不會在小元件上看起來「在跑」。
- * idleColor: 沒 focus 時的 border 顏色。
+ * Focus border 顏色：active 時用 FocusRing 全亮，idle 時用 idleColor。
+ * 之前版本是 alpha 0.45↔1.0 呼吸燈（infiniteRepeatable），但每個 focused 元件
+ * 都會持續 ~60fps 重組，TV 跨卡跳焦時多顆同時動會頓。改成固定色，視覺更銳利、
+ * focus 更明顯，perf 賺很多
  */
 @Composable
-private fun rememberFocusFlowBrush(active: Boolean, idleColor: Color): Brush {
-    if (!active) return SolidColor(idleColor)
-    val transition = rememberInfiniteTransition(label = "focus-breath")
-    val intensity by transition.animateFloat(
-        initialValue = 0.45f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "focus-breath-intensity",
-    )
-    return SolidColor(AppColors.FocusRing.copy(alpha = intensity))
-}
+private fun rememberFocusFlowBrush(active: Boolean, idleColor: Color): Brush =
+    if (active) SolidColor(AppColors.FocusRing) else SolidColor(idleColor)
