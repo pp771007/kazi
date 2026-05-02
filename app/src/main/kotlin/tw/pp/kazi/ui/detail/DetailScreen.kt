@@ -225,7 +225,14 @@ fun DetailScreen(siteId: Long, vodId: Long) {
         handler
     }
 
-    if (windowSize.isCompact) {
+    val onSearchByName: (String) -> Unit = { name ->
+        nav.navigate(Routes.search(name))
+    }
+
+    // 只有 Expanded（電視盒 / 大平板）才用左右分欄 Wide layout；Medium（手機橫向 ~360dp 高）
+    // 用 Wide 會讓 380dp 寬 + 2:3 比例 = 570dp 高的 poster 把整個螢幕吃掉、看不到標題，改用
+    // Compact 那種 120dp 小 poster + 垂直滾動的版型才合理
+    if (windowSize != WindowSize.Expanded) {
         CompactLayout(
             d = d, site = site, siteId = currentSiteId, vodId = currentVodId,
             selectedSource = selectedSource,
@@ -245,6 +252,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
                 nav.navigate(Routes.player(currentSiteId, currentVodId, selectedSource, idx))
             },
             onPlayNext = onPlayNext,
+            onSearchByName = onSearchByName,
             pagePad = windowSize.pagePadding(),
             peers = peers,
             onPeerPick = onPeerPick,
@@ -272,6 +280,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
                 nav.navigate(Routes.player(currentSiteId, currentVodId, selectedSource, idx))
             },
             onPlayNext = onPlayNext,
+            onSearchByName = onSearchByName,
             peers = peers,
             onPeerPick = onPeerPick,
             episodesReversed = episodesReversed,
@@ -317,6 +326,7 @@ private fun CompactLayout(
     onResume: (HistoryItem) -> Unit,
     onEpisode: (Int) -> Unit,
     onPlayNext: (() -> Unit)?,
+    onSearchByName: (String) -> Unit,
     pagePad: Dp,
     peers: List<tw.pp.kazi.data.Video>?,
     onPeerPick: (tw.pp.kazi.data.Video) -> Unit,
@@ -382,19 +392,25 @@ private fun CompactLayout(
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 var titleExpanded by rememberSaveable { mutableStateOf(false) }
-                Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        v.vodName,
-                        color = AppColors.OnBg,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = if (titleExpanded) Int.MAX_VALUE else 2,
-                        overflow = if (titleExpanded) TextOverflow.Visible else TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { titleExpanded = !titleExpanded },
-                    )
+                Text(
+                    v.vodName,
+                    color = AppColors.OnBg,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = if (titleExpanded) Int.MAX_VALUE else 2,
+                    overflow = if (titleExpanded) TextOverflow.Visible else TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { titleExpanded = !titleExpanded },
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     CopyTextButton(text = v.vodName)
+                    AppButton(
+                        text = "搜尋",
+                        icon = Icons.Filled.Search,
+                        onClick = { onSearchByName(v.vodName) },
+                        primary = false,
+                    )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (v.vodRemarks.isNotBlank()) BadgeSmall(v.vodRemarks, AppColors.Accent)
@@ -505,6 +521,7 @@ private fun WideLayout(
     onResume: (HistoryItem) -> Unit,
     onEpisode: (Int) -> Unit,
     onPlayNext: (() -> Unit)?,
+    onSearchByName: (String) -> Unit,
     peers: List<tw.pp.kazi.data.Video>?,
     onPeerPick: (tw.pp.kazi.data.Video) -> Unit,
     episodesReversed: Boolean,
@@ -572,15 +589,21 @@ private fun WideLayout(
                     )
                 }
             }
-            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    v.vodName,
-                    color = AppColors.OnBg,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                )
+            Text(
+                v.vodName,
+                color = AppColors.OnBg,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 CopyTextButton(text = v.vodName)
+                AppButton(
+                    text = "搜尋",
+                    icon = Icons.Filled.Search,
+                    onClick = { onSearchByName(v.vodName) },
+                    primary = false,
+                )
             }
             if (v.vodRemarks.isNotBlank() || v.vodYear.isNotBlank() || v.vodArea.isNotBlank()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
