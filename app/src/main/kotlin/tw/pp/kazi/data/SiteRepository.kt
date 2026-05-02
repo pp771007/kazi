@@ -48,7 +48,7 @@ class SiteRepository(context: Context) {
             }
             val name = rawName?.trim()?.takeIf { it.isNotEmpty() } ?: autoName(cleanedUrl)
             val site = Site(
-                id = System.currentTimeMillis(),
+                id = nextId(_sites.value),
                 name = name,
                 url = cleanedUrl,
                 order = _sites.value.size,
@@ -172,12 +172,14 @@ class SiteRepository(context: Context) {
             var ok = 0
             var fail = 0
             val current = _sites.value.toMutableList()
+            // 連續分配的 id 直接 ++，且基準從現有最大 id+1 / now 取大者，避免兩次匯入同毫秒撞號
+            var nextSiteId = nextId(current)
             items.forEach { item ->
                 val cleanedUrl = cleanBaseUrl(item.url)
                 if (cleanedUrl == null) { fail++; return@forEach }
                 if (current.any { it.url.equals(cleanedUrl, ignoreCase = true) }) { fail++; return@forEach }
                 val site = Site(
-                    id = System.currentTimeMillis() + ok,  // 加 ok 避免同毫秒撞 id
+                    id = nextSiteId++,
                     name = item.name.trim().ifEmpty { autoName(cleanedUrl) },
                     url = cleanedUrl,
                     enabled = item.enabled,
@@ -216,6 +218,16 @@ class SiteRepository(context: Context) {
 
     private fun writeToDisk(sites: List<Site>) {
         sitesFile.atomicWriteText(AppJson.encodeToString(listSerializer, sites))
+    }
+
+    /**
+     * 產生新 site 的 id：取 (now, max(existing.id)+1) 的較大者。
+     * 純靠 currentTimeMillis() 在連續 add / 匯入時可能同毫秒撞，max+1 保證單調遞增；
+     * now 維持 id 大致跟「建立時間」對應、可讀。
+     */
+    private fun nextId(existing: List<Site>): Long {
+        val maxExisting = existing.maxOfOrNull { it.id } ?: 0L
+        return maxOf(System.currentTimeMillis(), maxExisting + 1)
     }
 
     private fun autoName(cleanUrl: String): String {

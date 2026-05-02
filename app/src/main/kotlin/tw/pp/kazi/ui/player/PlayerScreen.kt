@@ -150,13 +150,24 @@ fun PlayerScreen(
         details?.sources?.getOrNull(currentSourceIdx)?.episodes?.getOrNull(currentEpIdx)
     }
 
-    LaunchedEffect(siteId, vodId) {
+    val sitesLoaded by container.siteRepository.loaded.collectAsState()
+    LaunchedEffect(siteId, vodId, sitesLoaded) {
         if (details != null) return@LaunchedEffect
-        val s = site ?: return@LaunchedEffect
-        val r = container.macCmsApi.fetchDetails(s, vodId)
-        if (r is ApiResult.Success) {
-            details = r.data
-            container.cacheDetails(siteId, vodId, r.data)
+        // 等 site 列表載完再判斷站台是否存在；不然 App 剛開、sites 還沒讀檔時會誤報「找不到站點」
+        if (!sitesLoaded) return@LaunchedEffect
+        val s = site
+        if (s == null) {
+            playbackError = "找不到對應站點"
+            loading = false
+            return@LaunchedEffect
+        }
+        when (val r = container.macCmsApi.fetchDetails(s, vodId)) {
+            is ApiResult.Success -> {
+                details = r.data
+                container.cacheDetails(siteId, vodId, r.data)
+            }
+            // 失敗時要寫進 playbackError，不然 LoadingState 收掉後畫面就一片空黑、使用者只能按返回
+            is ApiResult.Error -> playbackError = r.message
         }
         loading = false
     }
@@ -1043,7 +1054,10 @@ private fun saveHistoryIfReady(
     val s = site ?: return
     val d = details ?: return
     if (positionMs <= 0 || durationMs <= 0) return
-    val src = d.sources.getOrNull(sourceIdx)
+    // 跟 HistoryScreen 檢查更新時的 maxOfOrNull 對齊（line 99），不然使用者切到較少集數
+    // 的 source 看完後存進的數字是「當前 source 的集數」，下次掃描跟「全部 sources 的最大值」
+    // 比，會誤標 hasUpdate / 誤算 newEpisodesCount
+    val totalAcrossSources = d.sources.maxOfOrNull { it.episodes.size } ?: 0
 
     // 無痕模式：只追記「已收藏 / 已有觀看紀錄」的影片進度。
     // 新片（沒收藏沒紀錄）才是真正的「探索狀態」，維持完全無痕；已承諾過的片
@@ -1073,7 +1087,7 @@ private fun saveHistoryIfReady(
                 episodeName = episodeName,
                 positionMs = positionMs,
                 durationMs = durationMs,
-                totalEpisodes = src?.episodes?.size ?: 0,
+                totalEpisodes = totalAcrossSources,
             )
         )
     }

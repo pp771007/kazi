@@ -50,8 +50,10 @@ class MacCmsApi {
 
             val code = readInt(root, "code")
             val total = readInt(root, "total")
-            val page = readInt(root, "page")
-            val pageCount = readInt(root, "pagecount")
+            // 用 resp 前綴跟外層 fun 的 page 參數區分；shadow 容易搞混 +
+            // 可讀性差（API 回傳 page=0 vs 我們送出去的 page=1）
+            val respPage = readInt(root, "page")
+            val respPageCount = readInt(root, "pagecount")
             val categories = (root["class"] as? JsonArray)?.mapNotNull { el ->
                 runCatching { json.decodeFromJsonElement(Category.serializer(), el) }.getOrNull()
             }.orEmpty()
@@ -74,7 +76,7 @@ class MacCmsApi {
             if (videoObjs.isEmpty()) {
                 return@runCatching ApiResult.Success(
                     VideoListPage(
-                        page = page, pageCount = pageCount, total = total,
+                        page = respPage, pageCount = respPageCount, total = total,
                         videos = emptyList(), categories = categories,
                     )
                 )
@@ -111,8 +113,8 @@ class MacCmsApi {
 
             ApiResult.Success(
                 VideoListPage(
-                    page = page.coerceAtLeast(1),
-                    pageCount = pageCount.coerceAtLeast(1),
+                    page = respPage.coerceAtLeast(1),
+                    pageCount = respPageCount.coerceAtLeast(1),
                     total = total,
                     videos = videos,
                     categories = categories,
