@@ -2,6 +2,7 @@ package tw.pp.kazi.ui.search
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -738,7 +739,10 @@ private fun SiteSelector(
             AppButton(text = "全選", onClick = onSelectAll, primary = false)
             AppButton(text = "全不選", onClick = onSelectNone, primary = false)
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.focusGroup(),
+        ) {
             items(sites, key = { it.id }) { s ->
                 FocusableTag(
                     text = s.name,
@@ -763,7 +767,10 @@ private fun HistoryPills(items: List<String>, onPick: (String) -> Unit, onClear:
             Spacer(Modifier.weight(1f))
             AppButton(text = "清除", icon = Icons.Filled.ClearAll, onClick = onClear, primary = false)
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.focusGroup(),
+        ) {
             items(items) { kw ->
                 FocusableTag(text = kw, selected = false, onClick = { onPick(kw) })
             }

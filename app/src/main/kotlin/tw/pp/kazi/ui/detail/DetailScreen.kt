@@ -2,6 +2,7 @@ package tw.pp.kazi.ui.detail
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -444,7 +445,10 @@ private fun CompactLayout(
 
         if (d.sources.size > 1) {
             SectionHeader(title = "播放來源")
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.focusGroup(),
+            ) {
                 itemsIndexed(d.sources) { idx, s ->
                     FocusableTag(
                         text = "${s.flag} (${s.episodes.size})",
@@ -632,7 +636,10 @@ private fun WideLayout(
 
             if (d.sources.size > 1) {
                 SectionHeader(title = "播放來源")
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.focusGroup(),
+                ) {
                     itemsIndexed(d.sources) { idx, s ->
                         FocusableTag(
                             text = "${s.flag} (${s.episodes.size})",
@@ -723,7 +730,10 @@ private fun PeerRow(
             color = AppColors.OnBgMuted,
             style = MaterialTheme.typography.labelSmall,
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.focusGroup(),
+        ) {
             itemsIndexed(peers, key = { _, it -> "${it.fromSiteId}-${it.vodId}" }) { _, peer ->
                 FocusableTag(
                     text = peer.fromSite ?: "未知",

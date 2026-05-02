@@ -3,6 +3,7 @@ package tw.pp.kazi.ui.setup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -664,7 +665,10 @@ private fun SiteRow(
                 style = MaterialTheme.typography.labelSmall,
                 maxLines = 1,
             )
-            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.focusGroup(),
+            ) {
                 item {
                     AppButton(
                         text = if (busy) "檢查中" else "檢查",
