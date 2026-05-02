@@ -80,7 +80,7 @@ fun AppButton(
         focused -> AppColors.Surface
         else -> AppColors.BgElevated
     }
-    val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(160), label = "btn-scale")
+    val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(100), label = "btn-scale")
     // border 寬度固定 2dp 不動畫，避免每次 focus 變化造成 layout shift
     val borderBrush = rememberFocusFlowBrush(active = focused, idleColor = Color.Transparent)
     val borderWidth = 2.dp
@@ -154,7 +154,7 @@ fun FocusableTag(
     }
     val borderBrush = rememberFocusFlowBrush(active = focused, idleColor = Color.Transparent)
     val borderWidth = 2.dp
-    val scale by animateFloatAsState(if (focused) 1.06f else 1f, tween(160), label = "tag-scale")
+    val scale by animateFloatAsState(if (focused) 1.06f else 1f, tween(100), label = "tag-scale")
 
     Box(
         modifier = modifier
@@ -192,6 +192,9 @@ fun PosterCard(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val context = LocalContext.current
+    val windowSize = LocalWindowSize.current
+    // TV 一次同時 load 6+ 張卡片 + Coil 內建 fade-in 疊在一起會頓；只在小螢幕保留 fade
+    val useCrossfade = windowSize != WindowSize.Expanded
 
     val scale by animateFloatAsState(if (focused) 1.08f else 1f, tween(120), label = "card-scale")
     // 之前 focus 用 12dp Modifier.shadow（GPU blur）+ 3dp border，低階 TV GPU 跑不順。
@@ -219,8 +222,8 @@ fun PosterCard(
         ) {
             if (imageUrl.isNotBlank()) {
                 // memoize ImageRequest，避免每次 recompose 都生新 model 讓 AsyncImage 重跑流程
-                val imageRequest = remember(imageUrl) {
-                    ImageRequest.Builder(context).data(imageUrl).crossfade(true).build()
+                val imageRequest = remember(imageUrl, useCrossfade) {
+                    ImageRequest.Builder(context).data(imageUrl).crossfade(useCrossfade).build()
                 }
                 AsyncImage(
                     model = imageRequest,
@@ -264,7 +267,6 @@ fun PosterCard(
             }
         }
         // 電視盒上字太小看不清楚 → wide 用 bodyMedium、compact 維持 bodySmall
-        val windowSize = LocalWindowSize.current
         Text(
             text = title,
             color = AppColors.OnBg,

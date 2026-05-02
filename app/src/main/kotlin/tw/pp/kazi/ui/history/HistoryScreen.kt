@@ -207,6 +207,7 @@ private fun HistoryRow(
     focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
 ) {
     val context = LocalContext.current
+    val useCrossfade = LocalWindowSize.current != tw.pp.kazi.ui.WindowSize.Expanded
     val progress = if (item.durationMs > 0) item.positionMs.toFloat() / item.durationMs.toFloat() else 0f
     val hasNextEp = item.totalEpisodes > 0 && item.episodeIndex + 1 < item.totalEpisodes
 
@@ -230,8 +231,8 @@ private fun HistoryRow(
             contentAlignment = Alignment.BottomStart,
         ) {
             if (item.videoPic.isNotBlank()) {
-                val imageRequest = remember(item.videoPic) {
-                    ImageRequest.Builder(context).data(item.videoPic).crossfade(true).build()
+                val imageRequest = remember(item.videoPic, useCrossfade) {
+                    ImageRequest.Builder(context).data(item.videoPic).crossfade(useCrossfade).build()
                 }
                 AsyncImage(
                     model = imageRequest,

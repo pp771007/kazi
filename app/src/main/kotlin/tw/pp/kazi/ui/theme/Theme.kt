@@ -23,7 +23,10 @@ object AppColors {
     val OnBg = Color(0xFFF1F5F9)
     val OnBgMuted = Color(0xFF94A3B8)
     val OnBgDim = Color(0xFF64748B)
-    val FocusRing = Color(0xFF3B82F6)
+    // 改白色：原本是 #3B82F6 跟 Primary / FocusableTag selected bg 同色，selected
+    // tag 拿到 focus 時 border 直接撞色看不見。白色在所有底色（深底 / Primary 藍 /
+    // BgCard）上都有強對比，TV 從遠處也最明顯（Netflix / YouTube 都用白）
+    val FocusRing = Color(0xFFFFFFFF)
     val ShimmerStart = Color(0xFF1E1E2E)
     val ShimmerEnd = Color(0xFF2A2A3E)
 }
