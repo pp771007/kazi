@@ -83,10 +83,18 @@ fun DetailScreen(siteId: Long, vodId: Long) {
         favorites.any { it.siteId == currentSiteId && it.videoId == currentVodId }
     }
 
-    var details by remember(currentSiteId, currentVodId) { mutableStateOf<VideoDetails?>(null) }
-    var loading by remember(currentSiteId, currentVodId) { mutableStateOf(true) }
+    // 從 player 返回時 NavCompose 會重建 composable，普通 remember 會 reset 害頁面重新 fetch；
+    // 用 cache 當初始值 + 命中就跳過 fetch（PlayerScreen 已是這 pattern，這邊對齊）
+    val cachedInitial = remember(currentSiteId, currentVodId) {
+        container.cachedDetails(currentSiteId, currentVodId)
+    }
+    var details by remember(currentSiteId, currentVodId) { mutableStateOf<VideoDetails?>(cachedInitial) }
+    var loading by remember(currentSiteId, currentVodId) { mutableStateOf(cachedInitial == null) }
     var errorMsg by remember(currentSiteId, currentVodId) { mutableStateOf<String?>(null) }
-    var selectedSource by remember(currentSiteId, currentVodId) { mutableIntStateOf(0) }
+    // selectedSource 改 saveable，使用者手動切過 source 後 → 看影片 → 返回，不要被打回 0
+    var selectedSource by rememberSaveable(currentSiteId, currentVodId) { mutableIntStateOf(0) }
+    // 「依 history 自動挑 source」只在這部影片第一次顯示時做一次，之後讓使用者選擇主導
+    var didAutoPickSource by rememberSaveable(currentSiteId, currentVodId) { mutableStateOf(false) }
     var episodesReversed by rememberSaveable { mutableStateOf(false) }
     val firstEpisodeFocus = remember { FocusRequester() }
     val resumeFocus = remember { FocusRequester() }
@@ -103,22 +111,35 @@ fun DetailScreen(siteId: Long, vodId: Long) {
             loading = false
             return@LaunchedEffect
         }
+        // cache 命中：略過 API（從 player 返回 / 切 peer 又回來時 reload 的根因）
+        if (details != null) {
+            loading = false
+            return@LaunchedEffect
+        }
         loading = true
         errorMsg = null
         when (val r = container.macCmsApi.fetchDetails(site, currentVodId)) {
             is ApiResult.Success -> {
                 details = r.data
                 container.cacheDetails(currentSiteId, currentVodId, r.data)
-                val firstNonEmpty = r.data.sources.indexOfFirst { it.episodes.isNotEmpty() }
-                val fromHistory = historyItem
-                    ?.takeIf { it.sourceIndex in r.data.sources.indices }
-                    ?.takeIf { r.data.sources[it.sourceIndex].episodes.isNotEmpty() }
-                    ?.sourceIndex
-                selectedSource = fromHistory ?: firstNonEmpty.coerceAtLeast(0)
             }
             is ApiResult.Error -> errorMsg = r.message
         }
         loading = false
+    }
+
+    // source 自動挑：第一次進這部影片時依 history（或第一個有集數的 source）挑一次；
+    // 已挑過就不再覆寫使用者後來的選擇。details / historyItem 任一變化都重新評估這個條件
+    LaunchedEffect(details, historyItem, didAutoPickSource) {
+        val d = details
+        if (d == null || didAutoPickSource) return@LaunchedEffect
+        val firstNonEmpty = d.sources.indexOfFirst { it.episodes.isNotEmpty() }
+        val fromHistory = historyItem
+            ?.takeIf { it.sourceIndex in d.sources.indices }
+            ?.takeIf { d.sources[it.sourceIndex].episodes.isNotEmpty() }
+            ?.sourceIndex
+        selectedSource = fromHistory ?: firstNonEmpty.coerceAtLeast(0)
+        didAutoPickSource = true
     }
 
     // 載入完才 focus；歷史有效就 focus 繼續觀看，否則 fallback 第一集。
