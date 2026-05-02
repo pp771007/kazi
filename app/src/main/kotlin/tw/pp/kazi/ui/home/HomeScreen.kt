@@ -6,6 +6,7 @@ import tw.pp.kazi.util.Logger
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
@@ -506,6 +507,9 @@ private fun SiteStrip(
             state = listState,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 2.dp),
+            // focusGroup：讓 Compose 把整個 strip 當一個 focus 集合，按下時整組離開到下一組
+            // (category strip 或 video grid)，不會因 spatial 距離計算跳過 category 直接到 video card
+            modifier = Modifier.focusGroup(),
         ) {
             items(sites, key = { it.id }) { s ->
                 FocusableTag(
@@ -544,6 +548,8 @@ private fun CategoryStrip(
             state = listState,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(vertical = 2.dp),
+            // focusGroup：見 SiteStrip 同款註解
+            modifier = Modifier.focusGroup(),
         ) {
             item {
                 FocusableTag(
