@@ -47,6 +47,14 @@ fun rememberWindowSize(): WindowSize {
 
 val WindowSize.isCompact: Boolean get() = this == WindowSize.Compact
 
+/**
+ * 是否要主動 requestFocus 當作「進頁面預設 focus 起點」。
+ * 只在 Expanded（電視盒 / 大平板）跑：D-pad 導航需要 focus 起點，沒主動設會卡。
+ * Compact / Medium（手機直/橫）不主動搶焦：觸控使用者不需要 visible focus 邊框，
+ * 主動 focus 反而會在 input box / button 上看到不必要的白框
+ */
+val WindowSize.isTv: Boolean get() = this == WindowSize.Expanded
+
 fun WindowSize.pagePadding(): Dp =
     if (isCompact) Spacing.PagePaddingCompact else Spacing.PagePaddingExpanded
 

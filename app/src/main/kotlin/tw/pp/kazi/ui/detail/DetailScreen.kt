@@ -51,6 +51,7 @@ import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.SectionHeader
 import tw.pp.kazi.ui.isCompact
+import tw.pp.kazi.ui.isTv
 import tw.pp.kazi.ui.pagePadding
 import tw.pp.kazi.ui.theme.AppColors
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -143,8 +144,10 @@ fun DetailScreen(siteId: Long, vodId: Long) {
     }
 
     // 載入完才 focus；歷史有效就 focus 繼續觀看，否則 fallback 第一集。
-    // delay 50ms 等 focusable 真的 attach 到 layout，否則 request 會在 attach 前打到 → 失效
+    // delay 50ms 等 focusable 真的 attach 到 layout，否則 request 會在 attach 前打到 → 失效。
+    // 只在 TV 跑：手機觸控不需要 visible focus 起點
     LaunchedEffect(details) {
+        if (!windowSize.isTv) return@LaunchedEffect
         if (details == null || !pendingInitialFocus) return@LaunchedEffect
         kotlinx.coroutines.delay(50)
         val canResume = historyItem != null
@@ -157,6 +160,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
     // 反序切換：focus 顯示順序的第一集（保留原本行為），但只在初次 focus 已完成後才生效，
     // 不然 details 第一次載入時這條跟初次 focus 那條會搶
     LaunchedEffect(episodesReversed) {
+        if (!windowSize.isTv) return@LaunchedEffect
         if (details == null || pendingInitialFocus) return@LaunchedEffect
         kotlinx.coroutines.delay(50)
         runCatching { firstEpisodeFocus.requestFocus() }

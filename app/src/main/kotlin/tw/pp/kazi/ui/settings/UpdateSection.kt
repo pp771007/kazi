@@ -43,6 +43,7 @@ import tw.pp.kazi.data.GitHubAsset
 import tw.pp.kazi.data.GitHubRelease
 import tw.pp.kazi.data.UpdateChecker
 import tw.pp.kazi.ui.components.AppButton
+import tw.pp.kazi.ui.isTv
 import tw.pp.kazi.ui.theme.AppColors
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
@@ -61,6 +62,7 @@ private sealed interface UpdateUiState {
 @Composable
 fun UpdateSection() {
     val context = LocalContext.current
+    val windowSize = tw.pp.kazi.ui.LocalWindowSize.current
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
     // 沒授權時暫存使用者點的 asset，等他從系統設定回來後 ON_RESUME 自動開始下載
@@ -135,7 +137,8 @@ fun UpdateSection() {
 
     // state 變動後 focus 會掉（按鈕 composable 被換掉，TV 上 focus 預設會跳走），
     // 用 FocusRequester 抓回來，讓「檢查更新 → 檢查中 → 下載並安裝」連續按下去 focus 不會跳出 UpdateSection。
-    // 跳過初次 composition 那一發（state=Idle）— 不然進設定頁就會搶走 focus，蓋過外層想 focus 「站點管理」的需求
+    // 跳過初次 composition 那一發（state=Idle）— 不然進設定頁就會搶走 focus，蓋過外層想 focus 「站點管理」的需求。
+    // 只在 TV 跑：手機觸控不需要 keep focus within section
     val mainButtonFocus = remember { FocusRequester() }
     var skipFirstFocus by remember { mutableStateOf(true) }
     LaunchedEffect(state) {
@@ -143,6 +146,7 @@ fun UpdateSection() {
             skipFirstFocus = false
             return@LaunchedEffect
         }
+        if (!windowSize.isTv) return@LaunchedEffect
         kotlinx.coroutines.delay(50)  // 等新按鈕 attach 到 layout
         runCatching { mainButtonFocus.requestFocus() }
     }

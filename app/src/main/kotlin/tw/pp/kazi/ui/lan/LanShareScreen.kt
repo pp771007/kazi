@@ -33,6 +33,7 @@ import tw.pp.kazi.ui.components.CopyTextButton
 import tw.pp.kazi.ui.components.GradientTopBar
 import tw.pp.kazi.ui.components.SectionHeader
 import tw.pp.kazi.ui.isCompact
+import tw.pp.kazi.ui.isTv
 import tw.pp.kazi.ui.pagePadding
 import tw.pp.kazi.ui.sectionGap
 import tw.pp.kazi.ui.theme.AppColors
@@ -59,10 +60,11 @@ fun LanShareScreen() {
     // ——landscape 手機 ~360dp 高度容不下 300dp QR 完整顯示，掃不到
     val qrSize = if (windowSize == WindowSize.Expanded) QR_DISPLAY_WIDE else QR_DISPLAY_COMPACT
 
-    // QR Box 自己也是 focusable — 進頁面預設停在這，避免 TV 預設搶到下方「啟用/停止」
+    // QR Box 自己也是 focusable — TV 進頁面預設停在這，避免 TV 預設搶到下方「啟用/停止」
     // 按鈕、bringIntoView 把 QR 推出可視範圍而使用者按上又回不去（QR 不可 focus 就接不到 D-pad）
     val qrFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
+        if (!windowSize.isTv) return@LaunchedEffect
         kotlinx.coroutines.delay(50)
         runCatching { qrFocus.requestFocus() }
     }

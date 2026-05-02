@@ -52,6 +52,7 @@ import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.components.ViewModeToggle
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
+import tw.pp.kazi.ui.isTv
 import tw.pp.kazi.ui.pagePadding
 import tw.pp.kazi.ui.theme.AppColors
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -196,7 +197,8 @@ fun HomeScreen() {
 
     LaunchedEffect(enabledSites.isNotEmpty()) {
         // 優先順序：(1) 點過卡片 → 等卡片 focus 回去；(2) 有 top bar key 就 focus 那顆；(3) 預設 focus 搜尋
-        if (enabledSites.isNotEmpty() && !pendingClickedFocus) {
+        // 只在 TV (Expanded) 主動搶焦；手機觸控不需要 visible focus 起點
+        if (windowSize.isTv && enabledSites.isNotEmpty() && !pendingClickedFocus) {
             val target = when (restoreTopBarKey) {
                 "history" -> historyFocusRequester
                 "favorites" -> favoritesFocusRequester
@@ -211,7 +213,7 @@ fun HomeScreen() {
 
     // 換頁後 videos 會重新載入；只在「新 videos 來」的那一刻 focus 第一張
     LaunchedEffect(videos) {
-        if (pendingFirstVideoFocus && videos.isNotEmpty()) {
+        if (windowSize.isTv && pendingFirstVideoFocus && videos.isNotEmpty()) {
             kotlinx.coroutines.delay(50) // 等 LazyVerticalGrid 把第一張 item compose 出來
             runCatching { firstVideoFocus.requestFocus() }
             pendingFirstVideoFocus = false
@@ -220,7 +222,7 @@ fun HomeScreen() {
 
     // 從 detail 返回 → focus 剛才點進去的那張卡
     LaunchedEffect(videos) {
-        if (pendingClickedFocus && restoreClickedVodId != null && videos.any { it.vodId == restoreClickedVodId }) {
+        if (windowSize.isTv && pendingClickedFocus && restoreClickedVodId != null && videos.any { it.vodId == restoreClickedVodId }) {
             kotlinx.coroutines.delay(50)
             runCatching { clickedVideoFocus.requestFocus() }
             pendingClickedFocus = false

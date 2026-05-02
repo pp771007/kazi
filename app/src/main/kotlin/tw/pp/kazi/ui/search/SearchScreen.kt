@@ -64,6 +64,7 @@ import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.components.ViewModeToggle
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
+import tw.pp.kazi.ui.isTv
 import tw.pp.kazi.ui.pagePadding
 import tw.pp.kazi.ui.theme.AppColors
 import tw.pp.kazi.util.ChineseConverter
@@ -188,11 +189,12 @@ fun SearchScreen(
 
     LaunchedEffect(Unit) {
         // 只有「使用者主動點搜尋進來」（沒帶 keyword、沒 snapshot 還原）才搶 focus 到輸入框；
-        // 遠端推進來自動搜尋的情況下千萬別 focus，不然鍵盤會直接蓋住載入動畫
+        // 遠端推進來自動搜尋的情況下千萬別 focus，不然鍵盤會直接蓋住載入動畫。
+        // 只在 TV 跑：手機進搜尋頁不要搶 focus，免得 IME 自動跳出來
         val isFreshUserEntry = initialSnapshot == null
             && !pendingClickedFocus
             && initialKeyword.isBlank()
-        if (isFreshUserEntry) {
+        if (windowSize.isTv && isFreshUserEntry) {
             runCatching { focusRequester.requestFocus() }
         }
         if (initialKeyword.isNotBlank() && initialSnapshot == null) runSearch()
@@ -200,7 +202,7 @@ fun SearchScreen(
 
     // 搜完 / 換頁（外層 or 內層） → focus 第一個結果（避免 focus 卡在 input 鍵盤又彈出來）
     LaunchedEffect(displayedSlice) {
-        if (pendingResultFocus && displayedSlice.isNotEmpty()) {
+        if (windowSize.isTv && pendingResultFocus && displayedSlice.isNotEmpty()) {
             kotlinx.coroutines.delay(50)
             runCatching { firstResultFocus.requestFocus() }
             pendingResultFocus = false
@@ -209,7 +211,7 @@ fun SearchScreen(
 
     // 從 detail 返回 → 先把內層頁切到那張卡所在頁，再 focus 它
     LaunchedEffect(aggregated, displayPage) {
-        if (pendingClickedFocus && restoreClickedAggName != null) {
+        if (windowSize.isTv && pendingClickedFocus && restoreClickedAggName != null) {
             val idx = aggregated.indexOfFirst { it.name == restoreClickedAggName }
             if (idx < 0) return@LaunchedEffect
             val targetPage = (idx / INNER_PAGE_SIZE) + 1
@@ -413,9 +415,11 @@ fun SearchScreen(
                     displayPage = clamped
                     scope.launch {
                         gridState.animateScrollToItem(FIRST_CARD_INDEX)
-                        // 動畫結束後再給 LazyGrid 一格時間 attach focusRequester
-                        kotlinx.coroutines.delay(50)
-                        runCatching { firstResultFocus.requestFocus() }
+                        // 動畫結束後再給 LazyGrid 一格時間 attach focusRequester；只在 TV 搶焦
+                        if (windowSize.isTv) {
+                            kotlinx.coroutines.delay(50)
+                            runCatching { firstResultFocus.requestFocus() }
+                        }
                     }
                 }
             }

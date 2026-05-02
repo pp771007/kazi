@@ -30,6 +30,7 @@ import tw.pp.kazi.data.HistoryItem
 import tw.pp.kazi.ui.LocalAppContainer
 import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
+import tw.pp.kazi.ui.isTv
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
@@ -54,13 +55,22 @@ fun HistoryScreen() {
     var checking by remember { mutableStateOf(false) }
     var checkProgress by remember { mutableStateOf<String?>(null) }
 
-    // 從 player / detail 返回時，focus 回到原本那一列的「繼續」按鈕
+    // 從 player / detail 返回時，focus 回到原本那一列的「繼續」按鈕；
+    // 冷進入則 focus 第一筆的「繼續」按鈕。只在 TV 跑（手機觸控不需要起點）。
     val restoreFocusKey = remember { container.historyLastFocusKey }
     val rowFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
-    var pendingRowFocus by remember { mutableStateOf(restoreFocusKey != null) }
-    LaunchedEffect(items) {
-        if (pendingRowFocus && restoreFocusKey != null
-            && items.any { "${it.siteId}-${it.videoId}" == restoreFocusKey }) {
+    val firstItemKey = remember(items) { items.firstOrNull()?.let { "${it.siteId}-${it.videoId}" } }
+    // 若有 restore key 對得上就用它；否則打第一筆當預設 focus 起點
+    val effectiveFocusKey = remember(restoreFocusKey, items) {
+        when {
+            restoreFocusKey != null && items.any { "${it.siteId}-${it.videoId}" == restoreFocusKey } -> restoreFocusKey
+            else -> firstItemKey
+        }
+    }
+    var pendingRowFocus by remember { mutableStateOf(true) }
+    LaunchedEffect(items, effectiveFocusKey) {
+        if (!windowSize.isTv) return@LaunchedEffect
+        if (pendingRowFocus && effectiveFocusKey != null) {
             kotlinx.coroutines.delay(50)
             runCatching { rowFocusRequester.requestFocus() }
             pendingRowFocus = false
@@ -157,7 +167,7 @@ fun HistoryScreen() {
                 val key = "${item.siteId}-${item.videoId}"
                 HistoryRow(
                     item = item,
-                    focusRequester = if (key == restoreFocusKey) rowFocusRequester else null,
+                    focusRequester = if (key == effectiveFocusKey) rowFocusRequester else null,
                     onResume = {
                         container.historyLastFocusKey = key
                         nav.navigate(

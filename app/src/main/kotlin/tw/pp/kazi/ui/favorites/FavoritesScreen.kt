@@ -11,7 +11,10 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -26,6 +29,7 @@ import tw.pp.kazi.ui.components.PosterCard
 import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
+import tw.pp.kazi.ui.isTv
 import tw.pp.kazi.ui.pagePadding
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -38,6 +42,18 @@ fun FavoritesScreen() {
     val settings by container.configRepository.settings.collectAsState()
     val incognito by container.incognito.collectAsState()
     val scope = rememberCoroutineScope()
+
+    // TV 進頁面 focus 第一張卡，給 D-pad 一個起點；手機觸控完全不搶焦
+    val firstCardFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    var pendingFirstFocus by remember { mutableStateOf(true) }
+    androidx.compose.runtime.LaunchedEffect(favorites) {
+        if (!windowSize.isTv) return@LaunchedEffect
+        if (pendingFirstFocus && favorites.isNotEmpty()) {
+            kotlinx.coroutines.delay(50)
+            runCatching { firstCardFocus.requestFocus() }
+            pendingFirstFocus = false
+        }
+    }
 
     ScreenScaffold(
         title = "我的收藏",
@@ -77,7 +93,9 @@ fun FavoritesScreen() {
                 verticalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
                 modifier = Modifier.fillMaxSize(),
             ) {
+                val firstKey = favorites.firstOrNull()?.let { "${it.siteId}-${it.videoId}" }
                 items(favorites, key = { "${it.siteId}-${it.videoId}" }) { fav ->
+                    val key = "${fav.siteId}-${fav.videoId}"
                     PosterCard(
                         title = fav.videoName,
                         remarks = fav.vodRemarks,
@@ -85,6 +103,7 @@ fun FavoritesScreen() {
                         fromSite = fav.siteName,
                         aspectRatio = vm.aspectRatio,
                         onClick = { nav.navigate(Routes.detail(fav.siteId, fav.videoId)) },
+                        focusRequester = if (key == firstKey) firstCardFocus else null,
                     )
                 }
             }

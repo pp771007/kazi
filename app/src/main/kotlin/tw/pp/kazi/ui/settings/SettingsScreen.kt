@@ -28,6 +28,7 @@ import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.components.SectionHeader
 import tw.pp.kazi.ui.isCompact
+import tw.pp.kazi.ui.isTv
 import tw.pp.kazi.ui.pagePadding
 import tw.pp.kazi.ui.sectionGap
 import tw.pp.kazi.ui.theme.AppColors
@@ -46,9 +47,11 @@ fun SettingsScreen() {
     val context = LocalContext.current
     val sites by container.siteRepository.sites.collectAsState()
 
-    // 進設定頁預設 focus 到「站點管理」(主要操作)；不要讓 UpdateSection 預設搶走 focus
+    // 進設定頁預設 focus 到「站點管理」(主要操作)；不要讓 UpdateSection 預設搶走 focus。
+    // 只在 TV 跑：手機觸控不需要 visible focus 起點
     val siteManagementFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(windowSize) {
+        if (!windowSize.isTv) return@LaunchedEffect
         kotlinx.coroutines.delay(50)  // 等 layout 把 focusable attach 完成
         runCatching { siteManagementFocus.requestFocus() }
     }
