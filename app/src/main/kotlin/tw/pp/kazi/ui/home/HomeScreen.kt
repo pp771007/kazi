@@ -368,8 +368,11 @@ fun HomeScreen() {
                 SiteStrip(
                     sites = enabledSites,
                     selected = selectedSite,
-                    onPick = {
-                        selectedSite = it
+                    onPick = { picked ->
+                        // 點到當前站台 no-op；不然命令式清掉 categories 但 LaunchedEffect
+                        // 沒任何 key 改變不會 re-fire，類別列表會永久消失
+                        if (picked.id == selectedSite?.id) return@SiteStrip
+                        selectedSite = picked
                         categories = emptyList()
                         selectedCategory = null
                         page = 1
