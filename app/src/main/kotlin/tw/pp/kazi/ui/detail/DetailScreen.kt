@@ -229,10 +229,10 @@ fun DetailScreen(siteId: Long, vodId: Long) {
         nav.navigate(Routes.search(name))
     }
 
-    // 只有 Expanded（電視盒 / 大平板）才用左右分欄 Wide layout；Medium（手機橫向 ~360dp 高）
-    // 用 Wide 會讓 380dp 寬 + 2:3 比例 = 570dp 高的 poster 把整個螢幕吃掉、看不到標題，改用
-    // Compact 那種 120dp 小 poster + 垂直滾動的版型才合理
-    if (windowSize != WindowSize.Expanded) {
+    // Compact (手機直版) → 單欄垂直版型
+    // Medium (手機橫向) → Wide 但 poster 欄縮窄，標題立刻可見 + 右邊有內容
+    // Expanded (電視盒 / 大平板) → Wide 標準寬度
+    if (windowSize.isCompact) {
         CompactLayout(
             d = d, site = site, siteId = currentSiteId, vodId = currentVodId,
             selectedSource = selectedSource,
@@ -286,6 +286,10 @@ fun DetailScreen(siteId: Long, vodId: Long) {
             episodesReversed = episodesReversed,
             onToggleReversed = { episodesReversed = !episodesReversed },
             incognito = incognito,
+            // Medium (手機橫向) 用窄 poster 欄，避免 380dp+2:3=570dp 高的圖把整個螢幕吃掉，
+            // 而且 poster 欄縮短後 right column 才有空間放劇情/sources/episodes（不然右邊會空一塊）
+            posterColWidth = if (windowSize == WindowSize.Medium) POSTER_COL_WIDTH_MEDIUM
+                else POSTER_COL_WIDTH_EXPANDED,
         )
     }
 }
@@ -527,6 +531,7 @@ private fun WideLayout(
     episodesReversed: Boolean,
     onToggleReversed: () -> Unit,
     incognito: Boolean,
+    posterColWidth: Dp,
 ) {
     val context = LocalContext.current
     val v = d.video
@@ -535,7 +540,7 @@ private fun WideLayout(
     Row(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
-                .width(POSTER_COL_WIDTH)
+                .width(posterColWidth)
                 .fillMaxHeight()
                 .background(Brush.verticalGradient(listOf(Color(0xFF1A1A2E), AppColors.Bg)))
                 .padding(24.dp)
@@ -810,7 +815,10 @@ private fun String.htmlDecode(): String = this
     .replace("&quot;", "\"")
     .replace(Regex("<[^>]+>"), "")
 
-private val POSTER_COL_WIDTH = 380.dp
+// Wide layout poster 欄寬度。Expanded（電視盒 / 大平板）用 380dp 走標準大圖；
+// Medium（手機橫向 ~800×360）用 240dp，左右分欄比例 ~30/70，標題立刻可見、右邊內容有空間
+private val POSTER_COL_WIDTH_EXPANDED = 380.dp
+private val POSTER_COL_WIDTH_MEDIUM = 240.dp
 private val COMPACT_POSTER_W = 120.dp
 private const val POSTER_ASPECT = 2f / 3f
 private const val CONTENT_MAX_LINES = 6
