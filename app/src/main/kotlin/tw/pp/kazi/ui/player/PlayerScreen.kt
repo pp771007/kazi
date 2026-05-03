@@ -131,6 +131,22 @@ fun PlayerScreen(
         }
     }
 
+    // 把 delta 累加到 pendingSeekDeltaMs，反向時以當前位置重新起算。
+    // 雙擊 (touch) 跟 D-pad LEFT/RIGHT 共用：每次只記累計，等 SEEK_COMMIT_DELAY_MS 沒新事件 commit 一次 seek
+    fun accumulateSeek(p: Player, delta: Long) {
+        val sameDirection = (pendingSeekDeltaMs == 0L)
+            || (pendingSeekDeltaMs > 0) == (delta > 0)
+        if (!sameDirection) {
+            pendingSeekStartPos = p.currentPosition
+            pendingSeekDeltaMs = delta
+        } else {
+            if (pendingSeekDeltaMs == 0L) {
+                pendingSeekStartPos = p.currentPosition
+            }
+            pendingSeekDeltaMs += delta
+        }
+    }
+
     // 網路錯誤時自動 retry 用的 token；onPlayerError 撞到網路類錯誤就 ++，LaunchedEffect 補一次 prepare
     var playerRetryToken by remember { mutableIntStateOf(0) }
 
@@ -434,11 +450,12 @@ fun PlayerScreen(
                             repeatCount = keyEvent.nativeKeyEvent.repeatCount,
                         )
                         if (step != null) {
-                            val target = (player.currentPosition - step).coerceAtLeast(0)
-                            player.seekTo(target)
+                            accumulateSeek(player, -step)
+                            seekCommitTrigger += 1
                             gestureIndicator = GestureIndicator.Seek(
-                                targetMs = target,
-                                deltaMs = -step,
+                                targetMs = (pendingSeekStartPos + pendingSeekDeltaMs)
+                                    .coerceIn(0, player.duration.coerceAtLeast(0)),
+                                deltaMs = pendingSeekDeltaMs,
                                 durationMs = player.duration,
                             )
                         }
@@ -450,11 +467,12 @@ fun PlayerScreen(
                             repeatCount = keyEvent.nativeKeyEvent.repeatCount,
                         )
                         if (step != null) {
-                            val target = (player.currentPosition + step).coerceAtMost(player.duration)
-                            player.seekTo(target)
+                            accumulateSeek(player, step)
+                            seekCommitTrigger += 1
                             gestureIndicator = GestureIndicator.Seek(
-                                targetMs = target,
-                                deltaMs = step,
+                                targetMs = (pendingSeekStartPos + pendingSeekDeltaMs)
+                                    .coerceIn(0, player.duration.coerceAtLeast(0)),
+                                deltaMs = pendingSeekDeltaMs,
                                 durationMs = player.duration,
                             )
                         }
@@ -536,20 +554,7 @@ fun PlayerScreen(
                                     // 中央雙擊 = play/pause
                                     if (player.isPlaying) player.pause() else player.play()
                                 } else {
-                                    // YT 風累加：第一次雙擊才記下 startPos，之後每次只加 delta，
-                                    // 跟原方向反向時重新從現在位置算起
-                                    val sameDirection = (pendingSeekDeltaMs == 0L)
-                                        || (pendingSeekDeltaMs > 0) == (delta > 0)
-                                    if (!sameDirection) {
-                                        // 反向：先 commit 上一輪（瞬間覆蓋一次再開始新方向）
-                                        pendingSeekStartPos = player.currentPosition
-                                        pendingSeekDeltaMs = delta
-                                    } else {
-                                        if (pendingSeekDeltaMs == 0L) {
-                                            pendingSeekStartPos = player.currentPosition
-                                        }
-                                        pendingSeekDeltaMs += delta
-                                    }
+                                    accumulateSeek(player, delta)
                                     val target = (pendingSeekStartPos + pendingSeekDeltaMs)
                                         .coerceIn(0, player.duration.coerceAtLeast(0))
                                     gestureIndicator = GestureIndicator.Seek(
