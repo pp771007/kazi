@@ -1,5 +1,7 @@
 # 咔滋影院 (kazi)
 
+![咔滋影院](app/src/main/res/mipmap-xxxhdpi/ic_banner.webp)
+
 原生 Android 影片聚合播放器，一次搜多站、聚合同名來源。手機 / 平板 / 電視盒（Android TV）都能裝。
 
 ## 下載
