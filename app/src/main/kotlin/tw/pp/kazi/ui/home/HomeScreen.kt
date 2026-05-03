@@ -230,9 +230,19 @@ fun HomeScreen() {
         }
     }
 
+    // 自己持有 headerState：換頁時 LazyGrid items 被新 key 替換、scrollState 隱性回 0，
+    // 但 bringIntoView 對首張卡（已在頂端）不需 scroll → 沒 dispatch 給 nestedScroll →
+    // header 卡在收合。使用者在頂端拉下會被 overscroll 吞掉、沒機會 expand header。
+    // 主動在換頁時把 offsetPx 重設成 0（完整展開）
+    val headerState = tw.pp.kazi.ui.components.rememberCollapsibleHeaderState()
+    LaunchedEffect(page) {
+        headerState.offsetPx.floatValue = 0f
+    }
+
     ScreenScaffold(
         title = "咔滋影院",
         subtitle = selectedSite?.name ?: "請先到設定新增站點",
+        headerState = headerState,
         titleBadges = if (incognito || lanState.running) {
             {
                 if (incognito) {

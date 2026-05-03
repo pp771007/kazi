@@ -17,9 +17,10 @@ fun ScreenScaffold(
     titleBadges: (@Composable RowScope.() -> Unit)? = null,
     trailing: @Composable (RowScope.() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
+    // 子畫面想自己控制 header（例如換頁時主動 reset 展開）就傳入；不傳就讓 scaffold 內部建一個
+    headerState: CollapsibleHeaderState = rememberCollapsibleHeaderState(),
     content: @Composable (PaddingValues) -> Unit,
 ) {
-    val headerState = rememberCollapsibleHeaderState()
     CollapsibleHeader(
         state = headerState,
         topBar = {

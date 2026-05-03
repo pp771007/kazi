@@ -241,6 +241,12 @@ fun SearchScreen(
         }
     }
 
+    // 跟 HomeScreen 同樣理由：換頁時把 header 主動 reset 展開，避免被卡在收合狀態
+    val headerState = tw.pp.kazi.ui.components.rememberCollapsibleHeaderState()
+    LaunchedEffect(page, displayPage) {
+        headerState.offsetPx.floatValue = 0f
+    }
+
     ScreenScaffold(
         title = "搜尋",
         subtitle = when {
@@ -248,6 +254,7 @@ fun SearchScreen(
             submittedKeyword!!.isBlank() -> "最新列表"
             else -> "「${submittedKeyword}」結果"
         },
+        headerState = headerState,
         titleBadges = if (incognito || lanState.running) {
             {
                 if (incognito) {
