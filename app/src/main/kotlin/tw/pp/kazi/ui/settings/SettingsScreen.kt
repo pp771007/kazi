@@ -85,23 +85,10 @@ fun SettingsScreen() {
                 )
             }
 
-            Card {
-                SectionHeader(title = "疑難排解")
-                val logCount by tw.pp.kazi.util.LogBuffer.entries.collectAsState()
-                Text(
-                    "目前有 ${logCount.size} 筆日誌紀錄",
-                    color = AppColors.OnBgMuted,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
-                AppButton(
-                    text = "檢視錯誤紀錄",
-                    icon = Icons.Filled.BugReport,
-                    onClick = { nav.navigate(Routes.Logs) },
-                    primary = false,
-                )
-            }
-
+            // 「關於」放在「疑難排解」前面：原本 UpdateSection（檢查更新）放在最底下，按下檢查
+            // 更新時 button composable 被 swap 那一瞬間 focus 會掉到 layout 第一個 focusable
+            // (站點管理)，再 LaunchedEffect 重抓回 UpdateSection 的按鈕。視覺上焦點從頂部彈
+            // 到底部，scroll 跟著上下跳。把「關於」上提一格、距離站點管理較近，視覺跳幅縮短
             Card {
                 SectionHeader(title = "關於")
                 Row(
@@ -144,6 +131,23 @@ fun SettingsScreen() {
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         context.startActivity(intent)
                     },
+                    primary = false,
+                )
+            }
+
+            Card {
+                SectionHeader(title = "疑難排解")
+                val logCount by tw.pp.kazi.util.LogBuffer.entries.collectAsState()
+                Text(
+                    "目前有 ${logCount.size} 筆日誌紀錄",
+                    color = AppColors.OnBgMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                AppButton(
+                    text = "檢視錯誤紀錄",
+                    icon = Icons.Filled.BugReport,
+                    onClick = { nav.navigate(Routes.Logs) },
                     primary = false,
                 )
             }
