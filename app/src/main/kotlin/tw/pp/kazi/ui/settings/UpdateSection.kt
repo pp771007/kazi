@@ -58,6 +58,14 @@ private sealed interface UpdateUiState {
     data class Error(val message: String) : UpdateUiState
 }
 
+private data class ButtonSpec(
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector?,
+    val action: () -> Unit,
+    val enabled: Boolean,
+    val primary: Boolean,
+)
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun UpdateSection() {
@@ -151,39 +159,29 @@ fun UpdateSection() {
         runCatching { mainButtonFocus.requestFocus() }
     }
 
+    // 把按鈕 props 從 state 抽出來：之前每個 state 一個獨立的 AppButton call site，state
+    // 一變整顆 button composable 被 swap 掉、focus transient 跑去 layout 第一個 focusable
+    // (站點管理) 再 LaunchedEffect 才抓回來。改成單一 call site + 隨 state 改 props，Compose
+    // 就會 keep 同一個按鈕 instance，focus 不會掉。Downloading state 沒按鈕（下載中本來
+    // 就不互動），只有那一次 transition 會 focus loss
+    val s = state
+    val buttonSpec: ButtonSpec? = when (s) {
+        UpdateUiState.Idle -> ButtonSpec("檢查更新", Icons.Filled.SystemUpdate, ::startCheck, true, false)
+        UpdateUiState.Checking -> ButtonSpec("檢查中⋯", null, {}, false, false)
+        is UpdateUiState.UpToDate -> ButtonSpec("重新檢查", Icons.Filled.Refresh, ::startCheck, true, false)
+        is UpdateUiState.HasUpdate -> ButtonSpec("下載並安裝", Icons.Filled.Download, { startDownloadAndInstall(s.asset) }, true, true)
+        is UpdateUiState.Downloading -> null
+        is UpdateUiState.Error -> ButtonSpec("重試", Icons.Filled.Refresh, ::startCheck, true, false)
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        when (val s = state) {
-            UpdateUiState.Idle -> AppButton(
-                text = "檢查更新",
-                icon = Icons.Filled.SystemUpdate,
-                onClick = ::startCheck,
-                primary = false,
-                modifier = Modifier.focusRequester(mainButtonFocus),
+        // 上方狀態文字 / 進度條（依 state 不同；按鈕在下方統一渲染）
+        when (s) {
+            is UpdateUiState.UpToDate -> Text(
+                "✓ 已是最新版（v${s.version}）",
+                color = AppColors.Success,
+                style = MaterialTheme.typography.bodySmall,
             )
-
-            UpdateUiState.Checking -> AppButton(
-                text = "檢查中⋯",
-                onClick = {},
-                enabled = false,
-                primary = false,
-                modifier = Modifier.focusRequester(mainButtonFocus),
-            )
-
-            is UpdateUiState.UpToDate -> {
-                Text(
-                    "✓ 已是最新版（v${s.version}）",
-                    color = AppColors.Success,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                AppButton(
-                    text = "重新檢查",
-                    icon = Icons.Filled.Refresh,
-                    onClick = ::startCheck,
-                    primary = false,
-                    modifier = Modifier.focusRequester(mainButtonFocus),
-                )
-            }
-
             is UpdateUiState.HasUpdate -> {
                 Text(
                     "有新版 ${s.release.tagName}",
@@ -198,14 +196,7 @@ fun UpdateSection() {
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                AppButton(
-                    text = "下載並安裝",
-                    icon = Icons.Filled.Download,
-                    onClick = { startDownloadAndInstall(s.asset) },
-                    modifier = Modifier.focusRequester(mainButtonFocus),
-                )
             }
-
             is UpdateUiState.Downloading -> {
                 val pct = (s.downloaded.toFloat() / s.total).coerceIn(0f, 1f)
                 Text(
@@ -215,21 +206,24 @@ fun UpdateSection() {
                 )
                 ProgressBar(progress = pct)
             }
+            is UpdateUiState.Error -> Text(
+                "⚠ ${s.message}",
+                color = AppColors.Error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            else -> Unit
+        }
 
-            is UpdateUiState.Error -> {
-                Text(
-                    "⚠ ${s.message}",
-                    color = AppColors.Error,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                AppButton(
-                    text = "重試",
-                    icon = Icons.Filled.Refresh,
-                    onClick = ::startCheck,
-                    primary = false,
-                    modifier = Modifier.focusRequester(mainButtonFocus),
-                )
-            }
+        // 主按鈕：永遠是同一個 AppButton call site（除非 state = Downloading）
+        if (buttonSpec != null) {
+            AppButton(
+                text = buttonSpec.label,
+                icon = buttonSpec.icon,
+                onClick = buttonSpec.action,
+                enabled = buttonSpec.enabled,
+                primary = buttonSpec.primary,
+                modifier = Modifier.focusRequester(mainButtonFocus),
+            )
         }
     }
 
