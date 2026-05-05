@@ -16,12 +16,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import tw.pp.kazi.data.Category
 import tw.pp.kazi.data.ConfigRepository
 import tw.pp.kazi.data.HistoryRepository
 import tw.pp.kazi.data.LanConfig
 import tw.pp.kazi.data.MacCmsApi
-import tw.pp.kazi.data.MultiSearchResult
 import tw.pp.kazi.data.RemoteSearchRequest
 import tw.pp.kazi.data.SiteRepository
 import tw.pp.kazi.data.SiteScanner
@@ -86,9 +84,22 @@ class AppContainer(private val context: Context) {
     // 只在 UI thread 讀寫，不需額外同步。
     var pendingDetailPeers: List<Video>? = null
 
-    // 各畫面的 UI snapshot：從子畫面返回時還原 focus / 狀態。只在 UI thread 讀寫。
-    var homeSnapshot: HomeUiSnapshot? = null
-    var searchSnapshot: SearchUiSnapshot? = null
+    // 各畫面的 UI snapshot：從子畫面返回時還原狀態。每個畫面用一個 String key 取得自己的 bag（map），
+    // bag 內 by-stateKey 存任意 state value。實際讀寫包在 ui.components.ScreenSnapshot helper，
+    // 這裡只提供 raw access。只在 UI thread 讀寫。
+    private val screenSnapshots: MutableMap<String, MutableMap<String, Any?>> = mutableMapOf()
+
+    fun snapshotBag(key: String): MutableMap<String, Any?> =
+        screenSnapshots.getOrPut(key) { mutableMapOf() }
+
+    fun clearSnapshot(key: String) {
+        screenSnapshots.remove(key)
+    }
+
+    fun clearAllSnapshots() {
+        screenSnapshots.clear()
+    }
+
     // 觀看歷史頁返回時的 focus 還原 key（"siteId-vodId"）
     var historyLastFocusKey: String? = null
     // 首頁 top bar 按鈕之間互相點擊的 focus 還原 key（"search" / "history" / 等）
@@ -213,24 +224,3 @@ class AppContainer(private val context: Context) {
 }
 
 data class LanState(val running: Boolean, val url: String?, val port: Int)
-
-data class HomeUiSnapshot(
-    val selectedSiteId: Long,
-    val selectedCategoryTypeId: Long?,
-    val categories: List<Category>,
-    val videos: List<Video>,
-    val page: Int,
-    val pageCount: Int,
-    val lastClickedVodId: Long? = null,
-)
-
-data class SearchUiSnapshot(
-    val keyword: String,
-    val submittedKeyword: String?,
-    val selectedIds: Set<Long>,
-    val result: MultiSearchResult?,
-    val selectorExpanded: Boolean,
-    val page: Int = 1,
-    val pageCount: Int = 1,
-    val lastClickedAggName: String? = null,
-)

@@ -51,6 +51,7 @@ import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
 import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.components.ViewModeToggle
+import tw.pp.kazi.ui.components.rememberScreenSnapshot
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.isTv
@@ -76,19 +77,17 @@ fun HomeScreen() {
     val incognito by container.incognito.collectAsState()
     val scope = rememberCoroutineScope()
 
+    val homeSnap = rememberScreenSnapshot("home")
+
     // 首頁是 nav stack 的根，按返回會直接 finish Activity；加雙擊確認避免誤退
     var lastBackTime by remember { mutableLongStateOf(0L) }
-    // didExit 旗標：finish() 之後 onDispose 還會跑，會把剛清的 snapshot 又從 selectedSite 寫回去；
-    // 設這個 flag 讓 onDispose 知道這次是「主動退出」要跳過儲存
-    var didExit by remember { mutableStateOf(false) }
     BackHandler {
         val now = System.currentTimeMillis()
         if (now - lastBackTime < BACK_EXIT_WINDOW_MS) {
             // 使用者主動退出：清掉所有 UI snapshot，讓下次重進是 fresh state
             // （process 沒被殺的話，AppContainer 裡的 snapshot 會殘留 → 站台選擇/搜尋結果都還在）
-            didExit = true
-            container.homeSnapshot = null
-            container.searchSnapshot = null
+            homeSnap.discard()
+            container.clearSnapshot("search")
             container.historyLastFocusKey = null
             container.homeTopBarFocusKey = null
             container.pendingDetailPeers = null
@@ -102,27 +101,19 @@ fun HomeScreen() {
     val enabledSites = remember(sites) { sites.filter { it.enabled }.sortedBy { it.order } }
 
     // 從 detail 返回時還原上次狀態（站台、分類、頁碼、清單），避免重新打 API 也不會跳回第一個站台。
-    val initialSnapshot = remember { container.homeSnapshot }
-    val restoredSite = remember(enabledSites, initialSnapshot) {
-        initialSnapshot?.let { snap -> enabledSites.firstOrNull { it.id == snap.selectedSiteId } }
-    }
-    val restoredCategory = remember(initialSnapshot) {
-        initialSnapshot?.let { snap ->
-            snap.categories.firstOrNull { it.typeId == snap.selectedCategoryTypeId }
-        }
-    }
-
-    var selectedSite by remember { mutableStateOf<Site?>(restoredSite) }
-    var selectedCategory by remember { mutableStateOf<Category?>(restoredCategory) }
-    var categories by remember { mutableStateOf<List<Category>>(initialSnapshot?.categories ?: emptyList()) }
-    var videos by remember { mutableStateOf<List<Video>>(initialSnapshot?.videos ?: emptyList()) }
-    var page by remember { mutableIntStateOf(initialSnapshot?.page ?: 1) }
-    var pageCount by remember { mutableIntStateOf(initialSnapshot?.pageCount ?: 1) }
+    // ScreenSnapshot 在進畫面時自動讀回上次值，離開時自動寫回；不必手寫 onDispose。
+    var selectedSite by homeSnap.state<Site?>("selectedSite") { null }
+    var selectedCategory by homeSnap.state<Category?>("selectedCategory") { null }
+    var categories by homeSnap.state<List<Category>>("categories") { emptyList() }
+    var videos by homeSnap.state<List<Video>>("videos") { emptyList() }
+    var page by homeSnap.state("page") { 1 }
+    var pageCount by homeSnap.state("pageCount") { 1 }
+    var lastClickedVodId by homeSnap.state<Long?>("lastClickedVodId") { null }
     var loading by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var retryKey by remember { mutableIntStateOf(0) }
-    // 若 snapshot 還原成功，跳過第一次 LaunchedEffect 觸發的 API 抓取
-    var skipNextFetch by remember { mutableStateOf(initialSnapshot != null && restoredSite != null) }
+    // 若 snapshot 還原成功（selectedSite 在進畫面時就有值），跳過第一次 LaunchedEffect 的 API 抓取
+    var skipNextFetch by remember { mutableStateOf(selectedSite != null) }
 
     // top bar 各個會跳出本畫面的按鈕都掛一個 requester；返回時 focus 回原本那顆
     val searchFocusRequester = remember { FocusRequester() }
@@ -135,8 +126,10 @@ fun HomeScreen() {
     val clickedVideoFocus = remember { FocusRequester() }
     // 換頁後要把 focus 移到新頁第一張卡，避免 focus 卡在「下一頁」按鈕。
     var pendingFirstVideoFocus by remember { mutableStateOf(false) }
-    // 從 detail 返回時要 focus 在剛才點進去的那張卡，不是 site strip
-    val restoreClickedVodId = remember { initialSnapshot?.lastClickedVodId }
+    // 從 detail 返回時要 focus 在剛才點進去的那張卡，不是 site strip。
+    // 進畫面那一瞬間的 lastClickedVodId 即「上次點過的卡」；之後 onClick 會更新成新值，
+    // 但 restoreClickedVodId 已經 capture 起來，繼續代表「這次進畫面要 focus 的那張」
+    val restoreClickedVodId = remember { lastClickedVodId }
     var pendingClickedFocus by remember { mutableStateOf(restoreClickedVodId != null) }
     // 從 settings/history/favorites/lan 等子畫面返回時，focus 回到對應的 top bar 按鈕
     val restoreTopBarKey = remember {
@@ -146,8 +139,12 @@ fun HomeScreen() {
     LaunchedEffect(enabledSites) {
         if (selectedSite == null && enabledSites.isNotEmpty()) {
             selectedSite = enabledSites.first()
-        } else if (enabledSites.none { it.id == selectedSite?.id }) {
+            // snapshot 沒給 site 的情況；要打 API 抓新 site 的清單
+            skipNextFetch = false
+        } else if (enabledSites.isNotEmpty() && enabledSites.none { it.id == selectedSite?.id }) {
+            // snapshot 裡的 Site 已被刪除（幽靈），換成第一個可用站台 → 重 fetch
             selectedSite = enabledSites.firstOrNull()
+            skipNextFetch = false
         }
     }
 
@@ -177,23 +174,6 @@ fun HomeScreen() {
             }
         }
         loading = false
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            // 雙擊退出時 BackHandler 已經把 snapshot 清成 null，這裡就不要再寫回去
-            if (didExit) return@onDispose
-            val site = selectedSite ?: return@onDispose
-            container.homeSnapshot = tw.pp.kazi.HomeUiSnapshot(
-                selectedSiteId = site.id,
-                selectedCategoryTypeId = selectedCategory?.typeId,
-                categories = categories,
-                videos = videos,
-                page = page,
-                pageCount = pageCount,
-                lastClickedVodId = container.homeSnapshot?.lastClickedVodId,
-            )
-        }
     }
 
     LaunchedEffect(enabledSites.isNotEmpty()) {
@@ -446,17 +426,8 @@ fun HomeScreen() {
                     clickedItemFocus = clickedVideoFocus,
                     onClick = { v ->
                         val site = selectedSite ?: return@VideoGrid
-                        // 記下這次點的 vodId，從 detail 返回時 focus 會自動回到這張
-                        container.homeSnapshot = container.homeSnapshot?.copy(lastClickedVodId = v.vodId)
-                            ?: tw.pp.kazi.HomeUiSnapshot(
-                                selectedSiteId = site.id,
-                                selectedCategoryTypeId = selectedCategory?.typeId,
-                                categories = categories,
-                                videos = videos,
-                                page = page,
-                                pageCount = pageCount,
-                                lastClickedVodId = v.vodId,
-                            )
+                        // 記下這次點的 vodId，從 detail 返回時 focus 會自動回到這張卡
+                        lastClickedVodId = v.vodId
                         nav.navigate(Routes.detail(site.id, v.vodId))
                     },
                     header = {

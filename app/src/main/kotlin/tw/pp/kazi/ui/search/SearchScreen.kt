@@ -63,6 +63,7 @@ import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
 import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.components.ViewModeToggle
+import tw.pp.kazi.ui.components.rememberScreenSnapshot
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.isTv
@@ -101,38 +102,42 @@ fun SearchScreen(
 
     val enabledSites = remember(sites) { sites.filter { it.enabled } }
 
+    val searchSnap = rememberScreenSnapshot("search")
+
     // 從子畫面（detail / player）返回時還原。
     // 規則：snapshot 的 submittedKeyword 跟這次 nav 的 initialKeyword 一致（且 siteIds 也相同）→ 還原；
-    // 否則代表是新一輪搜尋（例如手機遠端送過來不同 keyword），不能用 snapshot，要 fresh search。
+    // 否則代表是新一輪搜尋（例如手機遠端送過來不同 keyword），不能用 snapshot，要 discard。
     // 之前寫成「只有 initialKeyword 為空才用 snapshot」是錯的 —— 從 detail 返回時 nav arg 還是原本的 keyword，
     // 結果 snapshot 永遠不被用、每次返回都重搜。
-    val initialSnapshot = remember {
-        val snap = container.searchSnapshot ?: return@remember null
-        val sameKeyword = (initialKeyword.isBlank() || initialKeyword == snap.submittedKeyword)
-        val sameSites = (initialSiteIds.isEmpty() || initialSiteIds == snap.selectedIds)
-        if (sameKeyword && sameSites) snap else null
+    val hadValidSnapshot = remember(searchSnap) {
+        val savedKeyword: String? = searchSnap.peek("submittedKeyword")
+        val savedSites: Set<Long>? = searchSnap.peek("selectedIds")
+        val hasAnything = savedSites != null
+        val sameKeyword = initialKeyword.isBlank() || initialKeyword == savedKeyword
+        val sameSites = initialSiteIds.isEmpty() || initialSiteIds == savedSites
+        val valid = hasAnything && sameKeyword && sameSites
+        // 不用 discard：本次 session 還要繼續搜尋、儲存新狀態；只是把舊的清掉
+        if (hasAnything && !valid) searchSnap.reset()
+        valid
     }
 
-    var selectedIds by remember(enabledSites) {
-        mutableStateOf(
-            when {
-                initialSiteIds.isNotEmpty() -> initialSiteIds
-                initialSnapshot != null -> initialSnapshot.selectedIds
-                else -> enabledSites.map { it.id }.toSet()
-            }
-        )
+    var selectedIds by searchSnap.state("selectedIds") {
+        if (initialSiteIds.isNotEmpty()) initialSiteIds else enabledSites.map { it.id }.toSet()
     }
-    var keyword by remember { mutableStateOf(initialSnapshot?.keyword ?: initialKeyword) }
-    var submittedKeyword by remember { mutableStateOf(initialSnapshot?.submittedKeyword) }
+    var keyword by searchSnap.state("keyword") { initialKeyword }
+    var submittedKeyword by searchSnap.state<String?>("submittedKeyword") { null }
     var loading by remember { mutableStateOf(false) }
-    var result by remember { mutableStateOf<MultiSearchResult?>(initialSnapshot?.result) }
-    var selectorExpanded by remember { mutableStateOf(initialSnapshot?.selectorExpanded ?: true) }
-    var page by remember { mutableIntStateOf(initialSnapshot?.page ?: 1) }
-    var pageCount by remember { mutableIntStateOf(initialSnapshot?.pageCount ?: 1) }
+    var result by searchSnap.state<MultiSearchResult?>("result") { null }
+    var selectorExpanded by searchSnap.state("selectorExpanded") { true }
+    var page by searchSnap.state("page") { 1 }
+    var pageCount by searchSnap.state("pageCount") { 1 }
+    var lastClickedAggName by searchSnap.state<String?>("lastClickedAggName") { null }
     val focusRequester = remember { FocusRequester() }
     val firstResultFocus = remember { FocusRequester() }
     val clickedResultFocus = remember { FocusRequester() }
-    val restoreClickedAggName = remember { initialSnapshot?.lastClickedAggName }
+    // 進畫面那一瞬間的值即「上次點過的卡」；之後 onClick 會更新成新值，
+    // 但 restoreClickedAggName 已經 capture 起來，繼續代表「這次進畫面要 focus 的那張」
+    val restoreClickedAggName = remember { lastClickedAggName }
     var pendingResultFocus by remember { mutableStateOf(false) }
     var pendingClickedFocus by remember { mutableStateOf(restoreClickedAggName != null) }
 
@@ -140,8 +145,9 @@ fun SearchScreen(
         result?.videos?.let(::aggregateByName) ?: emptyList()
     }
 
-    // 客戶端內層分頁：把 aggregated 切成 INNER_PAGE_SIZE 一塊，避免一次塞太多卡（特別是空 keyword 抓最新時）
-    var displayPage by remember { mutableIntStateOf(1) }
+    // 客戶端內層分頁：把 aggregated 切成 INNER_PAGE_SIZE 一塊，避免一次塞太多卡（特別是空 keyword 抓最新時）。
+    // 走 snapshot 才能在「點卡 → detail → 返回」後還原到原本那一頁，不然 displayPage 永遠回到 1。
+    var displayPage by searchSnap.state("displayPage") { 1 }
     val innerPageCount = remember(aggregated) {
         ((aggregated.size + INNER_PAGE_SIZE - 1) / INNER_PAGE_SIZE).coerceAtLeast(1)
     }
@@ -153,6 +159,16 @@ fun SearchScreen(
         val from = ((displayPage - 1) * INNER_PAGE_SIZE).coerceAtLeast(0)
         val to = (from + INNER_PAGE_SIZE).coerceAtMost(aggregated.size)
         if (from >= aggregated.size) emptyList() else aggregated.subList(from, to)
+    }
+
+    // 若 SearchScreen 在 sites 還沒從 disk 讀完前就 compose（例如 cold start 直接遠端推搜尋），
+    // 預設 selectedIds 會是 emptySet → runSearch 直接 no-op。等 enabledSites 真的有值時補上一次預選全部。
+    // 加上 hadValidSnapshot / initialSiteIds 守門，避免覆蓋掉使用者的「全不選」狀態或 nav arg
+    LaunchedEffect(enabledSites) {
+        if (!hadValidSnapshot && initialSiteIds.isEmpty()
+            && selectedIds.isEmpty() && enabledSites.isNotEmpty()) {
+            selectedIds = enabledSites.map { it.id }.toSet()
+        }
     }
 
     val parsedQuery = remember(keyword) { parseSearchQuery(keyword) }
@@ -192,13 +208,13 @@ fun SearchScreen(
         // 只有「使用者主動點搜尋進來」（沒帶 keyword、沒 snapshot 還原）才搶 focus 到輸入框；
         // 遠端推進來自動搜尋的情況下千萬別 focus，不然鍵盤會直接蓋住載入動畫。
         // 只在 TV 跑：手機進搜尋頁不要搶 focus，免得 IME 自動跳出來
-        val isFreshUserEntry = initialSnapshot == null
+        val isFreshUserEntry = !hadValidSnapshot
             && !pendingClickedFocus
             && initialKeyword.isBlank()
         if (windowSize.isTv && isFreshUserEntry) {
             runCatching { focusRequester.requestFocus() }
         }
-        if (initialKeyword.isNotBlank() && initialSnapshot == null) runSearch()
+        if (initialKeyword.isNotBlank() && !hadValidSnapshot) runSearch()
     }
 
     // 搜完 / 換頁（外層 or 內層） → focus 第一個結果（避免 focus 卡在 input 鍵盤又彈出來）
@@ -210,35 +226,25 @@ fun SearchScreen(
         }
     }
 
-    // 從 detail 返回 → 先把內層頁切到那張卡所在頁，再 focus 它
+    // 從 detail 返回 → focus 那張卡。displayPage 已經從 snapshot 還原到當時那頁，
+    // 所以這裡只負責 focus；萬一 aggregated 因 result 重建後該卡跑到別頁（防呆），順手切過去
     LaunchedEffect(aggregated, displayPage) {
-        if (windowSize.isTv && pendingClickedFocus && restoreClickedAggName != null) {
-            val idx = aggregated.indexOfFirst { it.name == restoreClickedAggName }
-            if (idx < 0) return@LaunchedEffect
-            val targetPage = (idx / INNER_PAGE_SIZE) + 1
-            if (displayPage != targetPage) {
-                displayPage = targetPage
-                return@LaunchedEffect
-            }
-            kotlinx.coroutines.delay(50)
-            runCatching { clickedResultFocus.requestFocus() }
+        if (!pendingClickedFocus || restoreClickedAggName == null) return@LaunchedEffect
+        val idx = aggregated.indexOfFirst { it.name == restoreClickedAggName }
+        if (idx < 0) return@LaunchedEffect
+        val targetPage = (idx / INNER_PAGE_SIZE) + 1
+        if (displayPage != targetPage) {
+            displayPage = targetPage
+            return@LaunchedEffect
+        }
+        // 手機觸控不需要主動 focus，純切頁就夠
+        if (!windowSize.isTv) {
             pendingClickedFocus = false
+            return@LaunchedEffect
         }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            container.searchSnapshot = tw.pp.kazi.SearchUiSnapshot(
-                keyword = keyword,
-                submittedKeyword = submittedKeyword,
-                selectedIds = selectedIds,
-                result = result,
-                selectorExpanded = selectorExpanded,
-                page = page,
-                pageCount = pageCount,
-                lastClickedAggName = container.searchSnapshot?.lastClickedAggName,
-            )
-        }
+        kotlinx.coroutines.delay(50)
+        runCatching { clickedResultFocus.requestFocus() }
+        pendingClickedFocus = false
     }
 
     // 跟 HomeScreen 同樣理由：換頁時把 header 主動 reset 展開，避免被卡在收合狀態
@@ -478,18 +484,7 @@ fun SearchScreen(
                             container.pendingDetailPeers =
                                 if (agg.sources.size > 1) agg.sources else null
                             // 記下這次點的影片名（用名字做 key 因為聚合後沒有單一 vodId）
-                            container.searchSnapshot = container.searchSnapshot
-                                ?.copy(lastClickedAggName = agg.name)
-                                ?: tw.pp.kazi.SearchUiSnapshot(
-                                    keyword = keyword,
-                                    submittedKeyword = submittedKeyword,
-                                    selectedIds = selectedIds,
-                                    result = result,
-                                    selectorExpanded = selectorExpanded,
-                                    page = page,
-                                    pageCount = pageCount,
-                                    lastClickedAggName = agg.name,
-                                )
+                            lastClickedAggName = agg.name
                             nav.navigate(Routes.detail(sid, first.vodId))
                         },
                         focusRequester = when {
