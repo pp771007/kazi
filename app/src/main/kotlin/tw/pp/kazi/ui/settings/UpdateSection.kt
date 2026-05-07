@@ -77,27 +77,6 @@ fun UpdateSection() {
     var pendingAsset by remember { mutableStateOf<GitHubAsset?>(null) }
     var showPermissionDialog by remember { mutableStateOf(false) }
 
-    fun startCheck() {
-        state = UpdateUiState.Checking
-        scope.launch {
-            runCatching { UpdateChecker.fetchLatest() }.fold(
-                onSuccess = { release ->
-                    state = if (UpdateChecker.isNewerThanLocal(release.tagName)) {
-                        val asset = UpdateChecker.pickApkAsset(release)
-                        if (asset != null) {
-                            UpdateUiState.HasUpdate(release, asset)
-                        } else {
-                            UpdateUiState.Error("最新版沒有 APK 檔可下載")
-                        }
-                    } else {
-                        UpdateUiState.UpToDate(release.tagName.removePrefix("v"))
-                    }
-                },
-                onFailure = { state = UpdateUiState.Error(it.message ?: "檢查失敗") },
-            )
-        }
-    }
-
     fun startDownload(asset: GitHubAsset) {
         state = UpdateUiState.Downloading(0L, asset.size.coerceAtLeast(1L))
         scope.launch {
@@ -123,6 +102,31 @@ fun UpdateSection() {
             return
         }
         startDownload(asset)
+    }
+
+    fun startCheck() {
+        state = UpdateUiState.Checking
+        scope.launch {
+            runCatching { UpdateChecker.fetchLatest() }.fold(
+                onSuccess = { release ->
+                    if (UpdateChecker.isNewerThanLocal(release.tagName)) {
+                        val asset = UpdateChecker.pickApkAsset(release)
+                        if (asset != null) {
+                            // 偵測到新版直接觸發下載＋安裝，省掉「下載並安裝」那一步點擊。
+                            // 沒授權時 startDownloadAndInstall 會跳權限 dialog，HasUpdate
+                            // 畫面同時顯示版本資訊作為背景，dialog 關掉時也還能看到資訊
+                            state = UpdateUiState.HasUpdate(release, asset)
+                            startDownloadAndInstall(asset)
+                        } else {
+                            state = UpdateUiState.Error("最新版沒有 APK 檔可下載")
+                        }
+                    } else {
+                        state = UpdateUiState.UpToDate(release.tagName.removePrefix("v"))
+                    }
+                },
+                onFailure = { state = UpdateUiState.Error(it.message ?: "檢查失敗") },
+            )
+        }
     }
 
     // 使用者去系統設定打開「允許安裝其他 app」回來時，ON_RESUME 觸發；
@@ -178,7 +182,7 @@ fun UpdateSection() {
         // 上方狀態文字 / 進度條（依 state 不同；按鈕在下方統一渲染）
         when (s) {
             is UpdateUiState.UpToDate -> Text(
-                "✓ 已是最新版（v${s.version}）",
+                "✓ 沒有新版本（目前 v${s.version}）",
                 color = AppColors.Success,
                 style = MaterialTheme.typography.bodySmall,
             )
