@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -67,6 +68,8 @@ import tw.pp.kazi.data.PlayerConfig
 import tw.pp.kazi.data.VideoDetails
 import tw.pp.kazi.ui.LocalAppContainer
 import tw.pp.kazi.ui.LocalNavController
+import tw.pp.kazi.ui.LocalWindowSize
+import tw.pp.kazi.ui.isTv
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.LoadingState
@@ -648,6 +651,22 @@ fun PlayerScreen(
                 )
             }
 
+            // 手機沒實體 BACK 鍵、全螢幕沉浸又沒系統列，加一顆返回按鈕在左上才好退出。
+            // TV 用遙控器 BACK 不需要這顆，避開電視盒。跟著 controlsVisible 一起淡入淡出
+            val windowSize = LocalWindowSize.current
+            if (!windowSize.isTv) {
+                AnimatedVisibility(
+                    visible = controlsVisible && gestureIndicator == null,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(12.dp),
+                ) {
+                    BackOverlayButton(onClick = { nav.popBackStack() })
+                }
+            }
+
             // 控制列顯示時，畫面中央也放一顆大的 play/pause 按鈕（YT pattern）。
             // gestureIndicator 出現時暫時藏掉，免得跟 seek 累加 indicator 疊在一起。
             AnimatedVisibility(
@@ -796,6 +815,28 @@ private fun applyBrightness(activity: android.app.Activity?, value: Float) {
     val lp = window.attributes
     lp.screenBrightness = value
     window.attributes = lp
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun BackOverlayButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(Color(0x66000000))
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onClick() })
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.tv.material3.Icon(
+            Icons.AutoMirrored.Filled.ArrowBack,
+            contentDescription = "返回",
+            tint = Color.White,
+            modifier = Modifier.size(24.dp),
+        )
+    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
