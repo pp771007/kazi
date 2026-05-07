@@ -453,13 +453,17 @@ private fun CompactLayout(
         if (v.vodDirector.isNotBlank()) InfoLine("導演", v.vodDirector)
 
         if (v.vodContent.isNotBlank()) {
+            var contentExpanded by rememberSaveable { mutableStateOf(false) }
             SectionHeader(title = "劇情簡介")
             Text(
                 v.vodContent.htmlDecode().trim(),
                 color = AppColors.OnBgMuted,
                 style = MaterialTheme.typography.bodySmall,
-                maxLines = CONTENT_MAX_LINES,
-                overflow = TextOverflow.Ellipsis,
+                maxLines = if (contentExpanded) Int.MAX_VALUE else CONTENT_MAX_LINES,
+                overflow = if (contentExpanded) TextOverflow.Visible else TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { contentExpanded = !contentExpanded },
             )
         }
 
@@ -652,13 +656,17 @@ private fun WideLayout(
             }
 
             if (v.vodContent.isNotBlank()) {
+                var contentExpanded by rememberSaveable { mutableStateOf(false) }
                 SectionHeader(title = "劇情簡介")
                 Text(
                     v.vodContent.htmlDecode().trim(),
                     color = AppColors.OnBgMuted,
                     style = MaterialTheme.typography.bodyMedium,
-                    maxLines = CONTENT_MAX_LINES,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = if (contentExpanded) Int.MAX_VALUE else CONTENT_MAX_LINES,
+                    overflow = if (contentExpanded) TextOverflow.Visible else TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { contentExpanded = !contentExpanded },
                 )
             }
 

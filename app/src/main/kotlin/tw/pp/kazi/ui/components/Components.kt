@@ -5,9 +5,11 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -136,13 +138,14 @@ fun AppButton(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun FocusableTag(
     text: String,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -156,15 +159,26 @@ fun FocusableTag(
     val borderWidth = 2.dp
     val scale by animateFloatAsState(if (focused) 1.06f else 1f, tween(100), label = "tag-scale")
 
+    val baseModifier = modifier
+        .scale(scale)
+        .clip(RoundedCornerShape(999.dp))
+        .background(bg)
+        .border(BorderStroke(borderWidth, borderBrush), RoundedCornerShape(999.dp))
+        .focusable(interactionSource = interaction)
+    // 沒給 onLongClick 就維持原本的 clickable，避免 combinedClickable 多一層 pointerInput 在大量
+    // tag（站台 strip / 集數 grid）的情境造成不必要的事件處理開銷
+    val tappableModifier = if (onLongClick != null) {
+        baseModifier.combinedClickable(
+            interactionSource = interaction,
+            indication = null,
+            onClick = onClick,
+            onLongClick = onLongClick,
+        )
+    } else {
+        baseModifier.clickable(interactionSource = interaction, indication = null) { onClick() }
+    }
     Box(
-        modifier = modifier
-            .scale(scale)
-            .clip(RoundedCornerShape(999.dp))
-            .background(bg)
-            .border(BorderStroke(borderWidth, borderBrush), RoundedCornerShape(999.dp))
-            .focusable(interactionSource = interaction)
-            .clickable(interactionSource = interaction, indication = null) { onClick() }
-            .padding(horizontal = 14.dp, vertical = 7.dp),
+        modifier = tappableModifier.padding(horizontal = 14.dp, vertical = 7.dp),
     ) {
         Text(
             text = text,

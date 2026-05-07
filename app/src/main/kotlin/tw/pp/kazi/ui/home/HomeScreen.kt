@@ -49,6 +49,7 @@ import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
+import tw.pp.kazi.ui.components.PullToRefreshBoxIfCompact
 import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.components.ViewModeToggle
 import tw.pp.kazi.ui.components.rememberScreenSnapshot
@@ -328,7 +329,16 @@ fun HomeScreen() {
         },
         onBack = null,
     ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+        PullToRefreshBoxIfCompact(
+            isRefreshing = loading,
+            onRefresh = {
+                // 同步先把 loading 設為 true，PTR 指示器才不會在 LaunchedEffect 還沒跑前就消失
+                loading = true
+                retryKey += 1
+            },
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
             // 等站台檔案讀完才判斷 empty，不然 App 一進來會閃一下「還沒有啟用的站點」
             if (!sitesLoaded) {
                 LoadingState()
@@ -458,6 +468,7 @@ fun HomeScreen() {
                     } else null,
                 )
             }
+        }
         }
     }
 }

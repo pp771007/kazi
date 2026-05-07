@@ -61,6 +61,7 @@ import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
+import tw.pp.kazi.ui.components.PullToRefreshBoxIfCompact
 import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.components.ViewModeToggle
 import tw.pp.kazi.ui.components.rememberScreenSnapshot
@@ -128,7 +129,8 @@ fun SearchScreen(
     var submittedKeyword by searchSnap.state<String?>("submittedKeyword") { null }
     var loading by remember { mutableStateOf(false) }
     var result by searchSnap.state<MultiSearchResult?>("result") { null }
-    var selectorExpanded by searchSnap.state("selectorExpanded") { true }
+    // 預設 collapsed：進搜尋頁第一眼把垂直空間留給輸入框 + 最近搜尋；要篩站台才展開
+    var selectorExpanded by searchSnap.state("selectorExpanded") { false }
     var page by searchSnap.state("page") { 1 }
     var pageCount by searchSnap.state("pageCount") { 1 }
     var lastClickedAggName by searchSnap.state<String?>("lastClickedAggName") { null }
@@ -336,7 +338,16 @@ fun SearchScreen(
         },
         onBack = { nav.popBackStack() },
     ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+        PullToRefreshBoxIfCompact(
+            isRefreshing = loading,
+            onRefresh = {
+                // 同步先把 loading 設為 true，PTR 指示器才不會在 LaunchedEffect 還沒跑前就消失
+                loading = true
+                runSearch(page)
+            },
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
 
         // 搜尋輸入 + 站點選擇 + 排除提示 + 搜尋紀錄。出現在 grid header（有結果）或頂部 sticky（無結果/載入/錯誤）
         val searchControls: @Composable () -> Unit = {
@@ -386,6 +397,10 @@ fun SearchScreen(
                             focusManager.clearFocus()
                             keyword = kw
                             runSearch()
+                        },
+                        onRemove = { kw ->
+                            scope.launch { container.configRepository.removeSearchKeyword(kw) }
+                            android.widget.Toast.makeText(appContext, "已刪除「$kw」", android.widget.Toast.LENGTH_SHORT).show()
                         },
                         onClear = { scope.launch { container.configRepository.clearSearchHistory() } },
                     )
@@ -523,6 +538,7 @@ fun SearchScreen(
                     }
                 }
             }
+        }
         }
         }
     }
@@ -758,11 +774,16 @@ private fun SiteSelector(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun HistoryPills(items: List<String>, onPick: (String) -> Unit, onClear: () -> Unit) {
+private fun HistoryPills(
+    items: List<String>,
+    onPick: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    onClear: () -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "最近搜尋",
+                "最近搜尋（長按單筆刪除）",
                 color = AppColors.OnBgMuted,
                 style = MaterialTheme.typography.labelMedium,
             )
@@ -774,7 +795,12 @@ private fun HistoryPills(items: List<String>, onPick: (String) -> Unit, onClear:
             modifier = Modifier.focusGroup(),
         ) {
             items(items) { kw ->
-                FocusableTag(text = kw, selected = false, onClick = { onPick(kw) })
+                FocusableTag(
+                    text = kw,
+                    selected = false,
+                    onClick = { onPick(kw) },
+                    onLongClick = { onRemove(kw) },
+                )
             }
         }
     }
