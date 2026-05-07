@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowRight
+import androidx.compose.foundation.focusGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +25,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -42,7 +46,7 @@ import androidx.tv.material3.Text
 private const val JUMP_INPUT_MAX_DIGITS = 4
 private val JUMP_INPUT_WIDTH = 64.dp
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun Pager(
     page: Int,
@@ -68,7 +72,12 @@ fun Pager(
         if (canJump) parsedJump?.let(onJump)
     }
 
-    val outer = if (accent) {
+    // TV：D-pad 進入這列時，多數人都是想點「下一頁」（看完這頁要繼續往後）。
+    // 用 focusRestorer 指定 fallback：能往後就 focus 下一頁，到底了 fallback 上一頁。
+    // restorer 也會記住上一次 focus 在哪顆，所以使用者離開又回來不會被強制拉走
+    val nextFocus = remember { FocusRequester() }
+    val prevFocus = remember { FocusRequester() }
+    val baseOuter = if (accent) {
         modifier
             .fillMaxWidth()
             .padding(horizontal = windowSize.pagePadding(), vertical = 4.dp)
@@ -80,6 +89,9 @@ fun Pager(
             .fillMaxWidth()
             .padding(horizontal = windowSize.pagePadding(), vertical = 12.dp)
     }
+    val outer = baseOuter
+        .focusGroup()
+        .focusRestorer { if (page < pageCount) nextFocus else prevFocus }
 
     Row(
         modifier = outer,
@@ -100,6 +112,7 @@ fun Pager(
             enabled = page > 1,
             primary = false,
             iconOnly = compact,
+            modifier = Modifier.focusRequester(prevFocus),
         )
         Box(
             modifier = Modifier
@@ -120,6 +133,7 @@ fun Pager(
             enabled = page < pageCount,
             primary = false,
             iconOnly = compact,
+            modifier = Modifier.focusRequester(nextFocus),
         )
         if (!simplified) {
             Spacer(Modifier.weight(1f))

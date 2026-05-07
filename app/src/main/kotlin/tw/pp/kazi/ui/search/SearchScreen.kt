@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -29,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -734,7 +736,7 @@ private fun CollapsedSelectorChip(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun SiteSelector(
     sites: List<Site>,
@@ -743,6 +745,12 @@ private fun SiteSelector(
     onSelectAll: () -> Unit,
     onSelectNone: () -> Unit,
 ) {
+    // multi-select 沒有單一「當前」概念，fallback 用第一個已選；都沒選就 fallback 第一顆 chip
+    val firstSelectedFocus = remember { FocusRequester() }
+    val firstSiteFocus = remember { FocusRequester() }
+    val firstSelectedId = remember(sites, selected) {
+        sites.firstOrNull { it.id in selected }?.id
+    }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -759,13 +767,21 @@ private fun SiteSelector(
         }
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.focusGroup(),
+            modifier = Modifier
+                .focusGroup()
+                .focusRestorer { if (firstSelectedId != null) firstSelectedFocus else firstSiteFocus },
         ) {
-            items(sites, key = { it.id }) { s ->
+            itemsIndexed(sites, key = { _, s -> s.id }) { idx, s ->
+                val isFirstSelected = s.id == firstSelectedId
                 FocusableTag(
                     text = s.name,
                     selected = s.id in selected,
                     onClick = { onToggle(s.id) },
+                    modifier = when {
+                        isFirstSelected -> Modifier.focusRequester(firstSelectedFocus)
+                        idx == 0 -> Modifier.focusRequester(firstSiteFocus)
+                        else -> Modifier
+                    },
                 )
             }
         }

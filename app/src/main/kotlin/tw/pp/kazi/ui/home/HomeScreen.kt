@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -473,7 +474,7 @@ fun HomeScreen() {
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun SiteStrip(
     sites: List<Site>,
@@ -483,6 +484,9 @@ private fun SiteStrip(
     listState: LazyListState,
 ) {
     val compact = windowSize.isCompact
+    // TV：D-pad 進入這列時，focus 應該停在當前選中的站台，不是離卡片最近的那顆。
+    // restorer 第一次進來用 fallback（指向 selected 的 requester），之後記住使用者最後 focus 的位置
+    val selectedFocus = remember { FocusRequester() }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -501,20 +505,24 @@ private fun SiteStrip(
             contentPadding = PaddingValues(vertical = 2.dp),
             // focusGroup：讓 Compose 把整個 strip 當一個 focus 集合，按下時整組離開到下一組
             // (category strip 或 video grid)，不會因 spatial 距離計算跳過 category 直接到 video card
-            modifier = Modifier.focusGroup(),
+            modifier = Modifier
+                .focusGroup()
+                .focusRestorer { selectedFocus },
         ) {
             items(sites, key = { it.id }) { s ->
+                val isSelected = s.id == selected?.id
                 FocusableTag(
                     text = s.name,
-                    selected = s.id == selected?.id,
+                    selected = isSelected,
                     onClick = { onPick(s) },
+                    modifier = if (isSelected) Modifier.focusRequester(selectedFocus) else Modifier,
                 )
             }
         }
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun CategoryStrip(
     categories: List<Category>,
@@ -524,6 +532,7 @@ private fun CategoryStrip(
     listState: LazyListState,
 ) {
     val compact = windowSize.isCompact
+    val selectedFocus = remember { FocusRequester() }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -540,21 +549,27 @@ private fun CategoryStrip(
             state = listState,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(vertical = 2.dp),
-            // focusGroup：見 SiteStrip 同款註解
-            modifier = Modifier.focusGroup(),
+            // focusGroup：見 SiteStrip 同款註解；focusRestorer 讓 D-pad 進這列時 focus 落在當前分類
+            modifier = Modifier
+                .focusGroup()
+                .focusRestorer { selectedFocus },
         ) {
             item {
+                val isAll = selected == null
                 FocusableTag(
                     text = "全部",
-                    selected = selected == null,
+                    selected = isAll,
                     onClick = { onPick(null) },
+                    modifier = if (isAll) Modifier.focusRequester(selectedFocus) else Modifier,
                 )
             }
             items(categories, key = { it.typeId }) { c ->
+                val isSelected = selected?.typeId == c.typeId
                 FocusableTag(
                     text = c.typeName,
-                    selected = selected?.typeId == c.typeId,
+                    selected = isSelected,
                     onClick = { onPick(c) },
+                    modifier = if (isSelected) Modifier.focusRequester(selectedFocus) else Modifier,
                 )
             }
         }

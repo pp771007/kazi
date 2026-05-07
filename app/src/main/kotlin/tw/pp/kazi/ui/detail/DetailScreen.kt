@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -59,7 +60,7 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
-@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun DetailScreen(siteId: Long, vodId: Long) {
     val container = LocalAppContainer.current
@@ -312,7 +313,7 @@ private fun IncognitoBadge() {
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun CompactLayout(
     d: VideoDetails,
@@ -468,16 +469,21 @@ private fun CompactLayout(
         }
 
         if (d.sources.size > 1) {
+            val currentSourceFocus = remember { FocusRequester() }
             SectionHeader(title = "播放來源")
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.focusGroup(),
+                modifier = Modifier
+                    .focusGroup()
+                    .focusRestorer { currentSourceFocus },
             ) {
                 itemsIndexed(d.sources) { idx, s ->
+                    val isCurrent = idx == selectedSource
                     FocusableTag(
                         text = "${s.flag} (${s.episodes.size})",
-                        selected = idx == selectedSource,
+                        selected = isCurrent,
                         onClick = { onSourcePick(idx) },
+                        modifier = if (isCurrent) Modifier.focusRequester(currentSourceFocus) else Modifier,
                     )
                 }
             }
@@ -511,7 +517,7 @@ private fun CompactLayout(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun WideLayout(
     d: VideoDetails,
@@ -671,16 +677,21 @@ private fun WideLayout(
             }
 
             if (d.sources.size > 1) {
+                val currentSourceFocus = remember { FocusRequester() }
                 SectionHeader(title = "播放來源")
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.focusGroup(),
+                    modifier = Modifier
+                        .focusGroup()
+                        .focusRestorer { currentSourceFocus },
                 ) {
                     itemsIndexed(d.sources) { idx, s ->
+                        val isCurrent = idx == selectedSource
                         FocusableTag(
                             text = "${s.flag} (${s.episodes.size})",
-                            selected = idx == selectedSource,
+                            selected = isCurrent,
                             onClick = { onSourcePick(idx) },
+                            modifier = if (isCurrent) Modifier.focusRequester(currentSourceFocus) else Modifier,
                         )
                     }
                 }
@@ -729,7 +740,23 @@ private fun EpisodeGrid(
     val displayed = remember(episodes, reversed) {
         if (reversed) episodes.withIndex().toList().reversed() else episodes.withIndex().toList()
     }
+    // 「正在看」是這個 source 的某一集 → 把 firstEpisodeFocus 從第一格搬到那一格，
+    // 這樣外面 requestFocus 進來會直接落在 ▶ 那一集，而不是 ep 1
+    val watchingDisplayIdx = remember(displayed, historyItem, selectedSource) {
+        if (historyItem?.sourceIndex != selectedSource) return@remember -1
+        if (historyItem.episodeIndex !in episodes.indices) return@remember -1
+        displayed.indexOfFirst { it.index == historyItem.episodeIndex }
+    }
+    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    // watching 在第 50 集時，LazyGrid 沒 scroll 過去那一格根本還沒 compose，
+    // requestFocus 就吃不到。先 scroll 把 watching 帶進視窗，再讓 focus 落定
+    LaunchedEffect(watchingDisplayIdx) {
+        if (watchingDisplayIdx > 0) {
+            runCatching { gridState.scrollToItem(watchingDisplayIdx) }
+        }
+    }
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Adaptive(minSize = minCell),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -740,19 +767,21 @@ private fun EpisodeGrid(
             val ep = indexedEp.value
             val watching = historyItem?.sourceIndex == selectedSource &&
                     historyItem.episodeIndex == idx
+            // 有正在看那一集 → focus 落在它；沒有就 fallback 第一格
+            val attachInitialFocus = if (watchingDisplayIdx >= 0) watching else displayIdx == 0
             FocusableTag(
                 text = if (watching) "▶ ${ep.name}" else ep.name,
                 selected = watching,
                 onClick = { onEpisode(idx) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(if (displayIdx == 0) Modifier.focusRequester(firstEpisodeFocus) else Modifier),
+                    .then(if (attachInitialFocus) Modifier.focusRequester(firstEpisodeFocus) else Modifier),
             )
         }
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun PeerRow(
     peers: List<tw.pp.kazi.data.Video>?,
@@ -760,6 +789,7 @@ private fun PeerRow(
     onPeerPick: (tw.pp.kazi.data.Video) -> Unit,
 ) {
     if (peers == null || peers.size <= 1) return
+    val currentFocus = remember { FocusRequester() }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             "同名站點（${peers.size}）",
@@ -768,13 +798,17 @@ private fun PeerRow(
         )
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.focusGroup(),
+            modifier = Modifier
+                .focusGroup()
+                .focusRestorer { currentFocus },
         ) {
             itemsIndexed(peers, key = { _, it -> "${it.fromSiteId}-${it.vodId}" }) { _, peer ->
+                val isCurrent = peer.fromSiteId == currentSiteId
                 FocusableTag(
                     text = peer.fromSite ?: "未知",
-                    selected = peer.fromSiteId == currentSiteId,
+                    selected = isCurrent,
                     onClick = { onPeerPick(peer) },
+                    modifier = if (isCurrent) Modifier.focusRequester(currentFocus) else Modifier,
                 )
             }
         }
