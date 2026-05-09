@@ -221,13 +221,17 @@ fun SearchScreen(
         if (initialKeyword.isNotBlank() && !hadValidSnapshot) runSearch()
     }
 
-    // 搜完 / 換頁（外層 or 內層） → focus 第一個結果（避免 focus 卡在 input 鍵盤又彈出來）
-    LaunchedEffect(displayedSlice) {
-        if (windowSize.isTv && pendingResultFocus && displayedSlice.isNotEmpty()) {
-            kotlinx.coroutines.delay(50)
+    // 搜完 / 換頁（外層 or 內層） → focus 第一個結果；
+    // 空結果（沒找到）→ focus 拉回搜尋輸入欄，免得 runSearch 裡 clearFocus 之後 focus 飄到 top bar
+    LaunchedEffect(displayedSlice, loading) {
+        if (!windowSize.isTv || loading || !pendingResultFocus) return@LaunchedEffect
+        kotlinx.coroutines.delay(50)
+        if (displayedSlice.isNotEmpty()) {
             runCatching { firstResultFocus.requestFocus() }
-            pendingResultFocus = false
+        } else {
+            runCatching { focusRequester.requestFocus() }
         }
+        pendingResultFocus = false
     }
 
     // 從 detail 返回 → focus 那張卡。displayPage 已經從 snapshot 還原到當時那頁，

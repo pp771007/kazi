@@ -126,8 +126,10 @@ fun HomeScreen() {
 
     val firstVideoFocus = remember { FocusRequester() }
     val clickedVideoFocus = remember { FocusRequester() }
-    // 換頁後要把 focus 移到新頁第一張卡，避免 focus 卡在「下一頁」按鈕。
-    var pendingFirstVideoFocus by remember { mutableStateOf(false) }
+    val retryFocus = remember { FocusRequester() }
+    // 切站、切分類、換頁後要把 focus 移到新內容（成功 → 第一張卡；失敗 → 重試按鈕），
+    // 避免 focus 卡在剛剛點過的 strip tag 或「下一頁」按鈕上。
+    var pendingContentFocus by remember { mutableStateOf(false) }
     // 從 detail 返回時要 focus 在剛才點進去的那張卡，不是 site strip。
     // 進畫面那一瞬間的 lastClickedVodId 即「上次點過的卡」；之後 onClick 會更新成新值，
     // 但 restoreClickedVodId 已經 capture 起來，繼續代表「這次進畫面要 focus 的那張」
@@ -194,13 +196,17 @@ fun HomeScreen() {
         }
     }
 
-    // 換頁後 videos 會重新載入；只在「新 videos 來」的那一刻 focus 第一張
-    LaunchedEffect(videos) {
-        if (windowSize.isTv && pendingFirstVideoFocus && videos.isNotEmpty()) {
-            kotlinx.coroutines.delay(50) // 等 LazyVerticalGrid 把第一張 item compose 出來
-            runCatching { firstVideoFocus.requestFocus() }
-            pendingFirstVideoFocus = false
+    // 切站／切分類／換頁觸發後，pendingContentFocus=true。等 loading 結束、依結果把 focus 拉到對應元素：
+    //   成功有片 → 第一張卡；失敗 → 重試按鈕；空清單但無 error → 不動
+    LaunchedEffect(loading, videos, errorMsg) {
+        if (!windowSize.isTv || loading || !pendingContentFocus) return@LaunchedEffect
+        kotlinx.coroutines.delay(50) // 等對應元素 compose 出來
+        when {
+            errorMsg != null -> runCatching { retryFocus.requestFocus() }
+            videos.isNotEmpty() -> runCatching { firstVideoFocus.requestFocus() }
+            else -> return@LaunchedEffect // 空清單沒 retry 按鈕，保留原 focus；保持 flag 等下次重抓
         }
+        pendingContentFocus = false
     }
 
     // 從 detail 返回 → focus 剛才點進去的那張卡
@@ -380,6 +386,7 @@ fun HomeScreen() {
                         categories = emptyList()
                         selectedCategory = null
                         page = 1
+                        pendingContentFocus = true
                         // 切站 → 分類列表會被換掉，舊的捲動位置在新的列表上沒意義，回到開頭
                         scope.launch { categoryStripState.scrollToItem(0) }
                     },
@@ -391,8 +398,10 @@ fun HomeScreen() {
                         categories = categories,
                         selected = selectedCategory,
                         onPick = {
+                            if (it?.typeId == selectedCategory?.typeId) return@CategoryStrip
                             selectedCategory = it
                             page = 1
+                            pendingContentFocus = true
                         },
                         windowSize = windowSize,
                         listState = categoryStripState,
@@ -416,7 +425,11 @@ fun HomeScreen() {
                                 AppButton(
                                     text = "重試",
                                     icon = Icons.Filled.Refresh,
-                                    onClick = { retryKey += 1 },
+                                    onClick = {
+                                        pendingContentFocus = true
+                                        retryKey += 1
+                                    },
+                                    modifier = Modifier.focusRequester(retryFocus),
                                 )
                             },
                         )
@@ -453,14 +466,14 @@ fun HomeScreen() {
                                     page = page,
                                     pageCount = pageCount,
                                     onPrev = {
-                                        if (page > 1) { page--; pendingFirstVideoFocus = true }
+                                        if (page > 1) { page--; pendingContentFocus = true }
                                     },
                                     onNext = {
-                                        if (page < pageCount) { page++; pendingFirstVideoFocus = true }
+                                        if (page < pageCount) { page++; pendingContentFocus = true }
                                     },
                                     onJump = { target ->
                                         page = target
-                                        pendingFirstVideoFocus = true
+                                        pendingContentFocus = true
                                     },
                                     windowSize = windowSize,
                                 )

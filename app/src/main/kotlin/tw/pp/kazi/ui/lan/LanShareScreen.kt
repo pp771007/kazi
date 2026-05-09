@@ -52,14 +52,6 @@ fun LanShareScreen() {
     val state by container.lanState.collectAsState()
     val scope = rememberCoroutineScope()
 
-    val qrBitmap: ImageBitmap? = remember(state.url) {
-        state.url?.let { runCatching { QrCode.encode(it, QR_PX) }.getOrNull() }
-    }
-
-    // 只有 Expanded（平板/TV）才用大 QR；Compact 直立 + Medium 橫向手機都用小的
-    // ——landscape 手機 ~360dp 高度容不下 300dp QR 完整顯示，掃不到
-    val qrSize = if (windowSize == WindowSize.Expanded) QR_DISPLAY_WIDE else QR_DISPLAY_COMPACT
-
     // QR Box 自己也是 focusable — TV 進頁面預設停在這，避免 TV 預設搶到下方「啟用/停止」
     // 按鈕、bringIntoView 把 QR 推出可視範圍而使用者按上又回不去（QR 不可 focus 就接不到 D-pad）
     val qrFocus = remember { FocusRequester() }
@@ -69,28 +61,46 @@ fun LanShareScreen() {
         runCatching { qrFocus.requestFocus() }
     }
 
-    val qrPanel: @Composable () -> Unit = {
-        QrPanel(
-            running = state.running,
-            url = state.url,
-            qrBitmap = qrBitmap,
-            onToggle = {
-                scope.launch {
-                    if (state.running) {
-                        container.stopLan()
-                        container.configRepository.updateLanShare(false)
-                    } else {
-                        if (container.startLan()) {
-                            container.configRepository.updateLanShare(true)
+    // movableContentOf：compact ↔ wide 切換時 qrPanel 會在 Column / Row 兩種 parent 之間搬位。
+    // 沒有 movableContentOf 的話 Compose 會視為新 composition 重組，QR Box 上的 focus 會被剪掉飄走。
+    // 注意：closure 對 outer 區域變數捕獲是「value-by-value」（state delegate 屬性除外），
+    // 所以會隨 window 變的 qrSize / qrBitmap 必須在 lambda 裡重算，不能從外面 capture
+    val qrPanel = remember {
+        movableContentOf {
+            val ws = LocalWindowSize.current
+            val bitmap: ImageBitmap? = remember(state.url) {
+                state.url?.let { runCatching { QrCode.encode(it, QR_PX) }.getOrNull() }
+            }
+            // 只有 Expanded（平板/TV）才用大 QR；Compact 直立 + Medium 橫向手機都用小的
+            // ——landscape 手機 ~360dp 高度容不下 300dp QR 完整顯示，掃不到
+            val size = if (ws == WindowSize.Expanded) QR_DISPLAY_WIDE else QR_DISPLAY_COMPACT
+            QrPanel(
+                running = state.running,
+                url = state.url,
+                qrBitmap = bitmap,
+                onToggle = {
+                    scope.launch {
+                        if (state.running) {
+                            container.stopLan()
+                            container.configRepository.updateLanShare(false)
+                        } else {
+                            if (container.startLan()) {
+                                container.configRepository.updateLanShare(true)
+                            }
                         }
                     }
-                }
-            },
-            qrSize = qrSize,
-            qrFocus = qrFocus,
-        )
+                },
+                qrSize = size,
+                qrFocus = qrFocus,
+            )
+        }
     }
-    val stepsPanel: @Composable () -> Unit = { StepsPanel(compact = compact) }
+    // StepsPanel 沒 focusable 元素，不需要 movableContentOf；但同樣要把 compact 移到 lambda 內讀
+    val stepsPanel = remember {
+        movableContentOf {
+            StepsPanel(compact = LocalWindowSize.current.isCompact)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         GradientTopBar(

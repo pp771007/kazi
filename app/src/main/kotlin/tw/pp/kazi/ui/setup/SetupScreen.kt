@@ -87,8 +87,12 @@ fun SetupScreen() {
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
 
-        val mainContent: @Composable ColumnScope.() -> Unit = {
-            BatchOpsCard(
+        // movableContentOf：compact ↔ wide 切換時這段內容會在不同 parent 之間搬位（compact 在
+        // outer scrollable Column；wide 在左欄 Column）。沒有 movableContentOf 的話 Compose
+        // 會把它當新 composition 重新建立，focus 跟著被剪掉、飄到外層第一個 focusable。
+        val mainContent = remember {
+            movableContentOf {
+                BatchOpsCard(
                 includeDisabled = includeDisabled,
                 onToggleInclude = { includeDisabled = !includeDisabled },
                 batchChecking = batchChecking,
@@ -160,6 +164,7 @@ fun SetupScreen() {
                 },
                 onScan = { nav.navigate(Routes.ScanSites) },
             )
+            }
         }
 
         if (compact) {
@@ -202,8 +207,9 @@ fun SetupScreen() {
                         .width(LEFT_COL_WIDTH)
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(windowSize.sectionGap()),
-                    content = mainContent,
-                )
+                ) {
+                    mainContent()
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     SiteListSection(
                         sites = sites,
@@ -262,7 +268,7 @@ fun SetupScreen() {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun ColumnScope.AddSiteCard(
+private fun AddSiteCard(
     newUrl: String,
     newName: String,
     onUrlChange: (String) -> Unit,
@@ -314,7 +320,7 @@ private fun ColumnScope.AddSiteCard(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun ColumnScope.BatchOpsCard(
+private fun BatchOpsCard(
     includeDisabled: Boolean,
     onToggleInclude: () -> Unit,
     batchChecking: Boolean,

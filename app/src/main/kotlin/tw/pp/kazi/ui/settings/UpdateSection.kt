@@ -170,7 +170,7 @@ fun UpdateSection() {
     // 就不互動），只有那一次 transition 會 focus loss
     val s = state
     val buttonSpec: ButtonSpec? = when (s) {
-        UpdateUiState.Idle -> ButtonSpec("檢查更新", Icons.Filled.SystemUpdate, ::startCheck, true, false)
+        UpdateUiState.Idle -> ButtonSpec("檢查並更新", Icons.Filled.SystemUpdate, ::startCheck, true, false)
         UpdateUiState.Checking -> ButtonSpec("檢查中⋯", null, {}, false, false)
         is UpdateUiState.UpToDate -> ButtonSpec("重新檢查", Icons.Filled.Refresh, ::startCheck, true, false)
         is UpdateUiState.HasUpdate -> ButtonSpec("下載並安裝", Icons.Filled.Download, { startDownloadAndInstall(s.asset) }, true, true)
