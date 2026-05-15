@@ -3,11 +3,13 @@ package tw.pp.kazi.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -33,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.ui.isCompact
+import tw.pp.kazi.ui.isTv
 import tw.pp.kazi.ui.pagePadding
 import tw.pp.kazi.ui.theme.AppColors
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -41,6 +44,10 @@ import androidx.tv.material3.Text
 
 private const val JUMP_INPUT_MAX_DIGITS = 4
 private val JUMP_INPUT_WIDTH = 64.dp
+
+// TV 雙列布局：「上一頁」按鈕的最小寬度，比文字本身寬，這樣 D-pad 從卡片往下進來
+// 第一個落點是這顆大按鈕，視覺上也跟整列等高的「下一頁」呼應
+private val TV_PREV_BUTTON_MIN_WIDTH = 200.dp
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -59,6 +66,7 @@ fun Pager(
     modifier: Modifier = Modifier,
 ) {
     val compact = windowSize.isCompact
+    val tv = windowSize.isTv
     // page 變動時把 input 清掉，避免使用者輸入完按下「跳轉」之後欄位殘留舊值
     var jumpInput by remember(page) { mutableStateOf("") }
     val parsedJump = jumpInput.toIntOrNull()
@@ -79,6 +87,74 @@ fun Pager(
         modifier
             .fillMaxWidth()
             .padding(horizontal = windowSize.pagePadding(), vertical = 12.dp)
+    }
+
+    if (tv) {
+        // TV 雙列布局：
+        //   第一列：「下一頁」獨佔一列、撐滿寬度 — D-pad 從上方卡片下來會直接落在這顆，
+        //          不必跟「上一頁／頁碼／跳轉」競爭 spatial focus
+        //   第二列：「上一頁」（加長）+ 頁碼 + （非 simplified）輸入框 + 跳轉
+        Column(
+            modifier = outer,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            AppButton(
+                text = "下一頁",
+                icon = Icons.AutoMirrored.Filled.ArrowForward,
+                onClick = onNext,
+                enabled = page < pageCount,
+                primary = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (label != null) {
+                    Text(
+                        label,
+                        color = AppColors.OnBgMuted,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                AppButton(
+                    text = "上一頁",
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    onClick = onPrev,
+                    enabled = page > 1,
+                    primary = false,
+                    modifier = Modifier.widthIn(min = TV_PREV_BUTTON_MIN_WIDTH),
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0x22FFFFFF))
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                ) {
+                    Text(
+                        "$page / $pageCount",
+                        color = AppColors.OnBg,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+                if (!simplified) {
+                    Spacer(Modifier.weight(1f))
+                    JumpInput(
+                        value = jumpInput,
+                        onValueChange = { jumpInput = it.filter { c -> c.isDigit() }.take(JUMP_INPUT_MAX_DIGITS) },
+                        onSubmit = ::submitJump,
+                    )
+                    AppButton(
+                        text = "跳轉",
+                        icon = Icons.Filled.KeyboardDoubleArrowRight,
+                        onClick = ::submitJump,
+                        enabled = canJump,
+                        primary = false,
+                    )
+                }
+            }
+        }
+        return
     }
 
     Row(
@@ -123,41 +199,10 @@ fun Pager(
         )
         if (!simplified) {
             Spacer(Modifier.weight(1f))
-            BasicTextField(
+            JumpInput(
                 value = jumpInput,
                 onValueChange = { jumpInput = it.filter { c -> c.isDigit() }.take(JUMP_INPUT_MAX_DIGITS) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(onDone = { submitJump() }),
-                textStyle = TextStyle(
-                    color = AppColors.OnBg,
-                    fontSize = MaterialTheme.typography.labelMedium.fontSize,
-                    textAlign = TextAlign.Center,
-                ),
-                cursorBrush = SolidColor(AppColors.Primary),
-                decorationBox = { inner ->
-                    Box(
-                        modifier = Modifier
-                            .width(JUMP_INPUT_WIDTH)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(AppColors.BgElevated)
-                            .padding(horizontal = 10.dp, vertical = 7.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (jumpInput.isEmpty()) {
-                            Text(
-                                "頁碼",
-                                color = AppColors.OnBgDim,
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                        }
-                        inner()
-                    }
-                },
-                modifier = Modifier.width(JUMP_INPUT_WIDTH),
+                onSubmit = ::submitJump,
             )
             AppButton(
                 text = "跳轉",
@@ -169,4 +214,49 @@ fun Pager(
             )
         }
     }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun JumpInput(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Number,
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(onDone = { onSubmit() }),
+        textStyle = TextStyle(
+            color = AppColors.OnBg,
+            fontSize = MaterialTheme.typography.labelMedium.fontSize,
+            textAlign = TextAlign.Center,
+        ),
+        cursorBrush = SolidColor(AppColors.Primary),
+        decorationBox = { inner ->
+            Box(
+                modifier = Modifier
+                    .width(JUMP_INPUT_WIDTH)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(AppColors.BgElevated)
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (value.isEmpty()) {
+                    Text(
+                        "頁碼",
+                        color = AppColors.OnBgDim,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+                inner()
+            }
+        },
+        modifier = Modifier.width(JUMP_INPUT_WIDTH),
+    )
 }

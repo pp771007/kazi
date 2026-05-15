@@ -231,8 +231,12 @@ fun HomeScreen() {
         title = "咔滋影院",
         subtitle = selectedSite?.name ?: "請先到設定新增站點",
         headerState = headerState,
-        titleBadges = if (incognito || lanState.running) {
+        titleBadges = if (windowSize.isTv || incognito || lanState.running) {
             {
+                // 電視盒（Expanded）首頁顯示現在時間 — 使用者通常邊看 TV 邊滑首頁，不想再看手機才知道幾點
+                if (windowSize.isTv) {
+                    ClockPill()
+                }
                 if (incognito) {
                     tw.pp.kazi.ui.components.StatusPill(
                         text = "🕶 無痕",
@@ -303,19 +307,23 @@ fun HomeScreen() {
                         text = "遠端遙控",
                         icon = Icons.Filled.QrCode2,
                         onClick = {
-                            container.homeTopBarFocusKey = "lan"
                             scope.launch {
-                                // 一鍵：沒開就順手 enable，但要等 startLan 真的成功才寫 settings + 導頁
-                                // 失敗時還是導去 LanShareScreen 讓使用者看到「未啟用」+ 可手動重試
-                                if (!lanState.running) {
+                                if (lanState.running) {
+                                    // 開著時再點一次：直接關掉，省一次「進頁面→按停止」的操作
+                                    container.stopLan()
+                                    container.configRepository.updateLanShare(false)
+                                } else {
+                                    // 沒開：順手 enable，成功才寫 settings + 導頁。
+                                    // 失敗仍導去 LanShareScreen 讓使用者看到「未啟用」+ 可手動重試
+                                    container.homeTopBarFocusKey = "lan"
                                     val ok = container.startLan()
                                     if (ok) {
                                         container.configRepository.updateLanShare(true)
                                     } else {
                                         Logger.w("startLan failed from Home one-tap; navigating to LanShareScreen so user sees the failure")
                                     }
+                                    nav.navigate(Routes.LanShare)
                                 }
-                                nav.navigate(Routes.LanShare)
                             }
                         },
                         primary = lanState.running,
@@ -630,4 +638,29 @@ private fun VideoGrid(
         }
         footer?.invoke(this)
     }
+}
+
+/**
+ * 電視盒首頁標題列旁邊的時鐘，跟著真實時間每分鐘更新一次。
+ * 不用秒層級更新 — 標題上跳秒會分散注意力，分層更新省 recompose。
+ */
+@Composable
+private fun ClockPill() {
+    var now by remember { mutableStateOf(currentClockText()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = currentClockText()
+            // 對齊下一個整分：用「到下一分還剩多少 ms」當 delay，避免每次延 60s 累積漂移
+            val msToNextMinute = 60_000L - (System.currentTimeMillis() % 60_000L)
+            kotlinx.coroutines.delay(msToNextMinute)
+        }
+    }
+    tw.pp.kazi.ui.components.StatusPill(text = "🕒 $now")
+}
+
+private fun currentClockText(): String {
+    val cal = java.util.Calendar.getInstance()
+    val h = cal.get(java.util.Calendar.HOUR_OF_DAY)
+    val m = cal.get(java.util.Calendar.MINUTE)
+    return String.format("%02d:%02d", h, m)
 }

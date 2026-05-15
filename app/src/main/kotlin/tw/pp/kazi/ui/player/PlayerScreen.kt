@@ -368,11 +368,13 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(gestureIndicator) {
-        if (gestureIndicator != null) {
-            delay(PlayerConfig.GESTURE_INDICATOR_HIDE_MS)
-            gestureIndicator = null
-        }
+    LaunchedEffect(gestureIndicator, longPressActive) {
+        val g = gestureIndicator ?: return@LaunchedEffect
+        // 長按 2x 速期間：speed 提示要一直停在畫面上，等放手 cancelLongPressSpeed() 才會被清掉。
+        // 不然 indicator hide timer 跑完就消失，使用者看不出來「正在加速中」
+        if (g is GestureIndicator.Speed && longPressActive) return@LaunchedEffect
+        delay(PlayerConfig.GESTURE_INDICATOR_HIDE_MS)
+        gestureIndicator = null
     }
 
     // 雙擊累加 seek 的提交：每次 seekCommitTrigger 變動就重新計時，timer 結束才真的 seek
@@ -642,9 +644,10 @@ fun PlayerScreen(
             }
 
             gestureIndicator?.let { indicator ->
-                // Speed 提示靠上方一些，避免擋到正在播的內容；其他（亮度/音量/seek）維持置中
-                val alignment = if (indicator is GestureIndicator.Speed) Alignment.TopCenter else Alignment.Center
-                val topPad = if (indicator is GestureIndicator.Speed) GESTURE_INDICATOR_TOP_PAD else 0.dp
+                // Speed 跟 Seek 都靠上方，避免擋到正在播的內容；亮度／音量維持置中
+                val topAligned = indicator is GestureIndicator.Speed || indicator is GestureIndicator.Seek
+                val alignment = if (topAligned) Alignment.TopCenter else Alignment.Center
+                val topPad = if (topAligned) GESTURE_INDICATOR_TOP_PAD else 0.dp
                 GestureOverlay(
                     indicator,
                     modifier = Modifier.align(alignment).padding(top = topPad),
@@ -768,10 +771,8 @@ private fun GestureOverlay(indicator: GestureIndicator, modifier: Modifier = Mod
     ) {
         when (indicator) {
             is GestureIndicator.Seek -> {
-                val sign = if (indicator.deltaMs >= 0) "+" else "-"
-                val deltaSec = abs(indicator.deltaMs) / 1000
                 Text(
-                    "${formatDuration(indicator.targetMs)} / ${formatDuration(indicator.durationMs)}  (${sign}${deltaSec}s)",
+                    "${formatDuration(indicator.targetMs)} / ${formatDuration(indicator.durationMs)}  (${formatSeekDelta(indicator.deltaMs)})",
                     color = Color.White,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
@@ -1077,6 +1078,19 @@ private fun ProgressBar(
             }
         }
     }
+}
+
+/**
+ * Seek 累計量顯示：60 秒以下顯示 `±Xs`，超過 60 秒拆成 `±Xm Ys`
+ * （`±2m 30s` 比 `±150s` 直觀很多，使用者按住 ← 加速 seek 後一眼看出跳了幾分鐘）
+ */
+private fun formatSeekDelta(deltaMs: Long): String {
+    val sign = if (deltaMs >= 0) "+" else "-"
+    val totalSec = abs(deltaMs) / 1000
+    if (totalSec < 60) return "${sign}${totalSec}s"
+    val m = totalSec / 60
+    val s = totalSec % 60
+    return if (s == 0L) "${sign}${m}m" else "${sign}${m}m ${s}s"
 }
 
 private fun formatDuration(ms: Long): String {
