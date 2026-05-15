@@ -83,6 +83,13 @@ fun Pager(
             .clip(RoundedCornerShape(12.dp))
             .background(AppColors.Primary.copy(alpha = 0.12f))
             .padding(horizontal = 8.dp, vertical = 4.dp)
+    } else if (tv) {
+        // TV 模式 Pager 是 LazyVerticalGrid footer，grid 自己的 contentPadding 已經提供 pagePadding，
+        // 這裡再加會讓「下一頁」按鈕左緣縮在最左卡片內側 → ↓ spatial focus 從最左卡片下來會被
+        // 中心更貼近的「上一頁」（短按鈕）吃掉。拿掉 horizontal padding 後下一頁橫跨整列寬度。
+        modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp)
     } else {
         modifier
             .fillMaxWidth()

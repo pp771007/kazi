@@ -376,119 +376,107 @@ fun HomeScreen() {
             }
 
             // 站台 / 類別 strip 的捲動位置 hoist 到這層，避免 CategoryStrip 因暫時 categories=[]
-            // 從 composition 拔掉再重掛時把 scroll position 弄丟（同樣道理 SiteStrip 在 grid header 重組時也保險）
+            // 從 composition 拔掉再重掛時把 scroll position 弄丟
             val siteStripState = rememberLazyListState()
             val categoryStripState = rememberLazyListState()
 
-            // 站點 / 類別兩條 strip 是「跟著內容捲」的—正常顯示影片時塞進 grid 當 header，
-            // loading / 載入失敗 / 該分類沒內容時則保留釘在頂部的舊版（這時使用者反而需要切站台逃出來）
-            val strips: @Composable () -> Unit = {
-                SiteStrip(
-                    sites = enabledSites,
-                    selected = selectedSite,
-                    onPick = { picked ->
-                        // 點到當前站台 no-op；不然命令式清掉 categories 但 LaunchedEffect
-                        // 沒任何 key 改變不會 re-fire，類別列表會永久消失
-                        if (picked.id == selectedSite?.id) return@SiteStrip
-                        selectedSite = picked
-                        categories = emptyList()
-                        selectedCategory = null
+            // 站點 / 類別 strip 固定釘在頂部，不再隨 loading / showVideos 切換在「grid header」跟
+            // 「直接 Column 子層」之間搬家。原本搬家會把 SiteStrip 卸載再重掛，剛點過的 site tag
+            // 失去 focus，Compose 把焦點 fallback 到 top bar 的「無痕」按鈕。
+            SiteStrip(
+                sites = enabledSites,
+                selected = selectedSite,
+                onPick = { picked ->
+                    // 點到當前站台 no-op；不然命令式清掉 categories 但 LaunchedEffect
+                    // 沒任何 key 改變不會 re-fire，類別列表會永久消失
+                    if (picked.id == selectedSite?.id) return@SiteStrip
+                    selectedSite = picked
+                    categories = emptyList()
+                    selectedCategory = null
+                    page = 1
+                    pendingContentFocus = true
+                    // 切站 → 分類列表會被換掉，舊的捲動位置在新的列表上沒意義，回到開頭
+                    scope.launch { categoryStripState.scrollToItem(0) }
+                },
+                windowSize = windowSize,
+                listState = siteStripState,
+            )
+            if (categories.isNotEmpty()) {
+                CategoryStrip(
+                    categories = categories,
+                    selected = selectedCategory,
+                    onPick = {
+                        if (it?.typeId == selectedCategory?.typeId) return@CategoryStrip
+                        selectedCategory = it
                         page = 1
                         pendingContentFocus = true
-                        // 切站 → 分類列表會被換掉，舊的捲動位置在新的列表上沒意義，回到開頭
-                        scope.launch { categoryStripState.scrollToItem(0) }
                     },
                     windowSize = windowSize,
-                    listState = siteStripState,
+                    listState = categoryStripState,
                 )
-                if (categories.isNotEmpty()) {
-                    CategoryStrip(
-                        categories = categories,
-                        selected = selectedCategory,
-                        onPick = {
-                            if (it?.typeId == selectedCategory?.typeId) return@CategoryStrip
-                            selectedCategory = it
-                            page = 1
-                            pendingContentFocus = true
-                        },
-                        windowSize = windowSize,
-                        listState = categoryStripState,
-                    )
-                }
             }
 
             val err = errorMsg
-            val showVideos = !loading && err == null && videos.isNotEmpty()
-
-            if (!showVideos) {
-                strips()
-                Box(modifier = Modifier.weight(1f)) {
-                    when {
-                        loading -> LoadingState()
-                        err != null -> EmptyState(
-                            title = "載入失敗",
-                            subtitle = err,
-                            icon = Icons.Filled.ErrorOutline,
-                            action = {
-                                AppButton(
-                                    text = "重試",
-                                    icon = Icons.Filled.Refresh,
-                                    onClick = {
-                                        pendingContentFocus = true
-                                        retryKey += 1
-                                    },
-                                    modifier = Modifier.focusRequester(retryFocus),
-                                )
-                            },
-                        )
-                        else -> EmptyState(
-                            title = "這個分類下沒有內容",
-                            subtitle = "試試切換其他分類或搜尋",
-                            icon = Icons.Filled.MovieFilter,
-                        )
-                    }
-                }
-            } else {
-                VideoGrid(
-                    videos = videos,
-                    viewMode = settings.viewMode,
-                    windowSize = windowSize,
-                    firstItemFocus = firstVideoFocus,
-                    clickedVodId = restoreClickedVodId,
-                    clickedItemFocus = clickedVideoFocus,
-                    onClick = { v ->
-                        val site = selectedSite ?: return@VideoGrid
-                        // 記下這次點的 vodId，從 detail 返回時 focus 會自動回到這張卡
-                        lastClickedVodId = v.vodId
-                        nav.navigate(Routes.detail(site.id, v.vodId))
-                    },
-                    header = {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            Column { strips() }
-                        }
-                    },
-                    footer = if (pageCount > 1) {
-                        {
-                            item(span = { GridItemSpan(maxLineSpan) }) {
-                                Pager(
-                                    page = page,
-                                    pageCount = pageCount,
-                                    onPrev = {
-                                        if (page > 1) { page--; pendingContentFocus = true }
-                                    },
-                                    onNext = {
-                                        if (page < pageCount) { page++; pendingContentFocus = true }
-                                    },
-                                    onJump = { target ->
-                                        page = target
-                                        pendingContentFocus = true
-                                    },
-                                    windowSize = windowSize,
-                                )
+            Box(modifier = Modifier.weight(1f)) {
+                when {
+                    loading -> LoadingState()
+                    err != null -> EmptyState(
+                        title = "載入失敗",
+                        subtitle = err,
+                        icon = Icons.Filled.ErrorOutline,
+                        action = {
+                            AppButton(
+                                text = "重試",
+                                icon = Icons.Filled.Refresh,
+                                onClick = {
+                                    pendingContentFocus = true
+                                    retryKey += 1
+                                },
+                                modifier = Modifier.focusRequester(retryFocus),
+                            )
+                        },
+                    )
+                    videos.isEmpty() -> EmptyState(
+                        title = "這個分類下沒有內容",
+                        subtitle = "試試切換其他分類或搜尋",
+                        icon = Icons.Filled.MovieFilter,
+                    )
+                    else -> VideoGrid(
+                        videos = videos,
+                        viewMode = settings.viewMode,
+                        windowSize = windowSize,
+                        firstItemFocus = firstVideoFocus,
+                        clickedVodId = restoreClickedVodId,
+                        clickedItemFocus = clickedVideoFocus,
+                        onClick = { v ->
+                            val site = selectedSite ?: return@VideoGrid
+                            // 記下這次點的 vodId，從 detail 返回時 focus 會自動回到這張卡
+                            lastClickedVodId = v.vodId
+                            nav.navigate(Routes.detail(site.id, v.vodId))
+                        },
+                        footer = if (pageCount > 1) {
+                            {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    Pager(
+                                        page = page,
+                                        pageCount = pageCount,
+                                        onPrev = {
+                                            if (page > 1) { page--; pendingContentFocus = true }
+                                        },
+                                        onNext = {
+                                            if (page < pageCount) { page++; pendingContentFocus = true }
+                                        },
+                                        onJump = { target ->
+                                            page = target
+                                            pendingContentFocus = true
+                                        },
+                                        windowSize = windowSize,
+                                    )
+                                }
                             }
-                        }
-                    } else null,
-                )
+                        } else null,
+                    )
+                }
             }
         }
         }
@@ -607,7 +595,6 @@ private fun VideoGrid(
     clickedVodId: Long?,
     clickedItemFocus: FocusRequester,
     onClick: (Video) -> Unit,
-    header: (LazyGridScope.() -> Unit)? = null,
     footer: (LazyGridScope.() -> Unit)? = null,
 ) {
     LazyVerticalGrid(
@@ -620,7 +607,6 @@ private fun VideoGrid(
         verticalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
         modifier = Modifier.fillMaxSize(),
     ) {
-        header?.invoke(this)
         itemsIndexed(videos, key = { _, v -> v.vodId }) { idx, v ->
             PosterCard(
                 title = v.vodName,
