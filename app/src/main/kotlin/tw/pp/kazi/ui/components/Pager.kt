@@ -1,6 +1,8 @@
 package tw.pp.kazi.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,8 +26,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -49,7 +55,11 @@ private val JUMP_INPUT_WIDTH = 64.dp
 // 第一個落點是這顆大按鈕，視覺上也跟整列等高的「下一頁」呼應
 private val TV_PREV_BUTTON_MIN_WIDTH = 200.dp
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(
+    ExperimentalTvMaterial3Api::class,
+    ExperimentalFoundationApi::class,
+    ExperimentalComposeUiApi::class,
+)
 @Composable
 fun Pager(
     page: Int,
@@ -71,6 +81,12 @@ fun Pager(
     var jumpInput by remember(page) { mutableStateOf("") }
     val parsedJump = jumpInput.toIntOrNull()
     val canJump = parsedJump != null && parsedJump in 1..pageCount && parsedJump != page
+    // TV 雙列布局時讓 grid 卡片按↓固定落到「下一頁」。
+    // 不靠 spatial focus 自己判斷 — fillMaxWidth 的「下一頁」中心點在水平中間，從左/右邊卡片
+    // 往下時水平偏差會輸給第二列窄按鈕（上一頁／頁碼／跳轉），導致實際 focus 跑去那些。
+    // 用 focusGroup + focusProperties.enter 把整個 Pager 包成單一 entry，外部任何方向進來
+    // 都先 redirect 到下一頁。
+    val nextPageRequester = remember { FocusRequester() }
 
     fun submitJump() {
         if (canJump) parsedJump?.let(onJump)
@@ -98,11 +114,18 @@ fun Pager(
 
     if (tv) {
         // TV 雙列布局：
-        //   第一列：「下一頁」獨佔一列、撐滿寬度 — D-pad 從上方卡片下來會直接落在這顆，
-        //          不必跟「上一頁／頁碼／跳轉」競爭 spatial focus
+        //   第一列：「下一頁」獨佔一列、撐滿寬度
         //   第二列：「上一頁」（加長）+ 頁碼 + （非 simplified）輸入框 + 跳轉
+        // 用 focusGroup + enter redirect 強制把外部進來的 focus 帶到「下一頁」（見 nextPageRequester 註解）。
+        // 已在最後一頁時下一頁 disabled、不可 focus，fallback Default 讓 spatial 自己挑（會落到「上一頁」）。
         Column(
-            modifier = outer,
+            modifier = outer
+                .focusGroup()
+                .focusProperties {
+                    enter = {
+                        if (page < pageCount) nextPageRequester else FocusRequester.Default
+                    }
+                },
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             AppButton(
@@ -111,7 +134,9 @@ fun Pager(
                 onClick = onNext,
                 enabled = page < pageCount,
                 primary = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(nextPageRequester),
             )
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
