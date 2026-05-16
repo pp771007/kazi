@@ -765,9 +765,11 @@ private sealed class GestureIndicator {
 private fun GestureOverlay(indicator: GestureIndicator, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xCC000000))
-            .padding(horizontal = 22.dp, vertical = 14.dp),
+            .clip(RoundedCornerShape(10.dp))
+            // 0x80 = 50% alpha — 比之前 0xCC (80%) 更穿透，看得到後面畫面；
+            // 之前內部 22/14 padding 讓文字膠囊太大壓住畫面，縮成 10/4 更貼合字寬
+            .background(Color(0x80000000))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
     ) {
         when (indicator) {
             is GestureIndicator.Seek -> {
@@ -1168,5 +1170,5 @@ private val SEEKBAR_THUMB_DRAG = 18.dp
 private val SEEKBAR_TOOLTIP_HALF = 30.dp
 private val SEEKBAR_TOOLTIP_OFFSET_Y = 32.dp
 
-// Speed 加速提示距離畫面頂端的距離
-private val GESTURE_INDICATOR_TOP_PAD = 80.dp
+// Speed / Seek 提示距離畫面頂端的距離 — 跟頂部留一點點空隙就好，越高越不擋畫面
+private val GESTURE_INDICATOR_TOP_PAD = 12.dp
