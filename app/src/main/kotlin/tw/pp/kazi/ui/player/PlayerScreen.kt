@@ -581,6 +581,10 @@ fun PlayerScreen(
                         var startY = 0f
                         var startBrightness = 0f
                         var startVolume = 0
+                        // 起手位置在頂部 / 底部 edge zone 內 → 整段 drag 都不接，讓給系統手勢
+                        // （頂部下拉叫 status bar、底部上滑觸發 home 手勢）。左右沒衝突所以不留。
+                        var suppressedByEdge = false
+                        val edgePx = GESTURE_EDGE_SAFE_ZONE.toPx()
                         detectDragGestures(
                             onDragStart = { offset: Offset ->
                                 // drag 接管手勢時，如果剛好正在長按 2x，要把 speed 還原（不然 speed 卡在 2x）
@@ -590,8 +594,11 @@ fun PlayerScreen(
                                 startY = offset.y
                                 startBrightness = currentBrightness(activity)
                                 startVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                val h = size.height.toFloat()
+                                suppressedByEdge = offset.y < edgePx || offset.y > h - edgePx
                             },
                             onDrag = { change, _ ->
+                                if (suppressedByEdge) return@detectDragGestures
                                 val w = size.width.toFloat().coerceAtLeast(1f)
                                 val h = size.height.toFloat().coerceAtLeast(1f)
                                 val dx = change.position.x - startX
@@ -625,8 +632,8 @@ fun PlayerScreen(
                                     null -> Unit
                                 }
                             },
-                            onDragEnd = { mode = null },
-                            onDragCancel = { mode = null },
+                            onDragEnd = { mode = null; suppressedByEdge = false },
+                            onDragCancel = { mode = null; suppressedByEdge = false },
                         )
                     },
             )
@@ -1172,3 +1179,7 @@ private val SEEKBAR_TOOLTIP_OFFSET_Y = 32.dp
 
 // Speed / Seek 提示距離畫面頂端的距離 — 跟頂部留一點點空隙就好，越高越不擋畫面
 private val GESTURE_INDICATOR_TOP_PAD = 12.dp
+
+// 頂部 / 底部 edge safe zone — 在這條內起手的 vertical drag 不接亮度/音量手勢，
+// 讓給 Android 系統手勢（頂部下拉叫 status bar、底部上滑觸發 home）。左右沒衝突所以不留。
+private val GESTURE_EDGE_SAFE_ZONE = 40.dp
