@@ -236,6 +236,20 @@ fun DetailScreen(siteId: Long, vodId: Long) {
         nav.navigate(Routes.search(name))
     }
 
+    // 點集數播放：剛好點到「上次看的那一集」（同 source、同 episode）且 history 有效（> threshold）
+    // → 從 history positionMs 接著看；其他情況從頭開始。避免使用者本來想繼續，結果不小心點同一集
+    // 被打回 0:00。對齊「繼續觀看」按鈕的行為。
+    val onEpisodePlay: (Int) -> Unit = { idx ->
+        val h = historyItem
+        val resumePos = if (h != null
+            && h.sourceIndex == selectedSource
+            && h.episodeIndex == idx
+            && h.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) {
+            h.positionMs
+        } else 0L
+        nav.navigate(Routes.player(currentSiteId, currentVodId, selectedSource, idx, resumePos))
+    }
+
     // Compact (手機直版) → 單欄垂直版型
     // Medium (手機橫向) → Wide 但 poster 欄縮窄，標題立刻可見 + 右邊有內容
     // Expanded (電視盒 / 大平板) → Wide 標準寬度
@@ -255,9 +269,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
                     Routes.player(currentSiteId, currentVodId, h.sourceIndex, h.episodeIndex, h.positionMs)
                 )
             },
-            onEpisode = { idx ->
-                nav.navigate(Routes.player(currentSiteId, currentVodId, selectedSource, idx))
-            },
+            onEpisode = onEpisodePlay,
             onPlayNext = onPlayNext,
             onSearchByName = onSearchByName,
             pagePad = windowSize.pagePadding(),
@@ -284,9 +296,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
                     Routes.player(currentSiteId, currentVodId, h.sourceIndex, h.episodeIndex, h.positionMs)
                 )
             },
-            onEpisode = { idx ->
-                nav.navigate(Routes.player(currentSiteId, currentVodId, selectedSource, idx))
-            },
+            onEpisode = onEpisodePlay,
             onPlayNext = onPlayNext,
             onSearchByName = onSearchByName,
             peers = peers,
