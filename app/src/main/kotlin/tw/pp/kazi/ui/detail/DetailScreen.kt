@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -32,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
@@ -187,6 +190,9 @@ fun DetailScreen(siteId: Long, vodId: Long) {
 
     val d = details!!
 
+    // 點海報全螢幕放大；再點背景或按返回鍵收起。Dialog 處理 z-order + 系統返回鍵 dismiss。
+    var zoomedPosterUrl by remember { mutableStateOf<String?>(null) }
+
     val onToggleFavorite: () -> Unit = {
         site?.let { currentSite ->
             scope.launch {
@@ -260,6 +266,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
             episodesReversed = episodesReversed,
             onToggleReversed = { episodesReversed = !episodesReversed },
             incognito = incognito,
+            onZoomPoster = { zoomedPosterUrl = it },
         )
     } else {
         WideLayout(
@@ -287,10 +294,19 @@ fun DetailScreen(siteId: Long, vodId: Long) {
             episodesReversed = episodesReversed,
             onToggleReversed = { episodesReversed = !episodesReversed },
             incognito = incognito,
+            onZoomPoster = { zoomedPosterUrl = it },
             // Medium (手機橫向) 用窄 poster 欄，避免 380dp+2:3=570dp 高的圖把整個螢幕吃掉，
             // 而且 poster 欄縮短後 right column 才有空間放劇情/sources/episodes（不然右邊會空一塊）
             posterColWidth = if (windowSize == WindowSize.Medium) POSTER_COL_WIDTH_MEDIUM
                 else POSTER_COL_WIDTH_EXPANDED,
+        )
+    }
+
+    zoomedPosterUrl?.let { url ->
+        FullscreenPosterDialog(
+            url = url,
+            contentDescription = d.video.vodName,
+            onDismiss = { zoomedPosterUrl = null },
         )
     }
 }
@@ -338,6 +354,7 @@ private fun CompactLayout(
     episodesReversed: Boolean,
     onToggleReversed: () -> Unit,
     incognito: Boolean,
+    onZoomPoster: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val v = d.video
@@ -381,7 +398,12 @@ private fun CompactLayout(
                     .width(COMPACT_POSTER_W)
                     .aspectRatio(POSTER_ASPECT)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(AppColors.BgCard),
+                    .background(AppColors.BgCard)
+                    .then(
+                        if (v.vodPic.isNotBlank())
+                            Modifier.clickable { onZoomPoster(v.vodPic) }
+                        else Modifier
+                    ),
             ) {
                 if (v.vodPic.isNotBlank()) {
                     val imageRequest = remember(v.vodPic) {
@@ -541,6 +563,7 @@ private fun WideLayout(
     episodesReversed: Boolean,
     onToggleReversed: () -> Unit,
     incognito: Boolean,
+    onZoomPoster: (String) -> Unit,
     posterColWidth: Dp,
 ) {
     val context = LocalContext.current
@@ -583,7 +606,12 @@ private fun WideLayout(
                     .fillMaxWidth()
                     .aspectRatio(POSTER_ASPECT)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(AppColors.BgCard),
+                    .background(AppColors.BgCard)
+                    .then(
+                        if (v.vodPic.isNotBlank())
+                            Modifier.clickable { onZoomPoster(v.vodPic) }
+                        else Modifier
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 if (v.vodPic.isNotBlank()) {
@@ -856,6 +884,40 @@ private fun String.htmlDecode(): String = this
     .replace("&amp;", "&")
     .replace("&quot;", "\"")
     .replace(Regex("<[^>]+>"), "")
+
+/**
+ * 點海報展開的全螢幕預覽。ContentScale.Fit 保留原比例不裁切，背景填黑、留白讓圖
+ * 不變形。點任意處或按系統返回鍵 dismiss（Dialog 預設處理 back press）。
+ * Dialog 用 usePlatformDefaultWidth=false 撐到整個螢幕。
+ */
+@Composable
+private fun FullscreenPosterDialog(
+    url: String,
+    contentDescription: String,
+    onDismiss: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        val interaction = remember { MutableInteractionSource() }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.95f))
+                // indication=null：全螢幕 ripple 動畫視覺很怪，純當 dismiss 區
+                .clickable(interactionSource = interaction, indication = null) { onDismiss() },
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = url,
+                contentDescription = contentDescription,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
 
 // Wide layout poster 欄寬度。Expanded（電視盒 / 大平板）用 380dp 走標準大圖；
 // Medium（手機橫向 ~800×360）用 240dp，左右分欄比例 ~30/70，標題立刻可見、右邊內容有空間
