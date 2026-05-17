@@ -385,8 +385,8 @@ class LanServer(
     <div style="display:flex; gap:8px; align-items:stretch;">
       <div class="input-with-clear">
         <input id="kw" type="text" placeholder="例如：片名" autocomplete="off" autocapitalize="off"
-               oninput="updateClearBtn()" onkeydown="if(event.key==='Enter')submitSearch()">
-        <button class="clear-btn" onclick="clearKw()" title="清空" tabindex="-1">✕</button>
+               oninput="updateClearBtn(this)" onkeydown="if(event.key==='Enter')submitSearch()">
+        <button class="clear-btn" onclick="clearInput('kw')" title="清空" tabindex="-1">✕</button>
       </div>
       <button class="secondary small" onclick="toSimp()" title="繁體轉簡體"
               style="margin-top:0; padding:0 14px; font-weight:bold;">簡</button>
@@ -451,7 +451,15 @@ class LanServer(
     <div id="addMsg" class="err"></div>
   </div>
   <div class="card">
-    <h2 style="margin:0 0 10px; font-size:16px">站點清單</h2>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+      <h2 style="margin:0; font-size:16px">站點清單</h2>
+      <span id="siteCountLabel" style="font-size:12px; color:#94A3B8;"></span>
+    </div>
+    <div class="input-with-clear" style="margin-bottom:10px;">
+      <input id="siteFilter" type="text" placeholder="搜尋站點名稱或 URL"
+             autocomplete="off" oninput="updateClearBtn(this); renderList()">
+      <button class="clear-btn" onclick="clearInput('siteFilter', renderList)" title="清空" tabindex="-1">✕</button>
+    </div>
     <ul id="list"></ul>
   </div>
 </div>
@@ -467,6 +475,7 @@ document.querySelectorAll('.tab').forEach(t => {
 });
 
 const recentKw = JSON.parse(localStorage.getItem('maccms_recent_kw') || '[]');
+let lastSites = [];
 
 async function api(path, opts){
   const r = await fetch(path, opts);
@@ -478,8 +487,11 @@ async function api(path, opts){
 async function loadSites(){
   const r = await api('/api/sites');
   if (!r.ok) return;
-  renderList(r.data);
+  lastSites = r.data;
+  renderList();
   renderChecks(r.data);
+  // 預覽中時匯入頁的「新增/重複」badge 要跟著 site list 同步
+  if (importPreviewData) renderImportPreview();
 }
 
 function renderChecks(sites){
@@ -518,7 +530,7 @@ function renderHistory(){
     text.onclick = () => {
       const el = document.getElementById('kw');
       el.value = k;
-      updateClearBtn();
+      updateClearBtn(el);
       el.focus();
     };
     const delBtn = document.createElement('button');
@@ -570,31 +582,56 @@ function clearHistory(btn){
   });
 }
 
-function updateClearBtn(){
-  const el = document.getElementById('kw');
+function updateClearBtn(el){
   el.parentElement.classList.toggle('has-value', el.value.length > 0);
 }
 
-function clearKw(){
-  const el = document.getElementById('kw');
+function clearInput(id, postCb){
+  const el = document.getElementById(id);
   el.value = '';
-  updateClearBtn();
+  updateClearBtn(el);
   el.focus();
+  if (typeof postCb === 'function') postCb();
 }
 
-function renderList(sites){
+function renderList(){
   const ul = document.getElementById('list');
   ul.innerHTML = '';
-  sites.forEach(s => {
+  const filterEl = document.getElementById('siteFilter');
+  const filter = filterEl ? filterEl.value.trim().toLowerCase() : '';
+  const sites = filter
+    ? lastSites.filter(s =>
+        (s.name || '').toLowerCase().includes(filter) ||
+        (s.url || '').toLowerCase().includes(filter))
+    : lastSites;
+  const label = document.getElementById('siteCountLabel');
+  if (label) {
+    label.textContent = filter
+      ? sites.length + ' / ' + lastSites.length + ' 個'
+      : lastSites.length + ' 個';
+  }
+  if (sites.length === 0) {
+    const li = document.createElement('li');
+    li.style.justifyContent = 'center';
+    li.style.color = '#64748B';
+    li.textContent = filter ? '沒有符合的站點' : '還沒有站點';
+    ul.appendChild(li);
+    return;
+  }
+  sites.forEach((s, displayIdx) => {
+    const realIdx = lastSites.indexOf(s);
+    const atTop = realIdx === 0;
+    const atBottom = realIdx === lastSites.length - 1;
     const li = document.createElement('li');
     const onoff = s.enabled ? '<span class="badge on">啟用</span>' : '<span class="badge off">停用</span>';
+    // ⤒ 移到最頂 / ⤓ 移到最底 — 比 ▲▼ 單格移動快、按一次到位
     li.innerHTML = `
       <div class="grow">
-        <div class="name">`+s.name+` `+onoff+`</div>
-        <div class="url">`+s.url+`</div>
+        <div class="name">`+escapeHtml(s.name)+` `+onoff+`</div>
+        <div class="url">`+escapeHtml(s.url)+`</div>
       </div>
-      <button class="small secondary" onclick="move(`+s.id+`,'up')">▲</button>
-      <button class="small secondary" onclick="move(`+s.id+`,'down')">▼</button>
+      <button class="small secondary" onclick="moveToTop(`+s.id+`)" `+(atTop?'disabled':'')+` title="移到最頂">⤒</button>
+      <button class="small secondary" onclick="moveToBottom(`+s.id+`)" `+(atBottom?'disabled':'')+` title="移到最底">⤓</button>
       <button class="small" onclick="toggle(`+s.id+`, `+!s.enabled+`)">`+(s.enabled?'停用':'啟用')+`</button>
       <button class="small danger" onclick="del(`+s.id+`, this)">刪</button>
     `;
@@ -610,7 +647,7 @@ async function toSimp(){
                                     body: JSON.stringify({ text: val })});
   if (r.ok && r.data && typeof r.data.text === 'string') {
     kwEl.value = r.data.text;
-    updateClearBtn();
+    updateClearBtn(kwEl);
   }
 }
 
@@ -637,6 +674,11 @@ async function submitSearch(){
     if (recentKw.length > 10) recentKw.length = 10;
     localStorage.setItem('maccms_recent_kw', JSON.stringify(recentKw));
     renderHistory();
+    // 送出成功後清空關鍵字 — 方便連續搜尋下一個，且讓 ✕ 跟「最近搜尋」pill 同時可見不擋路。
+    // 不主動 focus 避免手機自動彈鍵盤干擾使用者看 TV
+    const kwEl = document.getElementById('kw');
+    kwEl.value = '';
+    updateClearBtn(kwEl);
   } else {
     msg.textContent = (r.data && r.data.message) || '送出失敗';
   }
@@ -676,6 +718,33 @@ async function move(id, direction){
   loadSites();
 }
 
+// 連續呼叫單格 move 直到 id 在頂端 / 底端。比一次性 reorder API 慢但不必改 server side。
+// 在 LAN 上 round-trip 通常 <30ms，10 個站點 < 300ms。期間禁用相關按鈕避免重複觸發
+async function moveToTop(id){
+  const startIdx = lastSites.findIndex(s => s.id === id);
+  if (startIdx <= 0) return;
+  for (let i = 0; i < startIdx; i++) {
+    await api('/api/sites/' + id + '/move', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ direction: 'up' }),
+    });
+  }
+  loadSites();
+}
+
+async function moveToBottom(id){
+  const startIdx = lastSites.findIndex(s => s.id === id);
+  if (startIdx < 0 || startIdx === lastSites.length - 1) return;
+  const steps = lastSites.length - 1 - startIdx;
+  for (let i = 0; i < steps; i++) {
+    await api('/api/sites/' + id + '/move', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ direction: 'down' }),
+    });
+  }
+  loadSites();
+}
+
 let importParsedRaw = null;
 let importPreviewData = null;
 
@@ -700,18 +769,28 @@ async function runImportPreview(){
 function renderImportPreview(){
   const ul = document.getElementById('importList');
   ul.innerHTML = '';
-  document.getElementById('importPreviewTitle').textContent = '預覽（' + importPreviewData.length + ' 個）';
+  // 用現有站點 URL（normalized 後比對）標記「新增 / 重複」。重複的會被 server 略過、不會覆蓋既有設定
+  const existing = new Set(lastSites.map(s => (s.url || '').trim().toLowerCase()));
+  let newCount = 0, dupCount = 0;
   importPreviewData.forEach(function(item){
     const li = document.createElement('li');
     const name = item.name || '(未命名)';
     const url = item.url || '';
+    const isDup = existing.has(url.trim().toLowerCase());
+    if (isDup) dupCount++; else newCount++;
+    const badge = isDup
+      ? '<span class="badge off" style="margin-left:6px">重複</span>'
+      : '<span class="badge on" style="margin-left:6px">新增</span>';
+    li.style.opacity = isDup ? '0.55' : '1';
     li.innerHTML =
       '<div class="grow">' +
-        '<div class="name">' + escapeHtml(name) + '</div>' +
+        '<div class="name">' + escapeHtml(name) + badge + '</div>' +
         '<div class="url">' + escapeHtml(url) + '</div>' +
       '</div>';
     ul.appendChild(li);
   });
+  document.getElementById('importPreviewTitle').textContent =
+    '預覽（共 ' + importPreviewData.length + ' · 新增 ' + newCount + ' · 重複 ' + dupCount + '）';
 }
 
 async function confirmImport(){
