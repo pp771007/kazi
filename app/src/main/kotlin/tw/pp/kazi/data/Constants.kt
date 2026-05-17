@@ -51,8 +51,16 @@ object PlayerConfig {
     const val SEEK_STEP_MS = 10_000L
     const val SEEK_STEP_LONG_MS = 60_000L
 
-    // D-pad ←/→ 按住快進的 base / rate / max / throttle 改放 SeekSpeedPreset enum（使用者可在
-    // 設定頁切「慢/中/快/極速」四檔）；之前寫死的常數已移除
+    // D-pad ←/→ 按住快進的 step 公式：step = base + held*rate（秒），封頂 maxStep；throttle 控制 fire 頻率。
+    // 「中速」是 v0.5.82 四檔實測後使用者最順手的組合（rate=10, throttle=80ms 比之前 rate=5/100ms 累計快 2x）：
+    //   - held=0: 10s（短按精準）
+    //   - held=5: 60s
+    //   - held=8: 90s（到頂）
+    //   累計按 5 秒 ~36 分、按 10 秒 ~2 小時，對主流電視盒長片場景剛剛好
+    const val SEEK_STEP_BASE_S = 10L
+    const val SEEK_HOLD_LINEAR_RATE_PER_S = 10L
+    const val SEEK_HOLD_MAX_STEP_S = 90L
+    const val SEEK_HOLD_THROTTLE_MS = 80L
 
     const val CONTROLS_AUTO_HIDE_MS = 5_000L
     const val POSITION_POLL_MS = 500L
@@ -99,5 +107,4 @@ object ConfigKeys {
     const val LAN_SHARE_ENABLED = "lan_share_enabled"
     const val INCOGNITO_MODE = "incognito_mode"
     const val SEARCH_HISTORY = "search_history"
-    const val SEEK_SPEED_PRESET = "seek_speed_preset"
 }

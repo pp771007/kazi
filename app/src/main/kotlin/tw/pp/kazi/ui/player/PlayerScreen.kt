@@ -93,8 +93,6 @@ fun PlayerScreen(
     val nav = LocalNavController.current
     val sites by container.siteRepository.sites.collectAsState()
     val site = remember(sites, siteId) { sites.firstOrNull { it.id == siteId } }
-    val appSettings by container.configRepository.settings.collectAsState()
-    val seekPreset = appSettings.seekSpeedPreset
     val context = LocalContext.current
     val activity = context as? android.app.Activity
     val scope = rememberCoroutineScope()
@@ -405,8 +403,7 @@ fun PlayerScreen(
     var seekHoldDirection by remember { mutableStateOf<Boolean?>(null) }
     var lastSeekHandledMs by remember { mutableLongStateOf(0L) }
 
-    // 回傳要 seek 的毫秒；null 代表本次事件被 throttle 跳過（不 seek 但仍然 consume）。
-    // base / rate / max / throttle 全從 seekPreset 拿 — 使用者在設定頁可切「慢/中/快/極速」四檔
+    // 回傳要 seek 的毫秒；null 代表本次事件被 throttle 跳過（不 seek 但仍然 consume）
     fun computeSeekStep(forward: Boolean, repeatCount: Int): Long? {
         val now = System.currentTimeMillis()
         val isFirstPress = repeatCount == 0
@@ -415,13 +412,13 @@ fun PlayerScreen(
             seekHoldStartMs = now
             seekHoldDirection = forward
             lastSeekHandledMs = now
-            return seekPreset.baseSec * 1000L
+            return PlayerConfig.SEEK_STEP_BASE_S * 1000L
         }
-        if (now - lastSeekHandledMs < seekPreset.throttleMs) return null
+        if (now - lastSeekHandledMs < PlayerConfig.SEEK_HOLD_THROTTLE_MS) return null
         lastSeekHandledMs = now
         val held = (now - seekHoldStartMs) / 1000
-        val stepSec = (seekPreset.baseSec + held * seekPreset.ratePerSec)
-            .coerceAtMost(seekPreset.maxStepSec)
+        val stepSec = (PlayerConfig.SEEK_STEP_BASE_S + held * PlayerConfig.SEEK_HOLD_LINEAR_RATE_PER_S)
+            .coerceAtMost(PlayerConfig.SEEK_HOLD_MAX_STEP_S)
         return stepSec * 1000L
     }
 
