@@ -29,8 +29,8 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -79,8 +79,12 @@ fun Pager(
     // TV 上要讓 grid 卡片按↓固定落到「下一頁」。
     // 不靠 spatial focus 自己判斷 — 單列裡 Spacer.weight(1f) 把「下一頁」推到中間偏左、
     // 「跳轉」在最右，從左/右邊卡片按↓時水平偏差會搶走焦點。
-    // 用 focusGroup + focusProperties.enter 把整個 Pager 包成單一 entry，外部任何方向進來
-    // 都先 redirect 到下一頁。
+    // 用 focusGroup + focusRestorer 把整個 Pager 包成 focus group：
+    //   - 第一次從外部進入：fallback 到「下一頁」(nextPageRequester)
+    //   - group 內部移動過後再離開又回來：還原到上次離開時的位置
+    // 不用 focusProperties.enter 因為那個 lambda 會在每次 focus 變化時呼叫，把 D-pad
+    // Center / OK 鍵的「activate」事件當 focus enter 吃掉，導致 click handler 完全收不到
+    // → 上一頁/下一頁/跳轉按鈕點了沒反應（v0.5.68–71 都有這 bug）。
     val nextPageRequester = remember { FocusRequester() }
 
     fun submitJump() {
@@ -104,15 +108,13 @@ fun Pager(
             .fillMaxWidth()
             .padding(horizontal = windowSize.pagePadding(), vertical = 12.dp)
     }
-    // TV 需要 focus group + enter redirect；phone 不必（觸控不靠 spatial focus）。
+    // TV 需要 focus group + restorer；phone 不必（觸控不靠 spatial focus）。
     // 已在最後一頁時下一頁 disabled、不可 focus，fallback Default 讓 spatial 自己挑（會落到「上一頁」）。
     val outer = if (tv) {
         baseOuter
             .focusGroup()
-            .focusProperties {
-                enter = {
-                    if (page < pageCount) nextPageRequester else FocusRequester.Default
-                }
+            .focusRestorer {
+                if (page < pageCount) nextPageRequester else FocusRequester.Default
             }
     } else {
         baseOuter
