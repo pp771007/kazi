@@ -8,6 +8,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -331,10 +332,17 @@ fun DetailScreen(siteId: Long, vodId: Long) {
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun IncognitoBadge() {
+    // 點下去關掉無痕 — 跟 Home / Search / History / Favorites 的「🕶 無痕」pill 行為一致
+    val container = LocalAppContainer.current
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
             .background(Color(0x33FFFFFF))
+            .focusable(interactionSource = interaction)
+            .clickable(interactionSource = interaction, indication = null) {
+                container.setIncognito(false)
+            }
             .padding(horizontal = 10.dp, vertical = 6.dp),
     ) {
         Text(

@@ -277,7 +277,10 @@ fun SearchScreen(
         titleBadges = if (incognito || lanState.running) {
             {
                 if (incognito) {
-                    tw.pp.kazi.ui.components.StatusPill("🕶 無痕（不會留紀錄）")
+                    tw.pp.kazi.ui.components.StatusPill(
+                        text = "🕶 無痕（不會留紀錄）",
+                        onClick = { container.setIncognito(false) },
+                    )
                 }
                 if (lanState.running) {
                     tw.pp.kazi.ui.components.StatusPill(

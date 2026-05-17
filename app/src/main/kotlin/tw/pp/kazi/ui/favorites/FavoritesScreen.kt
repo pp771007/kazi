@@ -59,7 +59,12 @@ fun FavoritesScreen() {
         title = "我的收藏",
         subtitle = "${favorites.size} 部影片",
         titleBadges = if (incognito) {
-            { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（已收藏的仍記進度）") }
+            {
+                tw.pp.kazi.ui.components.StatusPill(
+                    text = "🕶 無痕（已收藏的仍記進度）",
+                    onClick = { container.setIncognito(false) },
+                )
+            }
         } else null,
         trailing = {
             tw.pp.kazi.ui.components.ConfirmDeleteButton(

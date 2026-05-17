@@ -81,7 +81,12 @@ fun HistoryScreen() {
         title = "觀看歷史",
         subtitle = "${items.size} 筆紀錄",
         titleBadges = if (incognito) {
-            { tw.pp.kazi.ui.components.StatusPill("🕶 無痕（新片不留紀錄）") }
+            {
+                tw.pp.kazi.ui.components.StatusPill(
+                    text = "🕶 無痕（新片不留紀錄）",
+                    onClick = { container.setIncognito(false) },
+                )
+            }
         } else null,
         onBack = { nav.popBackStack() },
         trailing = {
