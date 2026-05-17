@@ -134,20 +134,15 @@ fun PlayerScreen(
         }
     }
 
-    // 把 delta 累加到 pendingSeekDeltaMs，反向時以當前位置重新起算。
-    // 雙擊 (touch) 跟 D-pad LEFT/RIGHT 共用：每次只記累計，等 SEEK_COMMIT_DELAY_MS 沒新事件 commit 一次 seek
+    // 把 delta 累加到 pendingSeekDeltaMs。
+    // 雙擊 (touch) 跟 D-pad LEFT/RIGHT 共用：每次只記累計，等 SEEK_COMMIT_DELAY_MS 沒新事件 commit 一次 seek。
+    // 不論方向永遠累加（不換方向 reset），「往前過頭按 ← 退幾秒」會正確 = 累計 - 10s，
+    // 而不是丟掉之前 +30 min 的累計從零開始（之前那設計使用者描述「直接歸零往後」）
     fun accumulateSeek(p: Player, delta: Long) {
-        val sameDirection = (pendingSeekDeltaMs == 0L)
-            || (pendingSeekDeltaMs > 0) == (delta > 0)
-        if (!sameDirection) {
+        if (pendingSeekDeltaMs == 0L) {
             pendingSeekStartPos = p.currentPosition
-            pendingSeekDeltaMs = delta
-        } else {
-            if (pendingSeekDeltaMs == 0L) {
-                pendingSeekStartPos = p.currentPosition
-            }
-            pendingSeekDeltaMs += delta
         }
+        pendingSeekDeltaMs += delta
     }
 
     // 網路錯誤時自動 retry 用的 token；onPlayerError 撞到網路類錯誤就 ++，LaunchedEffect 補一次 prepare
@@ -422,7 +417,8 @@ fun PlayerScreen(
         if (now - lastSeekHandledMs < PlayerConfig.SEEK_HOLD_THROTTLE_MS) return null
         lastSeekHandledMs = now
         val held = (now - seekHoldStartMs) / 1000
-        val stepSec = PlayerConfig.SEEK_STEP_BASE_S + held + (held * held) / PlayerConfig.SEEK_HOLD_QUAD_DIVISOR
+        val stepSec = (PlayerConfig.SEEK_STEP_BASE_S + held * PlayerConfig.SEEK_HOLD_LINEAR_RATE_PER_S)
+            .coerceAtMost(PlayerConfig.SEEK_HOLD_MAX_STEP_S)
         return stepSec * 1000L
     }
 

@@ -53,11 +53,18 @@ object PlayerConfig {
 
     // DPAD ←/→ 按住時 seek 行為：
     // - 第一下永遠 10 秒小跳
-    // - 按住的 step 公式：base(10) + held + held²/5  （秒）
-    //   早期接近線性 +1/s（held=1→11s、3→13.8s），後期二次加速明顯（held=10→40s、20→110s、30→220s）
+    // - 按住的 step 公式：base(10) + held*rate（線性），封頂 60s/單次
+    //   - held=0: 10s（精準）
+    //   - held=1: 15s
+    //   - held=5: 35s
+    //   - held=10: 60s（到頂）
+    //   累計（每 100ms fire 一次）按 10 秒可跳 ~55min，剛好滿足一小時片從頭跳到尾
+    // - 之前是 base + held + held²/5（二次方），前期過慢、後期失控（held=30→220s）；
+    //   線性比較好預測、後期足夠快又不會飛到追不回來
     // - 100ms throttle 把 OS 任意 key repeat 速率（30Hz+）壓成一致的 10Hz
     const val SEEK_STEP_BASE_S = 10L
-    const val SEEK_HOLD_QUAD_DIVISOR = 5L
+    const val SEEK_HOLD_LINEAR_RATE_PER_S = 5L
+    const val SEEK_HOLD_MAX_STEP_S = 60L
     const val SEEK_HOLD_THROTTLE_MS = 100L
 
     const val CONTROLS_AUTO_HIDE_MS = 5_000L
