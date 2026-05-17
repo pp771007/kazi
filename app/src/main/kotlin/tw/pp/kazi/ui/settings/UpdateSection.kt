@@ -54,7 +54,7 @@ private sealed interface UpdateUiState {
     data object Checking : UpdateUiState
     data class UpToDate(val version: String) : UpdateUiState
     data class HasUpdate(val release: GitHubRelease, val asset: GitHubAsset) : UpdateUiState
-    data class Downloading(val downloaded: Long, val total: Long) : UpdateUiState
+    data class Downloading(val downloaded: Long, val total: Long, val version: String) : UpdateUiState
     data class Error(val message: String) : UpdateUiState
 }
 
@@ -73,16 +73,17 @@ fun UpdateSection() {
     val windowSize = tw.pp.kazi.ui.LocalWindowSize.current
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
-    // 沒授權時暫存使用者點的 asset，等他從系統設定回來後 ON_RESUME 自動開始下載
+    // 沒授權時暫存使用者點的 asset + version，等他從系統設定回來後 ON_RESUME 自動開始下載
     var pendingAsset by remember { mutableStateOf<GitHubAsset?>(null) }
+    var pendingVersion by remember { mutableStateOf("") }
     var showPermissionDialog by remember { mutableStateOf(false) }
 
-    fun startDownload(asset: GitHubAsset) {
-        state = UpdateUiState.Downloading(0L, asset.size.coerceAtLeast(1L))
+    fun startDownload(asset: GitHubAsset, version: String) {
+        state = UpdateUiState.Downloading(0L, asset.size.coerceAtLeast(1L), version)
         scope.launch {
             runCatching {
                 UpdateChecker.download(context, asset) { down, total ->
-                    state = UpdateUiState.Downloading(down, total.coerceAtLeast(1L))
+                    state = UpdateUiState.Downloading(down, total.coerceAtLeast(1L), version)
                 }
             }.fold(
                 onSuccess = { file ->
@@ -94,14 +95,15 @@ fun UpdateSection() {
         }
     }
 
-    fun startDownloadAndInstall(asset: GitHubAsset) {
+    fun startDownloadAndInstall(asset: GitHubAsset, version: String) {
         // 先檢查權限再下載，免得使用者下載完才被擋下、要再下一次
         if (!UpdateChecker.canInstallApks(context)) {
             pendingAsset = asset
+            pendingVersion = version
             showPermissionDialog = true
             return
         }
-        startDownload(asset)
+        startDownload(asset, version)
     }
 
     fun startCheck() {
@@ -116,7 +118,7 @@ fun UpdateSection() {
                             // 沒授權時 startDownloadAndInstall 會跳權限 dialog，HasUpdate
                             // 畫面同時顯示版本資訊作為背景，dialog 關掉時也還能看到資訊
                             state = UpdateUiState.HasUpdate(release, asset)
-                            startDownloadAndInstall(asset)
+                            startDownloadAndInstall(asset, release.tagName)
                         } else {
                             state = UpdateUiState.Error("最新版沒有 APK 檔可下載")
                         }
@@ -138,8 +140,10 @@ fun UpdateSection() {
             if (event == Lifecycle.Event.ON_RESUME) {
                 val asset = pendingAsset
                 if (asset != null && UpdateChecker.canInstallApks(context)) {
+                    val version = pendingVersion
                     pendingAsset = null
-                    currentDownload.value(asset)
+                    pendingVersion = ""
+                    currentDownload.value(asset, version)
                 }
             }
         }
@@ -173,7 +177,7 @@ fun UpdateSection() {
         UpdateUiState.Idle -> ButtonSpec("更新程式", Icons.Filled.SystemUpdate, ::startCheck, true, false)
         UpdateUiState.Checking -> ButtonSpec("檢查中⋯", null, {}, false, false)
         is UpdateUiState.UpToDate -> ButtonSpec("重新檢查", Icons.Filled.Refresh, ::startCheck, true, false)
-        is UpdateUiState.HasUpdate -> ButtonSpec("下載並安裝", Icons.Filled.Download, { startDownloadAndInstall(s.asset) }, true, true)
+        is UpdateUiState.HasUpdate -> ButtonSpec("下載並安裝", Icons.Filled.Download, { startDownloadAndInstall(s.asset, s.release.tagName) }, true, true)
         is UpdateUiState.Downloading -> null
         is UpdateUiState.Error -> ButtonSpec("重試", Icons.Filled.Refresh, ::startCheck, true, false)
     }
@@ -204,7 +208,7 @@ fun UpdateSection() {
             is UpdateUiState.Downloading -> {
                 val pct = (s.downloaded.toFloat() / s.total).coerceIn(0f, 1f)
                 Text(
-                    "下載中 ${(pct * 100).toInt()}%  (${formatBytes(s.downloaded)} / ${formatBytes(s.total)})",
+                    "下載中 ${s.version}  ·  ${(pct * 100).toInt()}%  (${formatBytes(s.downloaded)} / ${formatBytes(s.total)})",
                     color = AppColors.OnBgMuted,
                     style = MaterialTheme.typography.bodySmall,
                 )
