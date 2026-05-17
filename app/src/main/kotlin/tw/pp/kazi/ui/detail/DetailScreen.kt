@@ -1,10 +1,16 @@
 package tw.pp.kazi.ui.detail
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -22,6 +28,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
@@ -403,15 +410,38 @@ private fun CompactLayout(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            val posterInteraction = remember { MutableInteractionSource() }
+            val posterFocused by posterInteraction.collectIsFocusedAsState()
+            val posterScale by animateFloatAsState(
+                if (posterFocused) POSTER_FOCUS_SCALE else 1f,
+                tween(POSTER_FOCUS_ANIM_MS),
+                label = "compact-poster-scale",
+            )
+            val posterBorderWidth by animateDpAsState(
+                if (posterFocused) POSTER_FOCUS_BORDER_WIDTH else 0.dp,
+                tween(POSTER_FOCUS_ANIM_MS),
+                label = "compact-poster-border",
+            )
             Box(
                 modifier = Modifier
+                    .scale(posterScale)
                     .width(COMPACT_POSTER_W)
                     .aspectRatio(POSTER_ASPECT)
                     .clip(RoundedCornerShape(10.dp))
                     .background(AppColors.BgCard)
+                    .border(
+                        BorderStroke(
+                            posterBorderWidth,
+                            if (posterFocused) AppColors.FocusRing else Color.Transparent,
+                        ),
+                        RoundedCornerShape(10.dp),
+                    )
                     .then(
                         if (v.vodPic.isNotBlank())
-                            Modifier.clickable { onZoomPoster(v.vodPic) }
+                            Modifier.clickable(
+                                interactionSource = posterInteraction,
+                                indication = null,
+                            ) { onZoomPoster(v.vodPic) }
                         else Modifier
                     ),
             ) {
@@ -611,15 +641,38 @@ private fun WideLayout(
                 )
             }
             PeerRow(peers = peers, currentSiteId = siteId, onPeerPick = onPeerPick)
+            val posterInteraction = remember { MutableInteractionSource() }
+            val posterFocused by posterInteraction.collectIsFocusedAsState()
+            val posterScale by animateFloatAsState(
+                if (posterFocused) POSTER_FOCUS_SCALE else 1f,
+                tween(POSTER_FOCUS_ANIM_MS),
+                label = "wide-poster-scale",
+            )
+            val posterBorderWidth by animateDpAsState(
+                if (posterFocused) POSTER_FOCUS_BORDER_WIDTH else 0.dp,
+                tween(POSTER_FOCUS_ANIM_MS),
+                label = "wide-poster-border",
+            )
             Box(
                 modifier = Modifier
+                    .scale(posterScale)
                     .fillMaxWidth()
                     .aspectRatio(POSTER_ASPECT)
                     .clip(RoundedCornerShape(14.dp))
                     .background(AppColors.BgCard)
+                    .border(
+                        BorderStroke(
+                            posterBorderWidth,
+                            if (posterFocused) AppColors.FocusRing else Color.Transparent,
+                        ),
+                        RoundedCornerShape(14.dp),
+                    )
                     .then(
                         if (v.vodPic.isNotBlank())
-                            Modifier.clickable { onZoomPoster(v.vodPic) }
+                            Modifier.clickable(
+                                interactionSource = posterInteraction,
+                                indication = null,
+                            ) { onZoomPoster(v.vodPic) }
                         else Modifier
                     ),
                 contentAlignment = Alignment.Center,
@@ -928,6 +981,12 @@ private fun FullscreenPosterDialog(
         }
     }
 }
+
+// 海報 focus 動畫：放大 + 加白色 border，給 TV D-pad 焦點明顯回饋。
+// scale 1.06 / border 4dp 跟 PosterCard 的設定接近，視覺一致
+private const val POSTER_FOCUS_SCALE = 1.06f
+private val POSTER_FOCUS_BORDER_WIDTH = 4.dp
+private const val POSTER_FOCUS_ANIM_MS = 120
 
 // Wide layout poster 欄寬度。Expanded（電視盒 / 大平板）用 380dp 走標準大圖；
 // Medium（手機橫向 ~800×360）用 240dp，左右分欄比例 ~30/70，標題立刻可見、右邊內容有空間
