@@ -328,10 +328,27 @@ class LanServer(
   .history-label { font-size:12px; color:#94A3B8;}
   .history-head button { margin-top:0;}
   .history-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;}
-  .history-pill { background:#2a2a3e; color:#CBD5E1; padding:6px 10px;
-                  border-radius:999px; font-size:12px; cursor:pointer;
-                  border:none; margin:0;}
-  .history-pill:hover { background:#3B82F6; color:#fff;}
+  /* history-pill 內分兩個 button：text 點觸發搜尋、del 點刪除這筆。整顆 pill 用 inline-flex 不分行 */
+  .history-pill { display:inline-flex; align-items:stretch; background:#2a2a3e;
+                  border-radius:999px; overflow:hidden; font-size:12px;}
+  .history-pill button { background:transparent; color:#CBD5E1;
+                          border:none; cursor:pointer; margin:0; font-size:12px;
+                          font-family:inherit; line-height:1;}
+  .history-pill .pill-text { padding:7px 4px 7px 12px;}
+  .history-pill .pill-del { padding:7px 10px 7px 4px; color:#64748B; font-size:11px;}
+  .history-pill .pill-text:hover { background:#3B82F6; color:#fff;}
+  .history-pill .pill-del:hover { background:#3D0F0F; color:#F87171;}
+  /* input 內嵌 ✕ 清空按鈕：input 有值時 (.has-value) 才顯示 */
+  .input-with-clear { position:relative; flex:1;}
+  .input-with-clear input { padding-right:38px; width:100%;}
+  .input-with-clear .clear-btn {
+    position:absolute; right:6px; top:50%; transform:translateY(-50%);
+    background:transparent; color:#94A3B8; border:none; padding:6px 10px;
+    font-size:16px; cursor:pointer; margin:0; line-height:1; display:none;}
+  .input-with-clear .clear-btn:hover { color:#fff; background:transparent;}
+  .input-with-clear.has-value .clear-btn { display:block;}
+  /* 兩段式確認：armed 時按鈕變紅，3 秒沒第二次點就 revert */
+  button.armed { background:#EF4444 !important;}
   .steps { margin: 0 0 12px; padding: 0 0 0 22px; color:#CBD5E1; font-size:13px;
            line-height: 1.7;}
   .steps li { margin-bottom: 4px;}
@@ -366,13 +383,17 @@ class LanServer(
   <div class="card">
     <label>關鍵字</label>
     <div style="display:flex; gap:8px; align-items:stretch;">
-      <input id="kw" type="text" placeholder="例如：片名" autocomplete="off" autocapitalize="off" style="flex:1">
+      <div class="input-with-clear">
+        <input id="kw" type="text" placeholder="例如：片名" autocomplete="off" autocapitalize="off"
+               oninput="updateClearBtn()" onkeydown="if(event.key==='Enter')submitSearch()">
+        <button class="clear-btn" onclick="clearKw()" title="清空" tabindex="-1">✕</button>
+      </div>
       <button class="secondary small" onclick="toSimp()" title="繁體轉簡體"
               style="margin-top:0; padding:0 14px; font-weight:bold;">簡</button>
     </div>
     <div class="history-head" id="kwHistoryHead" style="display:none">
-      <span class="history-label">最近搜尋</span>
-      <button class="secondary small" onclick="clearHistory()">清空</button>
+      <span class="history-label">最近搜尋（單筆按 ✕ 刪除）</span>
+      <button class="secondary small" onclick="clearHistory(this)">清空</button>
     </div>
     <div class="history-row" id="kwHistory"></div>
     <!-- 送出 button 移到上面，站點多的時候不用滾到最底 -->
@@ -487,20 +508,78 @@ function renderHistory(){
   const head = document.getElementById('kwHistoryHead');
   wrap.innerHTML = '';
   head.style.display = recentKw.length ? 'flex' : 'none';
-  recentKw.slice(0, 10).forEach(k => {
-    const b = document.createElement('button');
-    b.className = 'history-pill';
-    b.textContent = k;
-    b.onclick = () => { document.getElementById('kw').value = k; };
-    wrap.appendChild(b);
+  recentKw.slice(0, 10).forEach((k, idx) => {
+    const pill = document.createElement('span');
+    pill.className = 'history-pill';
+    const text = document.createElement('button');
+    text.className = 'pill-text';
+    text.textContent = k;
+    text.title = '填入關鍵字';
+    text.onclick = () => {
+      const el = document.getElementById('kw');
+      el.value = k;
+      updateClearBtn();
+      el.focus();
+    };
+    const delBtn = document.createElement('button');
+    delBtn.className = 'pill-del';
+    delBtn.textContent = '✕';
+    delBtn.title = '刪除這筆';
+    delBtn.onclick = (e) => { e.stopPropagation(); removeHistory(idx); };
+    pill.appendChild(text);
+    pill.appendChild(delBtn);
+    wrap.appendChild(pill);
   });
 }
 
-function clearHistory(){
-  if (!confirm('清空所有搜尋歷史？')) return;
-  recentKw.length = 0;
+function removeHistory(idx){
+  if (idx < 0 || idx >= recentKw.length) return;
+  recentKw.splice(idx, 1);
   localStorage.setItem('maccms_recent_kw', JSON.stringify(recentKw));
   renderHistory();
+}
+
+// 兩段式確認 helper：第一次點按鈕變紅 + 文字變確認，3 秒沒第二次點就 revert，第二次點才執行
+function armConfirm(btn, originalLabel, confirmLabel, action, ms){
+  if (ms === undefined) ms = 3000;
+  if (btn.dataset.armed === '1') {
+    if (btn._armTimer) clearTimeout(btn._armTimer);
+    btn.dataset.armed = '0';
+    btn.textContent = originalLabel;
+    btn.classList.remove('armed');
+    action();
+    return;
+  }
+  btn.dataset.armed = '1';
+  btn.dataset.originalLabel = originalLabel;
+  btn.textContent = confirmLabel;
+  btn.classList.add('armed');
+  if (btn._armTimer) clearTimeout(btn._armTimer);
+  btn._armTimer = setTimeout(() => {
+    btn.dataset.armed = '0';
+    btn.textContent = originalLabel;
+    btn.classList.remove('armed');
+  }, ms);
+}
+
+function clearHistory(btn){
+  armConfirm(btn, '清空', '再按一次清空', () => {
+    recentKw.length = 0;
+    localStorage.setItem('maccms_recent_kw', JSON.stringify(recentKw));
+    renderHistory();
+  });
+}
+
+function updateClearBtn(){
+  const el = document.getElementById('kw');
+  el.parentElement.classList.toggle('has-value', el.value.length > 0);
+}
+
+function clearKw(){
+  const el = document.getElementById('kw');
+  el.value = '';
+  updateClearBtn();
+  el.focus();
 }
 
 function renderList(sites){
@@ -517,7 +596,7 @@ function renderList(sites){
       <button class="small secondary" onclick="move(`+s.id+`,'up')">▲</button>
       <button class="small secondary" onclick="move(`+s.id+`,'down')">▼</button>
       <button class="small" onclick="toggle(`+s.id+`, `+!s.enabled+`)">`+(s.enabled?'停用':'啟用')+`</button>
-      <button class="small danger" onclick="del(`+s.id+`)">刪</button>
+      <button class="small danger" onclick="del(`+s.id+`, this)">刪</button>
     `;
     ul.appendChild(li);
   });
@@ -531,6 +610,7 @@ async function toSimp(){
                                     body: JSON.stringify({ text: val })});
   if (r.ok && r.data && typeof r.data.text === 'string') {
     kwEl.value = r.data.text;
+    updateClearBtn();
   }
 }
 
@@ -579,10 +659,11 @@ async function addSite(){
     msg.textContent = (r.data && r.data.message) || '新增失敗';
   }
 }
-async function del(id){
-  if (!confirm('確定刪除？')) return;
-  await api('/api/sites/' + id, { method:'DELETE' });
-  loadSites();
+async function del(id, btn){
+  armConfirm(btn, '刪', '確定？', async () => {
+    await api('/api/sites/' + id, { method:'DELETE' });
+    loadSites();
+  });
 }
 async function toggle(id, enabled){
   await api('/api/sites/' + id, { method:'PUT', headers:{'Content-Type':'application/json'},

@@ -776,12 +776,35 @@ private fun GestureOverlay(indicator: GestureIndicator, modifier: Modifier = Mod
     ) {
         when (indicator) {
             is GestureIndicator.Seek -> {
-                Text(
-                    "${formatDuration(indicator.targetMs)} / ${formatDuration(indicator.durationMs)}  (${formatSeekDelta(indicator.deltaMs)})",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                // 文字 + mini 進度條：藍條長度 = target/duration，讓使用者一眼看到「會跳到哪裡」
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        "${formatDuration(indicator.targetMs)} / ${formatDuration(indicator.durationMs)}  (${formatSeekDelta(indicator.deltaMs)})",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    val progress = if (indicator.durationMs > 0) {
+                        (indicator.targetMs.toFloat() / indicator.durationMs.toFloat()).coerceIn(0f, 1f)
+                    } else 0f
+                    Box(
+                        modifier = Modifier
+                            .width(SEEK_MINI_BAR_WIDTH)
+                            .height(SEEK_MINI_BAR_HEIGHT)
+                            .clip(RoundedCornerShape(SEEK_MINI_BAR_HEIGHT / 2))
+                            .background(Color(0x33FFFFFF)),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(progress)
+                                .background(tw.pp.kazi.ui.theme.AppColors.Primary),
+                        )
+                    }
+                }
             }
             is GestureIndicator.Brightness -> {
                 Text(
@@ -1175,6 +1198,10 @@ private val SEEKBAR_TOOLTIP_OFFSET_Y = 32.dp
 
 // Speed / Seek 提示距離畫面頂端的距離 — 跟頂部留一點點空隙就好，越高越不擋畫面
 private val GESTURE_INDICATOR_TOP_PAD = 12.dp
+
+// Seek 提示下方 mini 進度條：給使用者「這次跳會到哪」的視覺感
+private val SEEK_MINI_BAR_WIDTH = 240.dp
+private val SEEK_MINI_BAR_HEIGHT = 4.dp
 
 // 頂部 / 底部 edge safe zone — 在這條內起手的 vertical drag 不接亮度/音量手勢，
 // 讓給 Android 系統手勢（頂部下拉叫 status bar、底部上滑觸發 home）。左右沒衝突所以不留。
