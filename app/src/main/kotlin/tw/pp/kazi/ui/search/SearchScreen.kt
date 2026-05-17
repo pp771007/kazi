@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
@@ -139,6 +140,10 @@ fun SearchScreen(
     val focusRequester = remember { FocusRequester() }
     val firstResultFocus = remember { FocusRequester() }
     val clickedResultFocus = remember { FocusRequester() }
+    // grid 最後一列卡片按↓的 redirect 目標 — 內層底端 Pager 跟外層 Pager 各一個。
+    // 卡片用「內層優先、否則外層」動態挑（見 cardDownTarget）。
+    val innerNextPageFocus = remember { FocusRequester() }
+    val outerNextPageFocus = remember { FocusRequester() }
     // 進畫面那一瞬間的值即「上次點過的卡」；之後 onClick 會更新成新值，
     // 但 restoreClickedAggName 已經 capture 起來，繼續代表「這次進畫面要 focus 的那張」
     val restoreClickedAggName = remember { lastClickedAggName }
@@ -488,10 +493,22 @@ fun SearchScreen(
                         )
                     }
                 }
+                // 卡片按↓的 redirect 目標：內層底端 Pager 優先，否則外層 Pager
+                // (focusProperties.down 是 stable API，只在 spatial down 觸發，不會吃 click event)
+                val columns = vm.columnsFor(windowSize)
+                val cardDownTarget: FocusRequester? = when {
+                    innerPageCount > 1 && displayPage < innerPageCount -> innerNextPageFocus
+                    pageCount > 1 && page < pageCount -> outerNextPageFocus
+                    else -> null
+                }
                 itemsIndexed(
                     displayedSlice,
                     key = { _, agg -> agg.name },
                 ) { idx, agg ->
+                    val isLastRow = idx >= displayedSlice.size - columns
+                    val downModifier = if (isLastRow && cardDownTarget != null) {
+                        Modifier.focusProperties { down = cardDownTarget }
+                    } else Modifier
                     PosterCard(
                         title = agg.name,
                         remarks = agg.remarks,
@@ -508,6 +525,7 @@ fun SearchScreen(
                             lastClickedAggName = agg.name
                             nav.navigate(Routes.detail(sid, first.vodId))
                         },
+                        modifier = downModifier,
                         focusRequester = when {
                             restoreClickedAggName != null && agg.name == restoreClickedAggName -> clickedResultFocus
                             idx == 0 -> firstResultFocus
@@ -515,7 +533,7 @@ fun SearchScreen(
                         },
                     )
                 }
-                // 內層分頁鈕（底）：跟頂部同一組
+                // 內層分頁鈕（底）：跟頂部同一組；nextPageRequester 掛在這個底端的下一頁按鈕上
                 if (innerPageCount > 1) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Pager(
@@ -527,6 +545,7 @@ fun SearchScreen(
                             simplified = true,
                             accent = true,
                             label = "顯示頁",
+                            nextPageRequester = innerNextPageFocus,
                         )
                     }
                 }
@@ -540,6 +559,7 @@ fun SearchScreen(
                             onJump = { target -> runSearch(target) },
                             windowSize = windowSize,
                             label = "資料頁",
+                            nextPageRequester = outerNextPageFocus,
                         )
                     }
                 }

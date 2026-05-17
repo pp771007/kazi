@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
@@ -127,6 +128,8 @@ fun HomeScreen() {
     val firstVideoFocus = remember { FocusRequester() }
     val clickedVideoFocus = remember { FocusRequester() }
     val retryFocus = remember { FocusRequester() }
+    // grid 最後一列卡片按↓的 redirect 目標 — 掛在 footer Pager 的「下一頁」上
+    val nextPageFocus = remember { FocusRequester() }
     // 切站、切分類、換頁後要把 focus 移到新內容（成功 → 第一張卡；失敗 → 重試按鈕），
     // 避免 focus 卡在剛剛點過的 strip tag 或「下一頁」按鈕上。
     var pendingContentFocus by remember { mutableStateOf(false) }
@@ -454,6 +457,8 @@ fun HomeScreen() {
                             lastClickedVodId = v.vodId
                             nav.navigate(Routes.detail(site.id, v.vodId))
                         },
+                        nextPageRequester = nextPageFocus,
+                        canGoNextPage = pageCount > 1 && page < pageCount,
                         footer = if (pageCount > 1) {
                             {
                                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -471,6 +476,7 @@ fun HomeScreen() {
                                             pendingContentFocus = true
                                         },
                                         windowSize = windowSize,
+                                        nextPageRequester = nextPageFocus,
                                     )
                                 }
                             }
@@ -595,10 +601,13 @@ private fun VideoGrid(
     clickedVodId: Long?,
     clickedItemFocus: FocusRequester,
     onClick: (Video) -> Unit,
+    nextPageRequester: FocusRequester? = null,
+    canGoNextPage: Boolean = false,
     footer: (LazyGridScope.() -> Unit)? = null,
 ) {
+    val columns = viewMode.columnsFor(windowSize)
     LazyVerticalGrid(
-        columns = GridCells.Fixed(viewMode.columnsFor(windowSize)),
+        columns = GridCells.Fixed(columns),
         contentPadding = PaddingValues(
             horizontal = windowSize.pagePadding(),
             vertical = 12.dp,
@@ -608,6 +617,13 @@ private fun VideoGrid(
         modifier = Modifier.fillMaxSize(),
     ) {
         itemsIndexed(videos, key = { _, v -> v.vodId }) { idx, v ->
+            // 最後一列卡片：按↓強制 focus 到「下一頁」。focusProperties.down 是 stable API，
+            // 只在 spatial down 觸發、不會干擾 OK / Enter 點擊（v0.5.68–73 的 focusGroup 坑就是因為
+            // group container 攔了 click event）。下一頁 disabled 時不掛，避免無效 redirect 焦點卡死
+            val isLastRow = idx >= videos.size - columns
+            val downModifier = if (isLastRow && nextPageRequester != null && canGoNextPage) {
+                Modifier.focusProperties { down = nextPageRequester }
+            } else Modifier
             PosterCard(
                 title = v.vodName,
                 remarks = v.vodRemarks,
@@ -615,6 +631,7 @@ private fun VideoGrid(
                 fromSite = v.fromSite,
                 aspectRatio = viewMode.aspectRatio,
                 onClick = { onClick(v) },
+                modifier = downModifier,
                 focusRequester = when {
                     clickedVodId != null && v.vodId == clickedVodId -> clickedItemFocus
                     idx == 0 -> firstItemFocus
