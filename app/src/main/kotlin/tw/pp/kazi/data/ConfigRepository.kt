@@ -27,6 +27,7 @@ data class AppSettings(
     val lanShareEnabled: Boolean = false,
     val incognitoMode: Boolean = false,
     val searchHistory: List<String> = emptyList(),
+    val seekSpeedPreset: SeekSpeedPreset = SeekSpeedPreset.Default,
 ) {
     companion object {
         const val DEFAULT_SITE_TITLE = "咔滋影院"
@@ -64,11 +65,17 @@ class ConfigRepository(context: Context) {
                 incognitoMode = (obj[ConfigKeys.INCOGNITO_MODE] as? JsonPrimitive)?.booleanOrNull
                     ?: false,
                 searchHistory = history,
+                seekSpeedPreset = SeekSpeedPreset.fromKey(
+                    (obj[ConfigKeys.SEEK_SPEED_PRESET] as? JsonPrimitive)?.content
+                ),
             )
         }
     }
 
     suspend fun updateViewMode(mode: ViewMode) = update { it.copy(viewMode = mode) }
+
+    suspend fun updateSeekSpeedPreset(preset: SeekSpeedPreset) =
+        update { it.copy(seekSpeedPreset = preset) }
 
     suspend fun updateLanShare(enabled: Boolean) = update { it.copy(lanShareEnabled = enabled) }
 
@@ -115,6 +122,7 @@ class ConfigRepository(context: Context) {
                 ConfigKeys.SEARCH_HISTORY to AppJson.parseToJsonElement(
                     AppJson.encodeToString(stringListSerializer, settings.searchHistory)
                 ),
+                ConfigKeys.SEEK_SPEED_PRESET to JsonPrimitive(settings.seekSpeedPreset.key),
             )
         )
         configFile.atomicWriteText(AppJson.encodeToString(JsonObject.serializer(), obj))

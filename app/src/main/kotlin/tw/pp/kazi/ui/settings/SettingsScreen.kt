@@ -20,6 +20,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import tw.pp.kazi.data.SeekSpeedPreset
 import tw.pp.kazi.ui.LocalAppContainer
 import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
@@ -45,7 +47,9 @@ fun SettingsScreen() {
     val nav = LocalNavController.current
     val windowSize = LocalWindowSize.current
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val sites by container.siteRepository.sites.collectAsState()
+    val settings by container.configRepository.settings.collectAsState()
 
     // 進設定頁預設 focus 到「站點管理」(主要操作)；不要讓 UpdateSection 預設搶走 focus。
     // 只在 TV 跑：手機觸控不需要 visible focus 起點
@@ -83,6 +87,31 @@ fun SettingsScreen() {
                     onClick = { nav.navigate(Routes.Setup) },
                     modifier = Modifier.focusRequester(siteManagementFocus),
                 )
+            }
+
+            Card {
+                SectionHeader(title = "播放器")
+                Text(
+                    "電視盒按住 ←/→ 快進的速度（試試看哪組順手）",
+                    color = AppColors.OnBgMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SeekSpeedPreset.entries.forEach { preset ->
+                        val isCurrent = preset == settings.seekSpeedPreset
+                        AppButton(
+                            text = "${preset.label}  ·  ${preset.description}",
+                            icon = if (isCurrent) Icons.Filled.Check else Icons.Filled.Speed,
+                            onClick = {
+                                scope.launch {
+                                    container.configRepository.updateSeekSpeedPreset(preset)
+                                }
+                            },
+                            primary = isCurrent,
+                        )
+                    }
+                }
             }
 
             // 「關於」放在「疑難排解」前面：原本 UpdateSection（檢查更新）放在最底下，按下檢查
