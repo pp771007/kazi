@@ -157,10 +157,10 @@ fun FocusableTag(
     }
     val borderBrush = rememberFocusFlowBrush(active = focused, idleColor = Color.Transparent)
     val borderWidth = 2.dp
-    val scale by animateFloatAsState(if (focused) 1.06f else 1f, tween(100), label = "tag-scale")
 
+    // 不用 scale 動畫 — scale 是 graphicsLayer 變換不影響 layout，但視覺上 1.06 倍會「咬到」相鄰
+    // tag、看起來像在抖。focus 對比靠 border + bg color 變化做出來，layout 完全不動
     val baseModifier = modifier
-        .scale(scale)
         .clip(RoundedCornerShape(999.dp))
         .background(bg)
         .border(BorderStroke(borderWidth, borderBrush), RoundedCornerShape(999.dp))
@@ -210,15 +210,15 @@ fun PosterCard(
     // TV 一次同時 load 6+ 張卡片 + Coil 內建 fade-in 疊在一起會頓；只在小螢幕保留 fade
     val useCrossfade = windowSize != WindowSize.Expanded
 
-    val scale by animateFloatAsState(if (focused) 1.08f else 1f, tween(120), label = "card-scale")
     // 之前 focus 用 12dp Modifier.shadow（GPU blur）+ 3dp border，低階 TV GPU 跑不順。
     // 改成「focus 加粗 border 到 5dp」表達立體感，去掉整條 shadow。視覺上 focus 更銳利、
-    // 跑分省一個 RenderNode + alpha blending pass
-    val borderBrush = rememberFocusFlowBrush(active = focused, idleColor = Color(0x15FFFFFF))
-    val borderWidth by animateDpAsState(if (focused) 5.dp else 3.dp, tween(120), label = "card-border-w")
+    // 跑分省一個 RenderNode + alpha blending pass。
+    // 不用 scale 動畫 — scale 是 graphicsLayer 不影響 layout 但會「視覺溢出」到相鄰 cell，看起來像抖。
+    // 改用「border 變粗 + idle 邊框透明度提升 + 顏色變白」做 focus 對比，layout 完全穩定不晃
+    val borderBrush = rememberFocusFlowBrush(active = focused, idleColor = Color(0x22FFFFFF))
+    val borderWidth by animateDpAsState(if (focused) 5.dp else 2.dp, tween(120), label = "card-border-w")
 
     val baseModifier = modifier
-        .scale(scale)
         .clip(RoundedCornerShape(12.dp))
         .background(AppColors.BgCard)
         .border(BorderStroke(borderWidth, borderBrush), RoundedCornerShape(12.dp))

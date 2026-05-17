@@ -30,6 +30,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -502,6 +507,16 @@ private fun SiteStrip(
     // TV：D-pad 進入這列時，focus 應該停在當前選中的站台，不是離卡片最近的那顆。
     // restorer 第一次進來用 fallback（指向 selected 的 requester），之後記住使用者最後 focus 的位置
     val selectedFocus = remember { FocusRequester() }
+    val firstFocus = remember { FocusRequester() }
+    val lastFocus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+    val firstId = sites.firstOrNull()?.id
+    val lastId = sites.lastOrNull()?.id
+    val selectedId = selected?.id
+    // 循環 focus 目標：first 按 ← 要去 last。如果 last 同時也是 selected，請求 selectedFocus；否則 lastFocus。
+    // last 按 → 要去 first，同理
+    val cycleTargetForFirst = if (lastId != null && lastId == selectedId) selectedFocus else lastFocus
+    val cycleTargetForLast = if (firstId != null && firstId == selectedId) selectedFocus else firstFocus
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -525,12 +540,43 @@ private fun SiteStrip(
                 .focusRestorer { selectedFocus },
         ) {
             items(sites, key = { it.id }) { s ->
-                val isSelected = s.id == selected?.id
+                val isSelected = s.id == selectedId
+                val isFirst = s.id == firstId
+                val isLast = s.id == lastId
+                // 一個 item 只能掛一個 FocusRequester（chain 多次只用最後一個），優先 selected > first > last
+                val itemRequester: FocusRequester? = when {
+                    isSelected -> selectedFocus
+                    isFirst -> firstFocus
+                    isLast -> lastFocus
+                    else -> null
+                }
+                val reqMod = if (itemRequester != null) Modifier.focusRequester(itemRequester) else Modifier
+                // 循環：first 按 ← 跳到 last requester，last 按 → 跳到 first。先 scroll 確保對端 composed，再 requestFocus
+                val keyMod = if (isFirst || isLast) Modifier.onPreviewKeyEvent { ke ->
+                    if (ke.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when {
+                        isFirst && ke.key == Key.DirectionLeft -> {
+                            scope.launch {
+                                listState.scrollToItem(sites.size - 1)
+                                runCatching { cycleTargetForFirst.requestFocus() }
+                            }
+                            true
+                        }
+                        isLast && ke.key == Key.DirectionRight -> {
+                            scope.launch {
+                                listState.scrollToItem(0)
+                                runCatching { cycleTargetForLast.requestFocus() }
+                            }
+                            true
+                        }
+                        else -> false
+                    }
+                } else Modifier
                 FocusableTag(
                     text = s.name,
                     selected = isSelected,
                     onClick = { onPick(s) },
-                    modifier = if (isSelected) Modifier.focusRequester(selectedFocus) else Modifier,
+                    modifier = reqMod.then(keyMod),
                 )
             }
         }
@@ -548,6 +594,18 @@ private fun CategoryStrip(
 ) {
     val compact = windowSize.isCompact
     val selectedFocus = remember { FocusRequester() }
+    val firstFocus = remember { FocusRequester() }  // 「全部」永遠在 first 位置
+    val lastFocus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+    val isAllSelected = selected == null
+    val lastCategoryId = categories.lastOrNull()?.typeId
+    val isLastCategorySelected = lastCategoryId != null && selected?.typeId == lastCategoryId
+    // 「全部」按 ← → 跳 last category（若 last 是 selected 則用 selectedFocus）
+    val cycleTargetForFirst = if (isLastCategorySelected) selectedFocus else lastFocus
+    // last category 按 → → 跳「全部」（若「全部」是 selected 則用 selectedFocus）
+    val cycleTargetForLast = if (isAllSelected) selectedFocus else firstFocus
+    // 列表總長度（含「全部」項）：scroll 用得到
+    val totalItems = categories.size + 1
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -570,21 +628,49 @@ private fun CategoryStrip(
                 .focusRestorer { selectedFocus },
         ) {
             item {
-                val isAll = selected == null
+                val itemRequester = if (isAllSelected) selectedFocus else firstFocus
                 FocusableTag(
                     text = "全部",
-                    selected = isAll,
+                    selected = isAllSelected,
                     onClick = { onPick(null) },
-                    modifier = if (isAll) Modifier.focusRequester(selectedFocus) else Modifier,
+                    modifier = Modifier
+                        .focusRequester(itemRequester)
+                        .onPreviewKeyEvent { ke ->
+                            if (ke.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            if (ke.key == Key.DirectionLeft && categories.isNotEmpty()) {
+                                scope.launch {
+                                    listState.scrollToItem(totalItems - 1)
+                                    runCatching { cycleTargetForFirst.requestFocus() }
+                                }
+                                true
+                            } else false
+                        },
                 )
             }
             items(categories, key = { it.typeId }) { c ->
                 val isSelected = selected?.typeId == c.typeId
+                val isLast = c.typeId == lastCategoryId
+                val itemRequester: FocusRequester? = when {
+                    isSelected -> selectedFocus
+                    isLast -> lastFocus
+                    else -> null
+                }
+                val reqMod = if (itemRequester != null) Modifier.focusRequester(itemRequester) else Modifier
+                val keyMod = if (isLast) Modifier.onPreviewKeyEvent { ke ->
+                    if (ke.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    if (ke.key == Key.DirectionRight) {
+                        scope.launch {
+                            listState.scrollToItem(0)
+                            runCatching { cycleTargetForLast.requestFocus() }
+                        }
+                        true
+                    } else false
+                } else Modifier
                 FocusableTag(
                     text = c.typeName,
                     selected = isSelected,
                     onClick = { onPick(c) },
-                    modifier = if (isSelected) Modifier.focusRequester(selectedFocus) else Modifier,
+                    modifier = reqMod.then(keyMod),
                 )
             }
         }
