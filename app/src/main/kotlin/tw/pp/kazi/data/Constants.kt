@@ -64,6 +64,8 @@ object PlayerConfig {
 
     const val CONTROLS_AUTO_HIDE_MS = 5_000L
     const val POSITION_POLL_MS = 500L
+    // 左上角時鐘只顯示到分鐘，但 1 秒 tick 讓跨分鐘時即時跳動（成本遠低於上面的 position poll）
+    const val CLOCK_TICK_MS = 1_000L
     val PLAYBACK_SPEEDS = floatArrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
     const val DEFAULT_SPEED = 1.0f
     // 長按全螢幕暫時加速到的倍數（YT pattern：鬆手回原本速度）

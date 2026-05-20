@@ -397,6 +397,16 @@ fun PlayerScreen(
         runCatching { keyFocusRequester.requestFocus() }
     }
 
+    // 左上角現在時間（橫式全螢幕藏掉系統列後就看不到狀態列的時鐘，自己補一個）
+    var clockText by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        while (true) {
+            clockText = fmt.format(java.util.Date())
+            delay(PlayerConfig.CLOCK_TICK_MS)
+        }
+    }
+
     // ←/→ 行為：第一下 10 秒小跳；按住時 step = 10 + held + held²/5（秒）
     // 早期 ~+1/s 跟使用者預期接近，後期二次方項加速明顯飛快。throttle 100ms 壓成 10Hz；換方向重置
     var seekHoldStartMs by remember { mutableLongStateOf(0L) }
@@ -657,7 +667,19 @@ fun PlayerScreen(
                 )
             }
 
-            // 手機沒實體 BACK 鍵、全螢幕沉浸又沒系統列，加一顆返回按鈕在左上才好退出。
+            // 左上角現在時間，跟著 controlsVisible 一起淡入淡出
+            AnimatedVisibility(
+                visible = controlsVisible && gestureIndicator == null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(12.dp),
+            ) {
+                ClockOverlay(clockText)
+            }
+
+            // 手機沒實體 BACK 鍵、全螢幕沉浸又沒系統列，加一顆返回按鈕在右上才好退出。
             // TV 用遙控器 BACK 不需要這顆，避開電視盒。跟著 controlsVisible 一起淡入淡出
             val windowSize = LocalWindowSize.current
             if (!windowSize.isTv) {
@@ -666,7 +688,7 @@ fun PlayerScreen(
                     enter = fadeIn(),
                     exit = fadeOut(),
                     modifier = Modifier
-                        .align(Alignment.TopStart)
+                        .align(Alignment.TopEnd)
                         .padding(12.dp),
                 ) {
                     BackOverlayButton(onClick = { nav.popBackStack() })
@@ -844,6 +866,24 @@ private fun applyBrightness(activity: android.app.Activity?, value: Float) {
     val lp = window.attributes
     lp.screenBrightness = value
     window.attributes = lp
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun ClockOverlay(timeText: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(Color(0x66000000))
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Text(
+            timeText,
+            color = Color.White,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
