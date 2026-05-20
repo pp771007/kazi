@@ -105,6 +105,9 @@ fun DetailScreen(siteId: Long, vodId: Long) {
     var details by remember(currentSiteId, currentVodId) { mutableStateOf<VideoDetails?>(cachedInitial) }
     var loading by remember(currentSiteId, currentVodId) { mutableStateOf(cachedInitial == null) }
     var errorMsg by remember(currentSiteId, currentVodId) { mutableStateOf<String?>(null) }
+    // 載入失敗時的「重試」：bump 一下重跑下面的 fetch effect；retryFocus 掛在重試鈕上讓 TV 直接 focus
+    var retryToken by remember(currentSiteId, currentVodId) { mutableIntStateOf(0) }
+    val retryFocus = remember { FocusRequester() }
     // selectedSource 改 saveable，使用者手動切過 source 後 → 看影片 → 返回，不要被打回 0
     var selectedSource by rememberSaveable(currentSiteId, currentVodId) { mutableIntStateOf(0) }
     // 「依 history 自動挑 source」只在這部影片第一次顯示時做一次，之後讓使用者選擇主導
@@ -119,7 +122,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
         history.firstOrNull { it.siteId == currentSiteId && it.videoId == currentVodId }
     }
 
-    LaunchedEffect(currentSiteId, currentVodId) {
+    LaunchedEffect(currentSiteId, currentVodId, retryToken) {
         if (site == null) {
             errorMsg = "找不到對應站點"
             loading = false
@@ -181,16 +184,36 @@ fun DetailScreen(siteId: Long, vodId: Long) {
 
     if (loading) { LoadingState(); return }
     if (errorMsg != null || details == null) {
+        // TV：載入失敗時把 focus 搶到「重試」鈕，使用者直接按 OK 就能重試
+        LaunchedEffect(errorMsg) {
+            if (windowSize.isTv && errorMsg != null) {
+                kotlinx.coroutines.delay(50)
+                runCatching { retryFocus.requestFocus() }
+            }
+        }
         EmptyState(
             title = "載入失敗",
             subtitle = errorMsg ?: "找不到影片",
             icon = Icons.Filled.ErrorOutline,
             action = {
-                AppButton(
-                    text = "返回",
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    onClick = { nav.popBackStack() },
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppButton(
+                        text = "重試",
+                        icon = Icons.Filled.Refresh,
+                        onClick = {
+                            errorMsg = null
+                            loading = true
+                            retryToken += 1
+                        },
+                        modifier = Modifier.focusRequester(retryFocus),
+                    )
+                    AppButton(
+                        text = "返回",
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        onClick = { nav.popBackStack() },
+                        primary = false,
+                    )
+                }
             },
         )
         return
