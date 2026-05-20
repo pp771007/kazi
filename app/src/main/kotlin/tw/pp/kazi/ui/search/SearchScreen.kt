@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -34,6 +35,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -132,8 +138,6 @@ fun SearchScreen(
     var submittedKeyword by searchSnap.state<String?>("submittedKeyword") { null }
     var loading by remember { mutableStateOf(false) }
     var result by searchSnap.state<MultiSearchResult?>("result") { null }
-    // 預設 collapsed：進搜尋頁第一眼把垂直空間留給輸入框 + 最近搜尋；要篩站台才展開
-    var selectorExpanded by searchSnap.state("selectorExpanded") { false }
     var page by searchSnap.state("page") { 1 }
     var pageCount by searchSnap.state("pageCount") { 1 }
     var lastClickedAggName by searchSnap.state<String?>("lastClickedAggName") { null }
@@ -197,7 +201,6 @@ fun SearchScreen(
         scope.launch {
             loading = true
             submittedKeyword = kw
-            selectorExpanded = false
             page = targetPage
             if (targetPage == 1) {
                 // addSearchKeyword 內部會 trim 並忽略空字串，不必另外擋
@@ -218,16 +221,18 @@ fun SearchScreen(
     }
 
     LaunchedEffect(Unit) {
-        // 只有「使用者主動點搜尋進來」（沒帶 keyword、沒 snapshot 還原）才搶 focus 到輸入框；
-        // 遠端推進來自動搜尋的情況下千萬別 focus，不然鍵盤會直接蓋住載入動畫。
-        // 只在 TV 跑：手機進搜尋頁不要搶 focus，免得 IME 自動跳出來
-        val isFreshUserEntry = !hadValidSnapshot
-            && !pendingClickedFocus
-            && initialKeyword.isBlank()
-        if (windowSize.isTv && isFreshUserEntry) {
+        // 進搜尋頁預設把 focus 放在搜尋框。例外：
+        //  · 從 detail 返回要回到剛點的那張卡（pendingClickedFocus）→ 交給下面的 effect 處理
+        //  · 遠端推進來自動搜尋（帶 keyword 且非 snapshot 還原）→ 別搶 focus，不然 IME 蓋住載入動畫
+        // 只在 TV 搶 focus；手機進搜尋頁搶 focus 會害 IME 自動彈出來
+        val autoSearch = initialKeyword.isNotBlank() && !hadValidSnapshot
+        if (windowSize.isTv && !pendingClickedFocus && !autoSearch) {
+            // 等 SearchField 真的 compose、focusRequester 掛上節點再搶；少了這個 delay，requestFocus
+            // 會在元素還沒 attach 時被丟掉，focus 就 fallback 到 top bar 第一顆鈕（無痕鍵）
+            kotlinx.coroutines.delay(50)
             runCatching { focusRequester.requestFocus() }
         }
-        if (initialKeyword.isNotBlank() && !hadValidSnapshot) runSearch()
+        if (autoSearch) runSearch()
     }
 
     // 搜完 / 換頁（外層 or 內層） → focus 第一個結果；
@@ -397,26 +402,18 @@ fun SearchScreen(
                         if (hasHistory) down = historyRowFocus
                     }
                 } else Modifier
-                if (selectorExpanded) {
-                    SiteSelector(
-                        sites = enabledSites,
-                        selected = selectedIds,
-                        onToggle = {
-                            selectedIds = if (it in selectedIds) selectedIds - it else selectedIds + it
-                        },
-                        onSelectAll = { selectedIds = enabledSites.map { s -> s.id }.toSet() },
-                        onSelectNone = { selectedIds = emptySet() },
-                        entryModifier = selectorEntryMod,
-                    )
-                } else {
-                    CollapsedSelectorChip(
-                        selectedCount = selectedIds.size,
-                        totalCount = enabledSites.size,
-                        onExpand = { selectorExpanded = true },
-                        modifier = selectorEntryMod,
-                    )
-                }
-                // 最近搜尋 pills 跟 selectorExpanded 無關，一律放外面，搜過 / 沒搜過都看得到
+                // 站台選擇一律展開（不再有收合 chip）：進搜尋頁就能直接挑站台，少一層展開操作
+                SiteSelector(
+                    sites = enabledSites,
+                    selected = selectedIds,
+                    onToggle = {
+                        selectedIds = if (it in selectedIds) selectedIds - it else selectedIds + it
+                    },
+                    onSelectAll = { selectedIds = enabledSites.map { s -> s.id }.toSet() },
+                    onSelectNone = { selectedIds = emptySet() },
+                    entryModifier = selectorEntryMod,
+                )
+                // 最近搜尋 pills 一律放外面，搜過 / 沒搜過都看得到
                 if (settings.searchHistory.isNotEmpty()) {
                     HistoryPills(
                         entryModifier = if (windowSize.isTv) {
@@ -770,27 +767,6 @@ private fun ExcludeHint(excludes: List<String>) {
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun CollapsedSelectorChip(
-    selectedCount: Int,
-    totalCount: Int,
-    onExpand: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        FocusableTag(
-            text = "站點 $selectedCount/$totalCount · 修改 ▾",
-            selected = false,
-            onClick = onExpand,
-            modifier = modifier,
-        )
-    }
-}
-
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun SiteSelector(
@@ -805,9 +781,18 @@ private fun SiteSelector(
     // multi-select 沒有單一「當前」概念，fallback 用第一個已選；都沒選就 fallback 第一顆 chip
     val firstSelectedFocus = remember { FocusRequester() }
     val firstSiteFocus = remember { FocusRequester() }
+    val lastSiteFocus = remember { FocusRequester() }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     val firstSelectedId = remember(sites, selected) {
         sites.firstOrNull { it.id in selected }?.id
     }
+    val firstId = sites.firstOrNull()?.id
+    val lastId = sites.lastOrNull()?.id
+    // 首尾相連（跟首頁站點列同款）：first 按 ← 跳 last、last 按 → 跳 first。
+    // 對端剛好是 firstSelected 那顆時就請求 firstSelectedFocus，否則用 first/last 的 anchor。
+    val cycleTargetForFirst = if (lastId != null && lastId == firstSelectedId) firstSelectedFocus else lastSiteFocus
+    val cycleTargetForLast = if (firstId != null && firstId == firstSelectedId) firstSelectedFocus else firstSiteFocus
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -823,6 +808,7 @@ private fun SiteSelector(
             AppButton(text = "全不選", onClick = onSelectNone, primary = false)
         }
         LazyRow(
+            state = listState,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier
                 .focusGroup()
@@ -830,15 +816,42 @@ private fun SiteSelector(
         ) {
             itemsIndexed(sites, key = { _, s -> s.id }) { idx, s ->
                 val isFirstSelected = s.id == firstSelectedId
+                val isFirst = s.id == firstId
+                val isLast = s.id == lastId
+                // 一顆只能掛一個 FocusRequester：優先 firstSelected > first > last
+                val itemRequester: FocusRequester? = when {
+                    isFirstSelected -> firstSelectedFocus
+                    isFirst -> firstSiteFocus
+                    isLast -> lastSiteFocus
+                    else -> null
+                }
+                val reqMod = if (itemRequester != null) Modifier.focusRequester(itemRequester) else Modifier
+                // 循環：先 scroll 確保對端 composed，再 requestFocus（runCatching 防對端剛好沒掛上）
+                val keyMod = if (isFirst || isLast) Modifier.onPreviewKeyEvent { ke ->
+                    if (ke.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when {
+                        isFirst && ke.key == Key.DirectionLeft -> {
+                            scope.launch {
+                                listState.scrollToItem(sites.size - 1)
+                                runCatching { cycleTargetForFirst.requestFocus() }
+                            }
+                            true
+                        }
+                        isLast && ke.key == Key.DirectionRight -> {
+                            scope.launch {
+                                listState.scrollToItem(0)
+                                runCatching { cycleTargetForLast.requestFocus() }
+                            }
+                            true
+                        }
+                        else -> false
+                    }
+                } else Modifier
                 FocusableTag(
                     text = s.name,
                     selected = s.id in selected,
                     onClick = { onToggle(s.id) },
-                    modifier = when {
-                        isFirstSelected -> Modifier.focusRequester(firstSelectedFocus)
-                        idx == 0 -> Modifier.focusRequester(firstSiteFocus)
-                        else -> Modifier
-                    },
+                    modifier = reqMod.then(keyMod),
                 )
             }
         }
