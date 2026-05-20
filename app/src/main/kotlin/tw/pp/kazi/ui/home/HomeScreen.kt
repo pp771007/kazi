@@ -135,6 +135,10 @@ fun HomeScreen() {
     val retryFocus = remember { FocusRequester() }
     // grid 最後一列卡片按↓的 redirect 目標 — 掛在 footer Pager 的「下一頁」上
     val nextPageFocus = remember { FocusRequester() }
+    // D-pad 垂直流向：top bar ↓ → 站點 strip → 分類 strip → 影片格。每一段明確指定下一段的落點，
+    // 不交給 Compose 空間搜尋自己猜（靠右的按鈕按↓會跳過靠左的列）。掛在各 strip「當前選中」那顆上。
+    val siteStripFocus = remember { FocusRequester() }
+    val categoryStripFocus = remember { FocusRequester() }
     // 切站、切分類、換頁後要把 focus 移到新內容（成功 → 第一張卡；失敗 → 重試按鈕），
     // 避免 focus 卡在剛剛點過的 strip tag 或「下一頁」按鈕上。
     var pendingContentFocus by remember { mutableStateOf(false) }
@@ -235,6 +239,26 @@ fun HomeScreen() {
         headerState.offsetPx.floatValue = 0f
     }
 
+    // D-pad ↓ 落點（只在 TV、且目標那一列「確定 render 且 requester 已掛上」時才指；
+    // 否則 null = 維持原本空間搜尋，絕不把焦點導到不存在的元素造成卡死）
+    val videosShown = !loading && errorMsg == null && videos.isNotEmpty()
+    // siteStripFocus 掛在「選中站台」那顆上 → 必須 selectedSite 真的在清單內（排除幽靈站台那一瞬間沒人掛）
+    val siteStripAttached = enabledSites.any { it.id == selectedSite?.id }
+    // firstVideoFocus 掛在第一張卡上，但「第一張卡剛好是上次點過的卡」時 VideoGrid 會改掛 clickedItemFocus
+    // → 這種情況 firstVideoFocus 沒人掛，不能當落點
+    val firstVideoAttached = videosShown &&
+        (restoreClickedVodId == null || videos.firstOrNull()?.vodId != restoreClickedVodId)
+    val topBarDown = if (windowSize.isTv && siteStripAttached) siteStripFocus else null
+    val siteStripDown = if (windowSize.isTv) when {
+        categories.isNotEmpty() -> categoryStripFocus
+        firstVideoAttached -> firstVideoFocus
+        else -> null
+    } else null
+    val categoryStripDown = if (windowSize.isTv && firstVideoAttached) firstVideoFocus else null
+    val topBarDownMod = if (topBarDown != null) {
+        Modifier.focusProperties { down = topBarDown }
+    } else Modifier
+
     ScreenScaffold(
         title = "咔滋影院",
         subtitle = selectedSite?.name ?: "請先到設定新增站點",
@@ -276,7 +300,7 @@ fun HomeScreen() {
                             nav.navigate(Routes.search())
                         },
                         iconOnly = compact,
-                        modifier = Modifier.focusRequester(searchFocusRequester),
+                        modifier = Modifier.focusRequester(searchFocusRequester).then(topBarDownMod),
                     )
                     AppButton(
                         text = "歷史",
@@ -287,7 +311,7 @@ fun HomeScreen() {
                         },
                         primary = false,
                         iconOnly = compact,
-                        modifier = Modifier.focusRequester(historyFocusRequester),
+                        modifier = Modifier.focusRequester(historyFocusRequester).then(topBarDownMod),
                     )
                     AppButton(
                         text = "收藏",
@@ -298,11 +322,12 @@ fun HomeScreen() {
                         },
                         primary = false,
                         iconOnly = compact,
-                        modifier = Modifier.focusRequester(favoritesFocusRequester),
+                        modifier = Modifier.focusRequester(favoritesFocusRequester).then(topBarDownMod),
                     )
                     ViewModeToggle(
                         current = settings.viewMode,
                         onPick = { scope.launch { container.configRepository.updateViewMode(it) } },
+                        modifier = topBarDownMod,
                     )
                     AppButton(
                         text = if (incognito) "無痕中" else "無痕",
@@ -310,6 +335,7 @@ fun HomeScreen() {
                         onClick = { container.setIncognito(!incognito) },
                         primary = incognito,
                         iconOnly = compact,
+                        modifier = topBarDownMod,
                     )
                     AppButton(
                         text = "遠端遙控",
@@ -336,7 +362,7 @@ fun HomeScreen() {
                         },
                         primary = lanState.running,
                         iconOnly = compact,
-                        modifier = Modifier.focusRequester(lanFocusRequester),
+                        modifier = Modifier.focusRequester(lanFocusRequester).then(topBarDownMod),
                     )
                     AppButton(
                         text = "設定",
@@ -347,7 +373,7 @@ fun HomeScreen() {
                         },
                 primary = false,
                 iconOnly = compact,
-                modifier = Modifier.focusRequester(settingsFocusRequester),
+                modifier = Modifier.focusRequester(settingsFocusRequester).then(topBarDownMod),
             )
         },
         onBack = null,
@@ -408,6 +434,8 @@ fun HomeScreen() {
                 },
                 windowSize = windowSize,
                 listState = siteStripState,
+                selectedFocus = siteStripFocus,
+                downTarget = siteStripDown,
             )
             if (categories.isNotEmpty()) {
                 CategoryStrip(
@@ -421,6 +449,8 @@ fun HomeScreen() {
                     },
                     windowSize = windowSize,
                     listState = categoryStripState,
+                    selectedFocus = categoryStripFocus,
+                    downTarget = categoryStripDown,
                 )
             }
 
@@ -502,11 +532,15 @@ private fun SiteStrip(
     onPick: (Site) -> Unit,
     windowSize: WindowSize,
     listState: LazyListState,
+    // 由 HomeScreen hoist 進來：掛在「當前選中站台」那顆上，當 top bar↓ 的落點 + restorer fallback
+    selectedFocus: FocusRequester,
+    // 這一列任一顆按↓的固定落點（分類 strip / 第一張卡）；null = 維持原本空間搜尋
+    downTarget: FocusRequester? = null,
 ) {
     val compact = windowSize.isCompact
     // TV：D-pad 進入這列時，focus 應該停在當前選中的站台，不是離卡片最近的那顆。
     // restorer 第一次進來用 fallback（指向 selected 的 requester），之後記住使用者最後 focus 的位置
-    val selectedFocus = remember { FocusRequester() }
+    val downMod = if (downTarget != null) Modifier.focusProperties { down = downTarget } else Modifier
     val firstFocus = remember { FocusRequester() }
     val lastFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
@@ -576,7 +610,7 @@ private fun SiteStrip(
                     text = s.name,
                     selected = isSelected,
                     onClick = { onPick(s) },
-                    modifier = reqMod.then(keyMod),
+                    modifier = reqMod.then(keyMod).then(downMod),
                 )
             }
         }
@@ -591,9 +625,13 @@ private fun CategoryStrip(
     onPick: (Category?) -> Unit,
     windowSize: WindowSize,
     listState: LazyListState,
+    // 由 HomeScreen hoist 進來：掛在「當前分類（或全部）」那顆上，當站點 strip↓ 的落點 + restorer fallback
+    selectedFocus: FocusRequester,
+    // 這一列任一顆按↓的固定落點（第一張卡）；null = 維持原本空間搜尋
+    downTarget: FocusRequester? = null,
 ) {
     val compact = windowSize.isCompact
-    val selectedFocus = remember { FocusRequester() }
+    val downMod = if (downTarget != null) Modifier.focusProperties { down = downTarget } else Modifier
     val firstFocus = remember { FocusRequester() }  // 「全部」永遠在 first 位置
     val lastFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
@@ -644,7 +682,8 @@ private fun CategoryStrip(
                                 }
                                 true
                             } else false
-                        },
+                        }
+                        .then(downMod),
                 )
             }
             items(categories, key = { it.typeId }) { c ->
@@ -670,7 +709,7 @@ private fun CategoryStrip(
                     text = c.typeName,
                     selected = isSelected,
                     onClick = { onPick(c) },
-                    modifier = reqMod.then(keyMod),
+                    modifier = reqMod.then(keyMod).then(downMod),
                 )
             }
         }

@@ -138,6 +138,8 @@ fun SearchScreen(
     var pageCount by searchSnap.state("pageCount") { 1 }
     var lastClickedAggName by searchSnap.state<String?>("lastClickedAggName") { null }
     val focusRequester = remember { FocusRequester() }
+    // 電視盒 D-pad：搜尋框↓固定落到「站點 chip / 站台選擇」這一列的進入點，避免跳過它
+    val selectorRowFocus = remember { FocusRequester() }
     val firstResultFocus = remember { FocusRequester() }
     val clickedResultFocus = remember { FocusRequester() }
     // grid 最後一列卡片按↓的 redirect 目標 — 內層底端 Pager 跟外層 Pager 各一個。
@@ -380,10 +382,15 @@ fun SearchScreen(
                     focusRequester = focusRequester,
                     compact = windowSize.isCompact,
                     incognito = incognito,
+                    downTarget = if (windowSize.isTv) selectorRowFocus else null,
                 )
                 if (parsedQuery.excludes.isNotEmpty()) {
                     ExcludeHint(parsedQuery.excludes)
                 }
+                // 站點選擇這一列的「進入點」：搜尋框↓會落到這裡，↑再回到搜尋框
+                val selectorEntryMod = if (windowSize.isTv) {
+                    Modifier.focusRequester(selectorRowFocus).focusProperties { up = focusRequester }
+                } else Modifier
                 if (selectorExpanded) {
                     SiteSelector(
                         sites = enabledSites,
@@ -393,12 +400,14 @@ fun SearchScreen(
                         },
                         onSelectAll = { selectedIds = enabledSites.map { s -> s.id }.toSet() },
                         onSelectNone = { selectedIds = emptySet() },
+                        entryModifier = selectorEntryMod,
                     )
                 } else {
                     CollapsedSelectorChip(
                         selectedCount = selectedIds.size,
                         totalCount = enabledSites.size,
                         onExpand = { selectorExpanded = true },
+                        modifier = selectorEntryMod,
                     )
                 }
                 // 最近搜尋 pills 跟 selectorExpanded 無關，一律放外面，搜過 / 沒搜過都看得到
@@ -583,10 +592,14 @@ private fun SearchField(
     focusRequester: FocusRequester,
     compact: Boolean,
     incognito: Boolean,
+    // 電視盒 D-pad：搜尋框這一列按↓固定 focus 到下一列（站點 chip / 站台選擇），
+    // 不交給 Compose 的空間搜尋自己猜 — 不然站在靠右的「搜尋」鈕按↓會跳過靠左的 chip 直接到第三列
+    downTarget: FocusRequester? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val downMod = if (downTarget != null) Modifier.focusProperties { down = downTarget } else Modifier
 
     @Composable
     fun InputBox(modifier: Modifier = Modifier) {
@@ -625,7 +638,7 @@ private fun SearchField(
                     ),
                     keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
                     interactionSource = interaction,
-                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).then(downMod),
                     decorationBox = { inner ->
                         if (value.isEmpty()) {
                             Text(
@@ -651,6 +664,7 @@ private fun SearchField(
                             if (clearFocused) AppColors.FocusRing else Color.Transparent,
                             RoundedCornerShape(999.dp),
                         )
+                        .then(downMod)
                         .focusable(interactionSource = clearInteraction)
                         .clickable(interactionSource = clearInteraction, indication = null) {
                             onChange("")
@@ -703,11 +717,13 @@ private fun SearchField(
                 onClick = onToSimplified,
                 enabled = value.isNotBlank(),
                 primary = false,
+                modifier = downMod,
             )
             AppButton(
                 text = "搜尋",
                 icon = Icons.Filled.Search,
                 onClick = onSubmit,
+                modifier = downMod,
             )
             trailing?.invoke(this)
         }
@@ -750,6 +766,7 @@ private fun CollapsedSelectorChip(
     selectedCount: Int,
     totalCount: Int,
     onExpand: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -759,6 +776,7 @@ private fun CollapsedSelectorChip(
             text = "站點 $selectedCount/$totalCount · 修改 ▾",
             selected = false,
             onClick = onExpand,
+            modifier = modifier,
         )
     }
 }
@@ -771,6 +789,8 @@ private fun SiteSelector(
     onToggle: (Long) -> Unit,
     onSelectAll: () -> Unit,
     onSelectNone: () -> Unit,
+    // 展開時搜尋框↓的落點掛在「全選」鈕上（這列最上方的可 focus 元素）
+    entryModifier: Modifier = Modifier,
 ) {
     // multi-select 沒有單一「當前」概念，fallback 用第一個已選；都沒選就 fallback 第一顆 chip
     val firstSelectedFocus = remember { FocusRequester() }
@@ -789,7 +809,7 @@ private fun SiteSelector(
                 style = MaterialTheme.typography.labelMedium,
             )
             Spacer(Modifier.weight(1f))
-            AppButton(text = "全選", onClick = onSelectAll, primary = false)
+            AppButton(text = "全選", onClick = onSelectAll, primary = false, modifier = entryModifier)
             AppButton(text = "全不選", onClick = onSelectNone, primary = false)
         }
         LazyRow(

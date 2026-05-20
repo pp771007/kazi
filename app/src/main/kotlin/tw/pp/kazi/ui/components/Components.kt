@@ -614,7 +614,7 @@ fun StatusPill(
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun ViewModeToggle(current: ViewMode, onPick: (ViewMode) -> Unit) {
+fun ViewModeToggle(current: ViewMode, onPick: (ViewMode) -> Unit, modifier: Modifier = Modifier) {
     FocusableTag(
         text = current.emoji,
         selected = false,
@@ -623,6 +623,7 @@ fun ViewModeToggle(current: ViewMode, onPick: (ViewMode) -> Unit) {
             val next = entries[(entries.indexOf(current) + 1) % entries.size]
             onPick(next)
         },
+        modifier = modifier,
     )
 }
 
