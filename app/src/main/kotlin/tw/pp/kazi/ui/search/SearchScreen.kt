@@ -140,6 +140,8 @@ fun SearchScreen(
     val focusRequester = remember { FocusRequester() }
     // 電視盒 D-pad：搜尋框↓固定落到「站點 chip / 站台選擇」這一列的進入點，避免跳過它
     val selectorRowFocus = remember { FocusRequester() }
+    // 「最近搜尋」這一列的進入點：chip↓ 落到這、這列↑ 回 chip（避免↑時跳過 chip 直接回搜尋框）
+    val historyRowFocus = remember { FocusRequester() }
     val firstResultFocus = remember { FocusRequester() }
     val clickedResultFocus = remember { FocusRequester() }
     // grid 最後一列卡片按↓的 redirect 目標 — 內層底端 Pager 跟外層 Pager 各一個。
@@ -387,9 +389,13 @@ fun SearchScreen(
                 if (parsedQuery.excludes.isNotEmpty()) {
                     ExcludeHint(parsedQuery.excludes)
                 }
-                // 站點選擇這一列的「進入點」：搜尋框↓會落到這裡，↑再回到搜尋框
+                // 站點選擇這一列的「進入點」：搜尋框↓會落到這裡，↑回搜尋框，↓再往下到「最近搜尋」（有的話）
+                val hasHistory = settings.searchHistory.isNotEmpty()
                 val selectorEntryMod = if (windowSize.isTv) {
-                    Modifier.focusRequester(selectorRowFocus).focusProperties { up = focusRequester }
+                    Modifier.focusRequester(selectorRowFocus).focusProperties {
+                        up = focusRequester
+                        if (hasHistory) down = historyRowFocus
+                    }
                 } else Modifier
                 if (selectorExpanded) {
                     SiteSelector(
@@ -413,6 +419,10 @@ fun SearchScreen(
                 // 最近搜尋 pills 跟 selectorExpanded 無關，一律放外面，搜過 / 沒搜過都看得到
                 if (settings.searchHistory.isNotEmpty()) {
                     HistoryPills(
+                        entryModifier = if (windowSize.isTv) {
+                            Modifier.focusRequester(historyRowFocus)
+                                .focusProperties { up = selectorRowFocus }
+                        } else Modifier,
                         items = settings.searchHistory,
                         onPick = { kw ->
                             // 點 pill 時把 IME 收起來（電視盒上 BasicTextField 會被 focus 到，不收會彈鍵盤）
@@ -842,6 +852,8 @@ private fun HistoryPills(
     onPick: (String) -> Unit,
     onRemove: (String) -> Unit,
     onClear: () -> Unit,
+    // 從上面（站點 chip）↓ 進來的落點掛在「清除」鈕上；它↑ 再回 chip
+    entryModifier: Modifier = Modifier,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -851,7 +863,7 @@ private fun HistoryPills(
                 style = MaterialTheme.typography.labelMedium,
             )
             Spacer(Modifier.weight(1f))
-            AppButton(text = "清除", icon = Icons.Filled.ClearAll, onClick = onClear, primary = false)
+            AppButton(text = "清除", icon = Icons.Filled.ClearAll, onClick = onClear, primary = false, modifier = entryModifier)
         }
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),

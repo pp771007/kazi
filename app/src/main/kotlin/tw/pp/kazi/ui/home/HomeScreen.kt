@@ -255,6 +255,10 @@ fun HomeScreen() {
         else -> null
     } else null
     val categoryStripDown = if (windowSize.isTv && firstVideoAttached) firstVideoFocus else null
+    // ↑ 方向（對稱補上，否則從靠右元素往上一樣會跳過靠左的中間列）：
+    // 站台列↑→top bar 的「搜尋」鈕（永遠存在）；分類列↑→當前選中站台
+    val siteStripUp = if (windowSize.isTv) searchFocusRequester else null
+    val categoryStripUp = if (windowSize.isTv && siteStripAttached) siteStripFocus else null
     val topBarDownMod = if (topBarDown != null) {
         Modifier.focusProperties { down = topBarDown }
     } else Modifier
@@ -436,6 +440,7 @@ fun HomeScreen() {
                 listState = siteStripState,
                 selectedFocus = siteStripFocus,
                 downTarget = siteStripDown,
+                upTarget = siteStripUp,
             )
             if (categories.isNotEmpty()) {
                 CategoryStrip(
@@ -451,6 +456,7 @@ fun HomeScreen() {
                     listState = categoryStripState,
                     selectedFocus = categoryStripFocus,
                     downTarget = categoryStripDown,
+                    upTarget = categoryStripUp,
                 )
             }
 
@@ -534,13 +540,19 @@ private fun SiteStrip(
     listState: LazyListState,
     // 由 HomeScreen hoist 進來：掛在「當前選中站台」那顆上，當 top bar↓ 的落點 + restorer fallback
     selectedFocus: FocusRequester,
-    // 這一列任一顆按↓的固定落點（分類 strip / 第一張卡）；null = 維持原本空間搜尋
+    // 這一列任一顆按↓/↑的固定落點（↓=分類 strip / 第一張卡；↑=top bar）；null = 維持原本空間搜尋
     downTarget: FocusRequester? = null,
+    upTarget: FocusRequester? = null,
 ) {
     val compact = windowSize.isCompact
     // TV：D-pad 進入這列時，focus 應該停在當前選中的站台，不是離卡片最近的那顆。
     // restorer 第一次進來用 fallback（指向 selected 的 requester），之後記住使用者最後 focus 的位置
-    val downMod = if (downTarget != null) Modifier.focusProperties { down = downTarget } else Modifier
+    val dirMod = if (downTarget != null || upTarget != null) {
+        Modifier.focusProperties {
+            if (downTarget != null) down = downTarget
+            if (upTarget != null) up = upTarget
+        }
+    } else Modifier
     val firstFocus = remember { FocusRequester() }
     val lastFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
@@ -610,7 +622,7 @@ private fun SiteStrip(
                     text = s.name,
                     selected = isSelected,
                     onClick = { onPick(s) },
-                    modifier = reqMod.then(keyMod).then(downMod),
+                    modifier = reqMod.then(keyMod).then(dirMod),
                 )
             }
         }
@@ -627,11 +639,17 @@ private fun CategoryStrip(
     listState: LazyListState,
     // 由 HomeScreen hoist 進來：掛在「當前分類（或全部）」那顆上，當站點 strip↓ 的落點 + restorer fallback
     selectedFocus: FocusRequester,
-    // 這一列任一顆按↓的固定落點（第一張卡）；null = 維持原本空間搜尋
+    // 這一列任一顆按↓/↑的固定落點（↓=第一張卡；↑=站台 strip）；null = 維持原本空間搜尋
     downTarget: FocusRequester? = null,
+    upTarget: FocusRequester? = null,
 ) {
     val compact = windowSize.isCompact
-    val downMod = if (downTarget != null) Modifier.focusProperties { down = downTarget } else Modifier
+    val dirMod = if (downTarget != null || upTarget != null) {
+        Modifier.focusProperties {
+            if (downTarget != null) down = downTarget
+            if (upTarget != null) up = upTarget
+        }
+    } else Modifier
     val firstFocus = remember { FocusRequester() }  // 「全部」永遠在 first 位置
     val lastFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
@@ -683,7 +701,7 @@ private fun CategoryStrip(
                                 true
                             } else false
                         }
-                        .then(downMod),
+                        .then(dirMod),
                 )
             }
             items(categories, key = { it.typeId }) { c ->
@@ -709,7 +727,7 @@ private fun CategoryStrip(
                     text = c.typeName,
                     selected = isSelected,
                     onClick = { onPick(c) },
-                    modifier = reqMod.then(keyMod).then(downMod),
+                    modifier = reqMod.then(keyMod).then(dirMod),
                 )
             }
         }
