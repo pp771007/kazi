@@ -239,18 +239,44 @@ fun HomeScreen() {
         headerState.offsetPx.floatValue = 0f
     }
 
+    // 站台 / 類別 strip 的捲動位置 hoist 到這層：一來避免 CategoryStrip 因暫時 categories=[] 從
+    // composition 拔掉再重掛時把 scroll position 弄丟；二來下面要靠它判斷「選中項現在是否 visible」。
+    val siteStripState = rememberLazyListState()
+    val categoryStripState = rememberLazyListState()
+
     // D-pad ↓ 落點（只在 TV、且目標那一列「確定 render 且 requester 已掛上」時才指；
     // 否則 null = 維持原本空間搜尋，絕不把焦點導到不存在的元素造成卡死）
     val videosShown = !loading && errorMsg == null && videos.isNotEmpty()
     // siteStripFocus 掛在「選中站台」那顆上 → 必須 selectedSite 真的在清單內（排除幽靈站台那一瞬間沒人掛）
     val siteStripAttached = enabledSites.any { it.id == selectedSite?.id }
+    // 但「在清單內」不等於「已 compose」：LazyRow 會把捲到畫面外的 item 虛擬化拔掉，它掛的
+    // FocusRequester 就沒有對應節點。focusProperties 的 up/down 指到這種沒掛上的 requester，D-pad 一移動
+    // Compose 解析落點時會 check 失敗直接 crash（站台選左、分類選右時分類「全部」被捲出畫面就會中）。
+    // 所以「選中項落點」再加一道：它真的 visible 時才指，否則退回 null（空間搜尋，相鄰列仍會正確落下）。
+    val siteSelectedVisible by remember {
+        derivedStateOf {
+            val id = selectedSite?.id
+            id != null && siteStripState.layoutInfo.visibleItemsInfo.any { it.key == id }
+        }
+    }
+    val categorySelectedVisible by remember {
+        derivedStateOf {
+            val sel = selectedCategory
+            if (sel == null) {
+                // 「全部」是 index 0 的無 key item
+                categoryStripState.layoutInfo.visibleItemsInfo.any { it.index == 0 }
+            } else {
+                categoryStripState.layoutInfo.visibleItemsInfo.any { it.key == sel.typeId }
+            }
+        }
+    }
     // firstVideoFocus 掛在第一張卡上，但「第一張卡剛好是上次點過的卡」時 VideoGrid 會改掛 clickedItemFocus
     // → 這種情況 firstVideoFocus 沒人掛，不能當落點
     val firstVideoAttached = videosShown &&
         (restoreClickedVodId == null || videos.firstOrNull()?.vodId != restoreClickedVodId)
-    val topBarDown = if (windowSize.isTv && siteStripAttached) siteStripFocus else null
+    val topBarDown = if (windowSize.isTv && siteStripAttached && siteSelectedVisible) siteStripFocus else null
     val siteStripDown = if (windowSize.isTv) when {
-        categories.isNotEmpty() -> categoryStripFocus
+        categories.isNotEmpty() && categorySelectedVisible -> categoryStripFocus
         firstVideoAttached -> firstVideoFocus
         else -> null
     } else null
@@ -258,7 +284,7 @@ fun HomeScreen() {
     // ↑ 方向（對稱補上，否則從靠右元素往上一樣會跳過靠左的中間列）：
     // 站台列↑→top bar 的「搜尋」鈕（永遠存在）；分類列↑→當前選中站台
     val siteStripUp = if (windowSize.isTv) searchFocusRequester else null
-    val categoryStripUp = if (windowSize.isTv && siteStripAttached) siteStripFocus else null
+    val categoryStripUp = if (windowSize.isTv && siteStripAttached && siteSelectedVisible) siteStripFocus else null
     val topBarDownMod = if (topBarDown != null) {
         Modifier.focusProperties { down = topBarDown }
     } else Modifier
@@ -412,11 +438,6 @@ fun HomeScreen() {
                 )
                 return@Column
             }
-
-            // 站台 / 類別 strip 的捲動位置 hoist 到這層，避免 CategoryStrip 因暫時 categories=[]
-            // 從 composition 拔掉再重掛時把 scroll position 弄丟
-            val siteStripState = rememberLazyListState()
-            val categoryStripState = rememberLazyListState()
 
             // 站點 / 類別 strip 固定釘在頂部，不再隨 loading / showVideos 切換在「grid header」跟
             // 「直接 Column 子層」之間搬家。原本搬家會把 SiteStrip 卸載再重掛，剛點過的 site tag
