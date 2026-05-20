@@ -43,9 +43,11 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -336,16 +338,20 @@ fun SearchScreen(
                 text = "遠端遙控",
                 icon = Icons.Filled.QrCode2,
                 onClick = {
+                    // 跟首頁同款一鍵 toggle：開著時再點直接關掉（不進 QR 頁），沒開才 enable + 導 QR 頁
                     scope.launch {
-                        if (!lanState.running) {
+                        if (lanState.running) {
+                            container.stopLan()
+                            container.configRepository.updateLanShare(false)
+                        } else {
                             val ok = container.startLan()
                             if (ok) {
                                 container.configRepository.updateLanShare(true)
                             } else {
                                 Logger.w("startLan failed from Search one-tap; navigating to LanShareScreen so user sees the failure")
                             }
+                            nav.navigate(Routes.LanShare)
                         }
-                        nav.navigate(Routes.LanShare)
                     }
                 },
                 primary = lanState.running,
@@ -608,6 +614,18 @@ private fun SearchField(
     val focused by interaction.collectIsFocusedAsState()
     val downMod = if (downTarget != null) Modifier.focusProperties { down = downTarget } else Modifier
 
+    // 用 TextFieldValue 自己管 selection（String overload 控不了游標位置）。
+    // 對外仍維持 String API：value 是 source of truth，內部只是多帶一個 selection。
+    var fieldValue by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    // 外部改了文字（簡轉 / 點最近搜尋 / snapshot 還原）→ 同步進來並把游標擺到最後面
+    LaunchedEffect(value) {
+        if (fieldValue.text != value) fieldValue = TextFieldValue(value, TextRange(value.length))
+    }
+    // focus 到搜尋框時把游標放到字的最後面，方便接著打 / 往前刪
+    LaunchedEffect(focused) {
+        if (focused) fieldValue = fieldValue.copy(selection = TextRange(fieldValue.text.length))
+    }
+
     @Composable
     fun InputBox(modifier: Modifier = Modifier) {
         Row(
@@ -631,8 +649,11 @@ private fun SearchField(
             )
             Box(modifier = Modifier.weight(1f)) {
                 BasicTextField(
-                    value = value,
-                    onValueChange = onChange,
+                    value = fieldValue,
+                    onValueChange = {
+                        fieldValue = it
+                        if (it.text != value) onChange(it.text)
+                    },
                     singleLine = true,
                     textStyle = TextStyle(color = AppColors.OnBg, fontSize = 16.sp),
                     cursorBrush = SolidColor(AppColors.Primary),
