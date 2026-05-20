@@ -31,11 +31,17 @@ class CollapsibleHeaderState {
         override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
             val h = heightPx.floatValue
             if (h <= 0f || available.y == 0f) return Offset.Zero
-            // SideEffect（程式碼觸發的 scroll，e.g. TV D-pad focus 的 bringIntoView）
-            // 「往下方向」要排除，否則跟頂列收合會形成 feedback loop 害短 card 抖動。
-            // 但「往上方向」(available.y > 0) 要接受 — 不然使用者用 D-pad 切到列表頂端時，
-            // 列表雖然捲回頂了，offsetPx 沒更新，頂列會卡在收合位置一大段在畫面外
-            if (source == NestedScrollSource.SideEffect && available.y < 0f) return Offset.Zero
+            // SideEffect（程式碼觸發的 scroll，e.g. TV D-pad focus 的 bringIntoView）特別處理，
+            // 避免 bringIntoView 跟頂列收合互相拉扯：
+            //  · 往下（收合方向）完全不收 — 不然會 feedback loop 害短 card 抖動。
+            //  · 往上（捲回頂端）直接把頂列「攤平」到完全展開，而不是逐格累加 offset。
+            //    逐格累加會在列表頂端讓 bringIntoView 反覆微調 offset → 第一列上下一直抖。
+            //    直接歸 0 是冪等的：之後再來幾次往上 SideEffect 都還是 0、不再動 layout，迴圈就斷了；
+            //    也順便修掉原本「D-pad 切到頂端但 offsetPx 沒更新、頂列卡在收合位置」的問題。
+            if (source == NestedScrollSource.SideEffect) {
+                if (available.y > 0f && offsetPx.floatValue != 0f) offsetPx.floatValue = 0f
+                return Offset.Zero
+            }
             val newOffset = (offsetPx.floatValue + available.y).coerceIn(-h, 0f)
             offsetPx.floatValue = newOffset
             return Offset.Zero
