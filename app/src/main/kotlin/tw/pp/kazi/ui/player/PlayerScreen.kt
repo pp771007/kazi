@@ -326,11 +326,16 @@ fun PlayerScreen(
                 val c = WindowCompat.getInsetsController(w, w.decorView)
                 c.show(WindowInsetsCompat.Type.systemBars())
             }
-            // 用 appScope，避免 rememberCoroutineScope 在 dispose 時剛好被 cancel 導致歷史沒寫進去
+            // 用 appScope，避免 rememberCoroutineScope 在 dispose 時剛好被 cancel 導致歷史沒寫進去。
+            // episodeName 不能用 currentEpisode：它是每次 recomposition 重算的 val，而這個 onDispose
+            // closure 是 DisposableEffect(Unit) 第一次組合時建好就不再換的，會永遠 capture 到「進播放器當下那一集」。
+            // 自動連播跳下一集後，currentEpIdx 是 state 會讀到新值、但 currentEpisode?.name 還停在第一集，
+            // 存進去就變成「集號=2、集名=第一集」，外面繼續觀看顯示成第一集。改成用 fresh state 現查集名。
+            val endEpisode = details?.sources?.getOrNull(currentSourceIdx)?.episodes?.getOrNull(currentEpIdx)
             saveHistoryIfReady(
                 container = container, site = site, details = details,
                 vodId = vodId, sourceIdx = currentSourceIdx, episodeIdx = currentEpIdx,
-                episodeName = currentEpisode?.name.orEmpty(),
+                episodeName = endEpisode?.name.orEmpty(),
                 positionMs = player.currentPosition, durationMs = player.duration,
                 scope = container.appScope,
             )
