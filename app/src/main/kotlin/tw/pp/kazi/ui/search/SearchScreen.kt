@@ -117,21 +117,25 @@ fun SearchScreen(
     val searchSnap = rememberScreenSnapshot("search")
 
     // 從子畫面（detail / player）返回時還原。
-    // 規則：snapshot 的 submittedKeyword 跟這次 nav 的 initialKeyword 一致（且 siteIds 也相同）→ 還原；
-    // 否則代表是新一輪搜尋（例如手機遠端送過來不同 keyword），不能用 snapshot，要 discard。
-    // 之前寫成「只有 initialKeyword 為空才用 snapshot」是錯的 —— 從 detail 返回時 nav arg 還是原本的 keyword，
-    // 結果 snapshot 永遠不被用、每次返回都重搜。
+    // 「是不是同一輪搜尋」用「開啟這個 entry 的 nav arg」(originKeyword) 來比，而不是比 submittedKeyword：
+    // submittedKeyword 會在使用者於搜尋頁改關鍵字後變動，之前拿它比，會讓「從詳情頁點搜尋→改關鍵字查詢→
+    // 看影片返回」時，savedKeyword(=改後的) 對不上 nav arg(=原本的) → 誤判成新搜尋把 snapshot reset 掉、
+    // 關鍵字退回詳情頁那個。改用 originKeyword（這輪開場的 arg，使用者改關鍵字不會動到它）就穩定了。
+    // initialKeyword 為空（從首頁點搜尋進來）一律視為同一輪 → 還原上次搜尋。
     val hadValidSnapshot = remember(searchSnap) {
-        val savedKeyword: String? = searchSnap.peek("submittedKeyword")
+        val savedOrigin: String? = searchSnap.peek("originKeyword")
         val savedSites: Set<Long>? = searchSnap.peek("selectedIds")
         val hasAnything = savedSites != null
-        val sameKeyword = initialKeyword.isBlank() || initialKeyword == savedKeyword
+        val sameOrigin = initialKeyword.isBlank() || initialKeyword == savedOrigin
         val sameSites = initialSiteIds.isEmpty() || initialSiteIds == savedSites
-        val valid = hasAnything && sameKeyword && sameSites
+        val valid = hasAnything && sameOrigin && sameSites
         // 不用 discard：本次 session 還要繼續搜尋、儲存新狀態；只是把舊的清掉
         if (hasAnything && !valid) searchSnap.reset()
         valid
     }
+    // 記住這輪搜尋是用哪個 nav arg 開場的，供下次返回時的 hadValidSnapshot 比對（reset 後會重設成當前 arg）。
+    // 純粹為了寫回 snapshot bag，值本身在這裡用不到，所以不接回變數
+    searchSnap.state("originKeyword") { initialKeyword }
 
     var selectedIds by searchSnap.state("selectedIds") {
         if (initialSiteIds.isNotEmpty()) initialSiteIds else enabledSites.map { it.id }.toSet()
