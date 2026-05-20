@@ -5,12 +5,11 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -35,9 +34,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -49,6 +55,9 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import tw.pp.kazi.data.ViewMode
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.WindowSize
@@ -138,7 +147,7 @@ fun AppButton(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun FocusableTag(
     text: String,
@@ -160,22 +169,54 @@ fun FocusableTag(
 
     // 不用 scale 動畫 — scale 是 graphicsLayer 變換不影響 layout，但視覺上 1.06 倍會「咬到」相鄰
     // tag、看起來像在抖。focus 對比靠 border + bg color 變化做出來，layout 完全不動
-    val baseModifier = modifier
+    val decorated = modifier
         .clip(RoundedCornerShape(999.dp))
         .background(bg)
         .border(BorderStroke(borderWidth, borderBrush), RoundedCornerShape(999.dp))
-        .focusable(interactionSource = interaction)
-    // 沒給 onLongClick 就維持原本的 clickable，避免 combinedClickable 多一層 pointerInput 在大量
-    // tag（站台 strip / 集數 grid）的情境造成不必要的事件處理開銷
     val tappableModifier = if (onLongClick != null) {
-        baseModifier.combinedClickable(
-            interactionSource = interaction,
-            indication = null,
-            onClick = onClick,
-            onLongClick = onLongClick,
-        )
+        // combinedClickable 的 onLongClick 只吃觸控長按，遙控器 OK 鍵（DPAD_CENTER）長按不會觸發，
+        // 所以電視盒上「最近搜尋」長按刪不掉。這裡 touch 走 detectTapGestures，按鍵自己量按住時間補上長按。
+        // onKeyEvent 要掛在 focusable 外層，才收得到 focus 節點往上冒的按鍵事件。
+        val confirmKeys = remember { setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter) }
+        val longPressMs = LocalViewConfiguration.current.longPressTimeoutMillis
+        val scope = rememberCoroutineScope()
+        var longPressJob by remember { mutableStateOf<Job?>(null) }
+        var longPressFired by remember { mutableStateOf(false) }
+        decorated
+            .onKeyEvent { event ->
+                if (event.key !in confirmKeys) return@onKeyEvent false
+                when (event.type) {
+                    KeyEventType.KeyDown -> {
+                        // 按住會持續送 KeyDown（repeat），靠 job 是否存在判斷是不是第一次按下，避免重複起算
+                        if (longPressJob == null && !longPressFired) {
+                            longPressJob = scope.launch {
+                                delay(longPressMs)
+                                longPressFired = true
+                                onLongClick()
+                            }
+                        }
+                        true
+                    }
+                    KeyEventType.KeyUp -> {
+                        longPressJob?.cancel()
+                        longPressJob = null
+                        if (!longPressFired) onClick()
+                        longPressFired = false
+                        true
+                    }
+                    else -> false
+                }
+            }
+            .focusable(interactionSource = interaction)
+            .pointerInput(onClick, onLongClick) {
+                detectTapGestures(onTap = { onClick() }, onLongPress = { onLongClick() })
+            }
     } else {
-        baseModifier.clickable(interactionSource = interaction, indication = null) { onClick() }
+        // 沒給 onLongClick 就維持原本的 clickable，避免多一層 pointerInput 在大量
+        // tag（站台 strip / 集數 grid）的情境造成不必要的事件處理開銷
+        decorated
+            .focusable(interactionSource = interaction)
+            .clickable(interactionSource = interaction, indication = null) { onClick() }
     }
     Box(
         modifier = tappableModifier.padding(horizontal = 14.dp, vertical = 7.dp),
