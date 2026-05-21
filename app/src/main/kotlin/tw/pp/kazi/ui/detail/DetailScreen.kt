@@ -58,6 +58,7 @@ import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.ui.components.AppButton
+import tw.pp.kazi.ui.components.ClockPill
 import tw.pp.kazi.ui.components.CopyTextButton
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
@@ -664,6 +665,8 @@ private fun WideLayout(
                 )
                 if (incognito) IncognitoBadge()
                 Spacer(Modifier.weight(1f))
+                // 詳情頁沒走 GradientTopBar，這裡自己補上時鐘；跟 GradientTopBar 一致只在電視盒顯示
+                if (LocalWindowSize.current.isTv) ClockPill()
                 AppButton(
                     text = "返回",
                     icon = Icons.AutoMirrored.Filled.ArrowBack,

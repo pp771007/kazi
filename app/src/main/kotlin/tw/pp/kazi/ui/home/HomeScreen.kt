@@ -293,12 +293,9 @@ fun HomeScreen() {
         title = "咔滋影院",
         subtitle = selectedSite?.name ?: "請先到設定新增站點",
         headerState = headerState,
-        titleBadges = if (windowSize.isTv || incognito || lanState.running) {
+        titleBadges = if (incognito || lanState.running) {
             {
-                // 電視盒（Expanded）首頁顯示現在時間 — 使用者通常邊看 TV 邊滑首頁，不想再看手機才知道幾點
-                if (windowSize.isTv) {
-                    ClockPill()
-                }
+                // 時鐘已由 GradientTopBar 在電視盒每頁統一顯示，這裡只留無痕 / 區網狀態膠囊
                 if (incognito) {
                     tw.pp.kazi.ui.components.StatusPill(
                         text = "🕶 無痕",
@@ -807,27 +804,3 @@ private fun VideoGrid(
     }
 }
 
-/**
- * 電視盒首頁標題列旁邊的時鐘，跟著真實時間每分鐘更新一次。
- * 不用秒層級更新 — 標題上跳秒會分散注意力，分層更新省 recompose。
- */
-@Composable
-private fun ClockPill() {
-    var now by remember { mutableStateOf(currentClockText()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = currentClockText()
-            // 對齊下一個整分：用「到下一分還剩多少 ms」當 delay，避免每次延 60s 累積漂移
-            val msToNextMinute = 60_000L - (System.currentTimeMillis() % 60_000L)
-            kotlinx.coroutines.delay(msToNextMinute)
-        }
-    }
-    tw.pp.kazi.ui.components.StatusPill(text = "🕒 $now")
-}
-
-private fun currentClockText(): String {
-    val cal = java.util.Calendar.getInstance()
-    val h = cal.get(java.util.Calendar.HOUR_OF_DAY)
-    val m = cal.get(java.util.Calendar.MINUTE)
-    return String.format("%02d:%02d", h, m)
-}

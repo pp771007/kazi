@@ -62,6 +62,7 @@ import tw.pp.kazi.data.ViewMode
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.ui.isCompact
+import tw.pp.kazi.ui.isTv
 import tw.pp.kazi.ui.theme.AppColors
 import tw.pp.kazi.ui.topBarHorizontal
 import tw.pp.kazi.ui.topBarVertical
@@ -477,7 +478,7 @@ fun GradientTopBar(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    TitleColumn(title = title, subtitle = subtitle, titleBadges = titleBadges, compact = true)
+                    TitleColumn(title = title, subtitle = subtitle, titleBadges = titleBadges, compact = true, showClock = windowSize.isTv)
                 }
                 if (onBack != null) BackButton(iconOnly = true)
             }
@@ -508,7 +509,7 @@ fun GradientTopBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                TitleColumn(title = title, subtitle = subtitle, titleBadges = titleBadges, compact = false)
+                TitleColumn(title = title, subtitle = subtitle, titleBadges = titleBadges, compact = false, showClock = windowSize.isTv)
             }
             if (trailing != null || onBack != null) {
                 Row(
@@ -530,6 +531,7 @@ private fun TitleColumn(
     subtitle: String?,
     titleBadges: (@Composable RowScope.() -> Unit)?,
     compact: Boolean,
+    showClock: Boolean = false,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -543,6 +545,8 @@ private fun TitleColumn(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        // 電視盒：每頁標題旁都放時鐘（跟首頁一致）
+        if (showClock) ClockPill()
         if (titleBadges != null) titleBadges()
     }
     if (subtitle != null) {
@@ -647,6 +651,31 @@ fun StatusPill(
             maxLines = 1,
         )
     }
+}
+
+/**
+ * 標題列旁邊的時鐘，跟著真實時間每分鐘更新一次。電視盒每一頁的 GradientTopBar 都會帶上它，
+ * 讓使用者不用看手機就知道現在幾點。不用秒層級更新 — 標題上跳秒分散注意力，分層更新也省 recompose。
+ */
+@Composable
+fun ClockPill() {
+    var now by remember { mutableStateOf(currentClockText()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = currentClockText()
+            // 對齊下一個整分：用「到下一分還剩多少 ms」當 delay，避免每次延 60s 累積漂移
+            val msToNextMinute = 60_000L - (System.currentTimeMillis() % 60_000L)
+            delay(msToNextMinute)
+        }
+    }
+    StatusPill(text = "🕒 $now")
+}
+
+private fun currentClockText(): String {
+    val cal = java.util.Calendar.getInstance()
+    val h = cal.get(java.util.Calendar.HOUR_OF_DAY)
+    val m = cal.get(java.util.Calendar.MINUTE)
+    return String.format("%02d:%02d", h, m)
 }
 
 /**
