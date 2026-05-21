@@ -365,6 +365,38 @@ class LanServer(
   .scan-list li.fail { opacity:0.55;}
   .scan-list input[type=checkbox] { width:18px; height:18px; cursor:pointer; margin-top:3px;}
   .scan-list .err-msg { color:#F87171; font-size:11px; margin-top:2px;}
+  /* 匯入頁：步驟卡美化 */
+  .steps-title { font-size:13px; font-weight:600; color:#94A3B8; letter-spacing:.5px;
+                 margin-bottom:10px; text-transform:uppercase;}
+  .steps { counter-reset: step; list-style:none; padding:0; margin:0;}
+  .steps li { position:relative; padding:6px 0 6px 34px; margin:0; border:none;
+              color:#CBD5E1; font-size:14px; line-height:1.6; display:block;}
+  .steps li::before { counter-increment: step; content: counter(step);
+              position:absolute; left:0; top:6px; width:22px; height:22px;
+              background:#3B82F6; color:#fff; border-radius:50%; font-size:12px;
+              font-weight:600; display:flex; align-items:center; justify-content:center;}
+  .steps code { background:#0D0D15; padding:1px 6px; border-radius:4px; font-size:12px; color:#93C5FD;}
+  .fmt-note { margin:12px 0 0; color:#64748B; font-size:12px; line-height:1.5;}
+  /* 彈出式 modal */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.65);
+    display:none; align-items:center; justify-content:center; padding:16px; z-index:100;}
+  .modal-overlay.open { display:flex; animation: fadeIn .15s ease;}
+  @keyframes fadeIn { from { opacity:0;} to { opacity:1;} }
+  .modal { background:#1E1E2E; border:1px solid #2a2a3e; border-radius:16px;
+    width:100%; max-width:520px; max-height:86vh; display:flex; flex-direction:column;
+    box-shadow:0 24px 70px rgba(0,0,0,.55);}
+  .modal-head { display:flex; align-items:center; gap:8px; padding:16px 18px;
+    border-bottom:1px solid #2a2a3e;}
+  .modal-head h2 { margin:0; font-size:16px; flex:1;}
+  .modal-close { background:transparent; color:#94A3B8; border:none; font-size:20px;
+    cursor:pointer; margin:0; padding:2px 8px; line-height:1;}
+  .modal-close:hover { color:#fff; background:transparent;}
+  .modal-actions { display:flex; align-items:center; gap:8px; padding:12px 18px 4px;}
+  .modal-actions .sel-count { margin-left:auto; font-size:12px; color:#94A3B8;}
+  .modal-body { overflow-y:auto; padding:6px 18px 8px; margin:0; flex:1;}
+  .modal-foot { display:flex; gap:10px; padding:14px 18px; border-top:1px solid #2a2a3e;}
+  .modal-foot button { margin-top:0;}
+  .scan-list li label.grow { cursor:pointer;}
 </style>
 </head>
 <body>
@@ -411,33 +443,27 @@ class LanServer(
 </div>
 
 <div id="panel-import" class="panel">
+  <div class="hero">
+    <h2>從手機把站點搬過來</h2>
+    <p>手機 app 匯出清單 → 貼上 → 勾選要加入的站台</p>
+  </div>
   <div class="card">
-    <h2 style="margin:0 0 10px; font-size:16px">怎麼用</h2>
+    <div class="steps-title">怎麼用</div>
     <ol class="steps">
-      <li>在手機 app 開「站點管理」→ 批次操作 →「<strong>匯出站點到剪貼簿</strong>」</li>
-      <li>切回這個瀏覽器分頁（剪貼簿的 JSON 已經在你手機裡）</li>
+      <li>手機 app 開「站點管理」→ 批次操作 →「<strong>匯出站點到剪貼簿</strong>」</li>
+      <li>切回這個瀏覽器分頁（JSON 已經在你手機剪貼簿裡）</li>
       <li>在下面方框<strong>長按 → 貼上</strong></li>
-      <li>按「📥 匯入」→ 預覽要新增哪些（已存在的站會自動略過）</li>
-      <li>確認沒問題就按「確定匯入」</li>
+      <li>按「<strong>預覽要匯入哪些</strong>」→ 勾選想要的 → 確定匯入</li>
     </ol>
-    <p style="margin:8px 0 0; color:#94A3B8; font-size:12px">
-      格式：JSON array，例如
-      <code>[{"name":"範例","url":"https://...","ssl_verify":true,"enabled":true}]</code>
-    </p>
+    <p class="fmt-note">格式：JSON array，例如<br>
+      <code>[{"name":"範例","url":"https://...","ssl_verify":true,"enabled":true}]</code></p>
   </div>
 
   <div class="card">
-    <label>貼匯出字串</label>
-    <textarea id="importText" rows="8" placeholder="從手機 app 匯出的 JSON 貼這裡⋯"></textarea>
-    <button onclick="runImportPreview()" id="importBtn" style="width:100%">📥 預覽匯入</button>
+    <label>貼上匯出字串</label>
+    <textarea id="importText" rows="7" placeholder="從手機 app 匯出的 JSON 貼這裡⋯"></textarea>
+    <button onclick="runImportPreview()" id="importBtn" style="width:100%">📥 預覽要匯入哪些</button>
     <div id="importMsg" class="err"></div>
-  </div>
-
-  <div class="card" id="importPreviewCard" style="display:none">
-    <h2 id="importPreviewTitle" style="margin:0 0 8px; font-size:16px;">預覽</h2>
-    <ul id="importList" class="scan-list"></ul>
-    <button onclick="confirmImport()" id="importConfirmBtn" style="width:100%">確定匯入</button>
-    <div id="importDoneMsg" class="err"></div>
   </div>
 </div>
 
@@ -461,6 +487,27 @@ class LanServer(
       <button class="clear-btn" onclick="clearInput('siteFilter', renderList)" title="清空" tabindex="-1">✕</button>
     </div>
     <ul id="list"></ul>
+  </div>
+</div>
+
+<!-- 匯入預覽：彈出式 modal（點背景或 ✕ 關閉） -->
+<div id="importModal" class="modal-overlay" onclick="if(event.target===this)closeImportModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="importPreviewTitle">預覽匯入</h2>
+      <button class="modal-close" onclick="closeImportModal()" title="關閉">✕</button>
+    </div>
+    <div class="modal-actions">
+      <button class="secondary small" style="margin-top:0" onclick="importSelAll(true)">全選</button>
+      <button class="secondary small" style="margin-top:0" onclick="importSelAll(false)">全不選</button>
+      <span class="sel-count" id="importSelCount"></span>
+    </div>
+    <ul id="importList" class="scan-list modal-body"></ul>
+    <div class="modal-foot">
+      <button class="secondary" onclick="closeImportModal()">取消</button>
+      <button onclick="confirmImport()" id="importConfirmBtn" style="flex:2">確定匯入</button>
+    </div>
+    <div id="importDoneMsg" class="err" style="padding:0 18px 14px; margin-top:-4px"></div>
   </div>
 </div>
 
@@ -490,8 +537,8 @@ async function loadSites(){
   lastSites = r.data;
   renderList();
   renderChecks(r.data);
-  // 預覽中時匯入頁的「新增/重複」badge 要跟著 site list 同步
-  if (importPreviewData) renderImportPreview();
+  // 預覽 modal 開著時，「新增/已存在」badge 跟著 site list 同步（沒開就別重繪，免得洗掉勾選）
+  if (importPreviewData && isImportModalOpen()) renderImportPreview();
 }
 
 function renderChecks(sites){
@@ -745,8 +792,11 @@ async function moveToBottom(id){
   loadSites();
 }
 
-let importParsedRaw = null;
 let importPreviewData = null;
+
+function openImportModal(){ document.getElementById('importModal').classList.add('open'); }
+function closeImportModal(){ document.getElementById('importModal').classList.remove('open'); }
+function isImportModalOpen(){ return document.getElementById('importModal').classList.contains('open'); }
 
 async function runImportPreview(){
   const text = document.getElementById('importText').value;
@@ -758,70 +808,92 @@ async function runImportPreview(){
   try { parsed = JSON.parse(text); }
   catch (e) { msg.textContent = 'JSON 格式錯誤：' + e.message; return; }
   if (!Array.isArray(parsed)) { msg.textContent = '需要 JSON array（[ ... ]）'; return; }
-  importParsedRaw = text;
+  if (parsed.length === 0) { msg.textContent = '清單是空的'; return; }
   importPreviewData = parsed;
+  document.getElementById('importDoneMsg').textContent = '';
   renderImportPreview();
-  msg.className = 'err ok';
-  msg.textContent = '解析到 ' + parsed.length + ' 個站台，按下方「確定匯入」送出';
-  document.getElementById('importPreviewCard').style.display = 'block';
+  openImportModal();
 }
 
 function renderImportPreview(){
   const ul = document.getElementById('importList');
   ul.innerHTML = '';
-  // 用現有站點 URL（normalized 後比對）標記「新增 / 重複」。重複的會被 server 略過、不會覆蓋既有設定
+  // 用現有站點 URL（normalized 後比對）標記「新增 / 已存在」。已存在的會被 server 略過、不覆蓋既有設定
   const existing = new Set(lastSites.map(s => (s.url || '').trim().toLowerCase()));
   let newCount = 0, dupCount = 0;
-  importPreviewData.forEach(function(item){
-    const li = document.createElement('li');
+  importPreviewData.forEach(function(item, idx){
     const name = item.name || '(未命名)';
     const url = item.url || '';
     const isDup = existing.has(url.trim().toLowerCase());
     if (isDup) dupCount++; else newCount++;
     const badge = isDup
-      ? '<span class="badge off" style="margin-left:6px">重複</span>'
+      ? '<span class="badge off" style="margin-left:6px">已存在</span>'
       : '<span class="badge on" style="margin-left:6px">新增</span>';
-    li.style.opacity = isDup ? '0.55' : '1';
+    const li = document.createElement('li');
+    if (isDup) li.className = 'fail';
+    // 新增的預設勾選；已存在的預設不勾且 disabled（送了 server 也會略過）
     li.innerHTML =
-      '<div class="grow">' +
+      '<input type="checkbox" data-idx="' + idx + '" ' + (isDup ? 'disabled' : 'checked') +
+        ' onchange="updateImportCount()">' +
+      '<label class="grow">' +
         '<div class="name">' + escapeHtml(name) + badge + '</div>' +
         '<div class="url">' + escapeHtml(url) + '</div>' +
-      '</div>';
+      '</label>';
     ul.appendChild(li);
   });
   document.getElementById('importPreviewTitle').textContent =
-    '預覽（共 ' + importPreviewData.length + ' · 新增 ' + newCount + ' · 重複 ' + dupCount + '）';
+    '預覽匯入（共 ' + importPreviewData.length + ' · 新增 ' + newCount + ' · 已存在 ' + dupCount + '）';
+  updateImportCount();
+}
+
+function updateImportCount(){
+  const checked = document.querySelectorAll('#importList input[type=checkbox]:checked').length;
+  const btn = document.getElementById('importConfirmBtn');
+  btn.textContent = checked > 0 ? ('確定匯入（' + checked + '）') : '確定匯入';
+  btn.disabled = checked === 0;
+  const label = document.getElementById('importSelCount');
+  if (label) label.textContent = '已選 ' + checked + ' 個';
+}
+
+function importSelAll(v){
+  document.querySelectorAll('#importList input[type=checkbox]:not(:disabled)').forEach(function(c){ c.checked = v; });
+  updateImportCount();
 }
 
 async function confirmImport(){
   const btn = document.getElementById('importConfirmBtn');
-  const msg = document.getElementById('importDoneMsg');
-  msg.className = 'err'; msg.textContent = '';
-  if (!importParsedRaw) return;
+  const dmsg = document.getElementById('importDoneMsg');
+  dmsg.className = 'err'; dmsg.textContent = '';
+  if (!importPreviewData) return;
+  const idxs = [...document.querySelectorAll('#importList input[type=checkbox]:checked')]
+    .map(function(c){ return parseInt(c.dataset.idx, 10); });
+  if (idxs.length === 0) return;
+  // 只送勾選的那幾筆；server 的匯入端吃 JSON array，所以篩完重新 stringify 即可（不必改 server）
+  const selected = idxs.map(function(i){ return importPreviewData[i]; });
   btn.disabled = true; btn.textContent = '匯入中⋯';
   try {
     const r = await api('/api/sites/import', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ text: importParsedRaw }),
+      body: JSON.stringify({ text: JSON.stringify(selected) }),
     });
     if (!r.ok) {
-      msg.textContent = (r.data && r.data.message) || '匯入失敗';
+      dmsg.textContent = (r.data && r.data.message) || '匯入失敗';
       return;
     }
     const added = r.data.added || 0;
     const failed = r.data.failed || 0;
     const skipped = r.data.skipped || 0;
-    msg.className = 'err ok';
-    msg.textContent = '已新增 ' + added + ' 個' +
-      (skipped > 0 ? '（略過 ' + skipped + ' 個重複）' : '') +
-      (failed > 0 ? '（失敗 ' + failed + ' 個）' : '');
-    document.getElementById('importText').value = '';
-    document.getElementById('importPreviewCard').style.display = 'none';
-    importParsedRaw = null;
+    closeImportModal();
     importPreviewData = null;
+    document.getElementById('importText').value = '';
+    const msg = document.getElementById('importMsg');
+    msg.className = 'err ok';
+    msg.textContent = '✅ 已新增 ' + added + ' 個' +
+      (skipped > 0 ? '（略過 ' + skipped + ' 個已存在）' : '') +
+      (failed > 0 ? '（失敗 ' + failed + ' 個）' : '');
     loadSites(); // 順便重整站點管理頁
   } finally {
-    btn.disabled = false; btn.textContent = '確定匯入';
+    btn.disabled = false; updateImportCount();
   }
 }
 
