@@ -581,6 +581,15 @@ private fun SiteStrip(
     // last 按 → 要去 first，同理
     val cycleTargetForFirst = if (lastId != null && lastId == selectedId) selectedFocus else lastFocus
     val cycleTargetForLast = if (firstId != null && firstId == selectedId) selectedFocus else firstFocus
+    // selectedFocus 掛在「選中站台」那顆上。但啟動瞬間 selectedSite 還是 null（稍後 LaunchedEffect 才設），
+    // 或選中項被 LazyRow 捲出畫面虛擬化時，這顆 requester 就沒掛在任何節點上。focusRestorer 直接回它的話，
+    // Compose 觸發 restore → requestFocus → 「FocusRequester is not initialized」直接 crash（電視盒啟動閃退的元兇）。
+    // 所以「選中項真的可見」時才用它，否則回 Default（交給預設行為，不會崩）。
+    val selectedVisible by remember {
+        derivedStateOf {
+            selectedId != null && listState.layoutInfo.visibleItemsInfo.any { it.key == selectedId }
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -601,7 +610,7 @@ private fun SiteStrip(
             // (category strip 或 video grid)，不會因 spatial 距離計算跳過 category 直接到 video card
             modifier = Modifier
                 .focusGroup()
-                .focusRestorer { selectedFocus },
+                .focusRestorer { if (selectedVisible) selectedFocus else FocusRequester.Default },
         ) {
             items(sites, key = { it.id }) { s ->
                 val isSelected = s.id == selectedId
@@ -680,6 +689,15 @@ private fun CategoryStrip(
     val cycleTargetForLast = if (isAllSelected) selectedFocus else firstFocus
     // 列表總長度（含「全部」項）：scroll 用得到
     val totalItems = categories.size + 1
+    // 同 SiteStrip：選中分類被捲出畫面時 selectedFocus 沒掛上，focusRestorer 直接回它會 crash。
+    // 「全部」是 index 0 的無 key item，其餘用 typeId 當 key 判斷可見。
+    val selectedVisible by remember {
+        derivedStateOf {
+            val sel = selected
+            if (sel == null) listState.layoutInfo.visibleItemsInfo.any { it.index == 0 }
+            else listState.layoutInfo.visibleItemsInfo.any { it.key == sel.typeId }
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -699,7 +717,7 @@ private fun CategoryStrip(
             // focusGroup：見 SiteStrip 同款註解；focusRestorer 讓 D-pad 進這列時 focus 落在當前分類
             modifier = Modifier
                 .focusGroup()
-                .focusRestorer { selectedFocus },
+                .focusRestorer { if (selectedVisible) selectedFocus else FocusRequester.Default },
         ) {
             item {
                 val itemRequester = if (isAllSelected) selectedFocus else firstFocus
