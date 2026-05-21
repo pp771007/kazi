@@ -14,6 +14,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -564,12 +565,18 @@ private fun CompactLayout(
 
         if (d.sources.size > 1) {
             val currentSourceFocus = remember { FocusRequester() }
+            val sourceListState = rememberLazyListState()
             SectionHeader(title = "播放來源")
             LazyRow(
+                state = sourceListState,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier
                     .focusGroup()
-                    .focusRestorer { currentSourceFocus },
+                    // 當前來源被捲出畫面時 currentSourceFocus 沒掛上，restore 直接回它會崩 → 可見才用
+                    .focusRestorer {
+                        if (sourceListState.layoutInfo.visibleItemsInfo.any { it.index == selectedSource })
+                            currentSourceFocus else FocusRequester.Default
+                    },
             ) {
                 itemsIndexed(d.sources) { idx, s ->
                     val isCurrent = idx == selectedSource
@@ -803,12 +810,18 @@ private fun WideLayout(
 
             if (d.sources.size > 1) {
                 val currentSourceFocus = remember { FocusRequester() }
+                val sourceListState = rememberLazyListState()
                 SectionHeader(title = "播放來源")
                 LazyRow(
+                    state = sourceListState,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier
                         .focusGroup()
-                        .focusRestorer { currentSourceFocus },
+                        // 當前來源被捲出畫面時 currentSourceFocus 沒掛上，restore 直接回它會崩 → 可見才用
+                        .focusRestorer {
+                            if (sourceListState.layoutInfo.visibleItemsInfo.any { it.index == selectedSource })
+                                currentSourceFocus else FocusRequester.Default
+                        },
                 ) {
                     itemsIndexed(d.sources) { idx, s ->
                         val isCurrent = idx == selectedSource
@@ -915,6 +928,7 @@ private fun PeerRow(
 ) {
     if (peers == null || peers.size <= 1) return
     val currentFocus = remember { FocusRequester() }
+    val peerListState = rememberLazyListState()
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             "同名站點（${peers.size}）",
@@ -922,10 +936,16 @@ private fun PeerRow(
             style = MaterialTheme.typography.labelSmall,
         )
         LazyRow(
+            state = peerListState,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier
                 .focusGroup()
-                .focusRestorer { currentFocus },
+                // 當前站點被捲出畫面時 currentFocus 沒掛上，restore 直接回它會崩 → 可見才用
+                .focusRestorer {
+                    val idx = peers.indexOfFirst { it.fromSiteId == currentSiteId }
+                    if (idx >= 0 && peerListState.layoutInfo.visibleItemsInfo.any { it.index == idx })
+                        currentFocus else FocusRequester.Default
+                },
         ) {
             itemsIndexed(peers, key = { _, it -> "${it.fromSiteId}-${it.vodId}" }) { _, peer ->
                 val isCurrent = peer.fromSiteId == currentSiteId

@@ -837,7 +837,13 @@ private fun SiteSelector(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier
                 .focusGroup()
-                .focusRestorer { if (firstSelectedId != null) firstSelectedFocus else firstSiteFocus },
+                // 落點站台被捲出畫面時 requester 沒掛上，restore 直接回它會崩 → 可見才用
+                .focusRestorer {
+                    val targetId = firstSelectedId ?: firstId
+                    if (targetId != null && listState.layoutInfo.visibleItemsInfo.any { it.key == targetId })
+                        (if (firstSelectedId != null) firstSelectedFocus else firstSiteFocus)
+                    else FocusRequester.Default
+                },
         ) {
             itemsIndexed(sites, key = { _, s -> s.id }) { idx, s ->
                 val isFirstSelected = s.id == firstSelectedId
