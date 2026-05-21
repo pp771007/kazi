@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
@@ -23,6 +25,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import java.net.URLDecoder
 import tw.pp.kazi.AppContainer
+import tw.pp.kazi.ui.crash.CrashReportScreen
 import tw.pp.kazi.ui.detail.DetailScreen
 import tw.pp.kazi.ui.favorites.FavoritesScreen
 import tw.pp.kazi.ui.history.HistoryScreen
@@ -48,6 +51,16 @@ val LocalNavController = compositionLocalOf<NavHostController> {
 @Composable
 fun KaziApp(container: AppContainer) {
     KaziTheme {
+        // 上次崩潰過 → 先把報告顯示出來，攔在正常畫面之前（那個畫面可能正是會崩的元兇）
+        val crashReport by container.crashReport.collectAsState()
+        if (crashReport != null) {
+            CrashReportScreen(
+                report = crashReport!!,
+                onDismiss = { container.dismissCrashReport() },
+            )
+            return@KaziTheme
+        }
+
         val nav = rememberNavController()
         val windowSize = rememberWindowSize()
 

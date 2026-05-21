@@ -28,6 +28,7 @@ import tw.pp.kazi.data.Video
 import tw.pp.kazi.data.VideoDetails
 import tw.pp.kazi.lan.LanServer
 import tw.pp.kazi.util.ChineseConverter
+import tw.pp.kazi.util.CrashLog
 import tw.pp.kazi.util.Logger
 import tw.pp.kazi.util.Network
 
@@ -39,6 +40,16 @@ class AppContainer(private val context: Context) {
     // 播放器時把進度寫進歷史）。不可以用 rememberCoroutineScope，那個會在 composable
     // 離開 composition 時被 cancel，導致 IO 還沒執行就被砍掉。
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    // 上次未捕捉的當機報告（同步讀，一定要在任何 UI 渲染前就備好，
+    // 才能在「會崩的那個畫面」渲染之前先攔下來顯示，不會又崩一次）
+    private val _crashReport = MutableStateFlow(CrashLog.read(appContext))
+    val crashReport: StateFlow<String?> = _crashReport.asStateFlow()
+
+    fun dismissCrashReport() {
+        CrashLog.clear(appContext)
+        _crashReport.value = null
+    }
 
     val configRepository = ConfigRepository(context)
     val siteRepository = SiteRepository(context)

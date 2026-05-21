@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import tw.pp.kazi.util.CrashLog
 import tw.pp.kazi.util.Logger
 
 class KaziApplication : Application() {
@@ -35,6 +36,8 @@ class KaziApplication : Application() {
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             runCatching {
                 Logger.e("UNCAUGHT on ${thread.name}: ${error.javaClass.simpleName}", error)
+                // 寫進磁碟，下次開 App 會顯示出來（LogBuffer 是純記憶體，救不到啟動崩潰）
+                CrashLog.save(applicationContext, thread, error)
             }
             previous?.uncaughtException(thread, error)
         }
