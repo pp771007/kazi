@@ -23,10 +23,12 @@ import java.io.File
 data class AppSettings(
     val siteTitle: String = DEFAULT_SITE_TITLE,
     val requestTimeoutSeconds: Int = DEFAULT_TIMEOUT_SECONDS,
-    val viewMode: ViewMode = ViewMode.Default,
     val lanShareEnabled: Boolean = false,
     val incognitoMode: Boolean = false,
     val searchHistory: List<String> = emptyList(),
+    // 每個站台自動偵測出的預覽圖方向（siteId → ViewMode.key）。首頁進站時偵測一次後記住，
+    // 之後重進不必再偵測；使用者沒有手動切換 UI，這層純粹是「猜對一次就快取」。
+    val siteViewModes: Map<Long, String> = emptyMap(),
 ) {
     companion object {
         const val DEFAULT_SITE_TITLE = "咔滋影院"
@@ -53,22 +55,30 @@ class ConfigRepository(context: Context) {
             val historyArr = obj[ConfigKeys.SEARCH_HISTORY] as? JsonArray
             val history = historyArr?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList()
 
+            val siteModesObj = obj[ConfigKeys.SITE_VIEW_MODES] as? JsonObject
+            val siteModes = siteModesObj?.mapNotNull { (k, v) ->
+                val id = k.toLongOrNull() ?: return@mapNotNull null
+                id to ((v as? JsonPrimitive)?.content ?: return@mapNotNull null)
+            }?.toMap() ?: emptyMap()
+
             _settings.value = AppSettings(
                 siteTitle = (obj[ConfigKeys.SITE_TITLE] as? JsonPrimitive)?.content
                     ?: AppSettings.DEFAULT_SITE_TITLE,
                 requestTimeoutSeconds = (obj[ConfigKeys.REQUEST_TIMEOUT] as? JsonPrimitive)?.intOrNull
                     ?: AppSettings.DEFAULT_TIMEOUT_SECONDS,
-                viewMode = ViewMode.fromKey((obj[ConfigKeys.VIEW_MODE] as? JsonPrimitive)?.content),
                 lanShareEnabled = (obj[ConfigKeys.LAN_SHARE_ENABLED] as? JsonPrimitive)?.booleanOrNull
                     ?: false,
                 incognitoMode = (obj[ConfigKeys.INCOGNITO_MODE] as? JsonPrimitive)?.booleanOrNull
                     ?: false,
                 searchHistory = history,
+                siteViewModes = siteModes,
             )
         }
     }
 
-    suspend fun updateViewMode(mode: ViewMode) = update { it.copy(viewMode = mode) }
+    suspend fun setSiteViewMode(siteId: Long, mode: ViewMode) = update {
+        it.copy(siteViewModes = it.siteViewModes + (siteId to mode.key))
+    }
 
     suspend fun updateLanShare(enabled: Boolean) = update { it.copy(lanShareEnabled = enabled) }
 
@@ -109,11 +119,14 @@ class ConfigRepository(context: Context) {
             mapOf(
                 ConfigKeys.SITE_TITLE to JsonPrimitive(settings.siteTitle),
                 ConfigKeys.REQUEST_TIMEOUT to JsonPrimitive(settings.requestTimeoutSeconds),
-                ConfigKeys.VIEW_MODE to JsonPrimitive(settings.viewMode.key),
                 ConfigKeys.LAN_SHARE_ENABLED to JsonPrimitive(settings.lanShareEnabled),
                 ConfigKeys.INCOGNITO_MODE to JsonPrimitive(settings.incognitoMode),
                 ConfigKeys.SEARCH_HISTORY to AppJson.parseToJsonElement(
                     AppJson.encodeToString(stringListSerializer, settings.searchHistory)
+                ),
+                ConfigKeys.SITE_VIEW_MODES to JsonObject(
+                    settings.siteViewModes.mapKeys { it.key.toString() }
+                        .mapValues { JsonPrimitive(it.value) }
                 ),
             )
         )

@@ -58,7 +58,7 @@ import coil.request.ImageRequest
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import tw.pp.kazi.data.ViewMode
+import tw.pp.kazi.data.PosterConfig
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.ui.isCompact
@@ -233,6 +233,13 @@ fun FocusableTag(
     }
 }
 
+/**
+ * 預覽圖怎麼填進固定形狀的格子：
+ * - [Crop]：填滿格子、超出的裁掉（單站畫面用，格子形狀已自動貼合該站方向 → 幾乎不裁到東西）
+ * - [Fit]：完整縮放置中、絕不裁切，空白處墊一張同圖的模糊放大版（混站畫面用，方向不一也不會切到圖）
+ */
+enum class PosterFill { Crop, Fit }
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun PosterCard(
@@ -244,6 +251,7 @@ fun PosterCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
+    fill: PosterFill = PosterFill.Crop,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -277,6 +285,24 @@ fun PosterCard(
                 .background(AppColors.ShimmerStart),
         ) {
             if (imageUrl.isNotBlank()) {
+                if (fill == PosterFill.Fit) {
+                    // 背景：同一張圖只解碼成超小縮圖，再用 Crop 撐滿格子 → 放大本身就糊，當模糊墊底，
+                    // 不用 Modifier.blur（RenderEffect 吃 GPU 又只有 API31+ 有效，爛電視盒會頓）
+                    val blurRequest = remember(imageUrl) {
+                        ImageRequest.Builder(context).data(imageUrl)
+                            .size(PosterConfig.BLUR_BG_DECODE_PX, PosterConfig.BLUR_BG_DECODE_PX)
+                            .crossfade(false)
+                            .build()
+                    }
+                    AsyncImage(
+                        model = blurRequest,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    // 壓暗模糊背景，讓置中的前景圖跟邊緣有對比、不會跟背景糊在一起
+                    Box(Modifier.fillMaxSize().background(Color(0x40000000)))
+                }
                 // memoize ImageRequest，避免每次 recompose 都生新 model 讓 AsyncImage 重跑流程
                 val imageRequest = remember(imageUrl, useCrossfade) {
                     ImageRequest.Builder(context).data(imageUrl).crossfade(useCrossfade).build()
@@ -284,7 +310,7 @@ fun PosterCard(
                 AsyncImage(
                     model = imageRequest,
                     contentDescription = title,
-                    contentScale = ContentScale.Crop,
+                    contentScale = if (fill == PosterFill.Fit) ContentScale.Fit else ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -682,21 +708,6 @@ private fun currentClockText(): String {
  * 影片版型循環切換（直 → 橫 → 方 → 直）— 統一一顆按鈕，避免 3 顆並排佔空間。
  * Home / 搜尋頁的標題列 trailing 都用同一顆。
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-fun ViewModeToggle(current: ViewMode, onPick: (ViewMode) -> Unit, modifier: Modifier = Modifier) {
-    FocusableTag(
-        text = current.emoji,
-        selected = false,
-        onClick = {
-            val entries = ViewMode.entries
-            val next = entries[(entries.indexOf(current) + 1) % entries.size]
-            onPick(next)
-        },
-        modifier = modifier,
-    )
-}
-
 /**
  * 點下後把 [text] 寫進剪貼簿，按鈕暫時切到「已複製」+ Check icon，[COPY_FEEDBACK_MS] 後復原。
  * 純文字內容（影片名 / URL 等）要讓使用者一鍵複製時都用這顆。

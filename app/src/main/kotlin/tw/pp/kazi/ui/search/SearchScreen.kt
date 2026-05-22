@@ -66,15 +66,16 @@ import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.ui.columnsFor
+import tw.pp.kazi.ui.rememberAutoViewMode
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
+import tw.pp.kazi.ui.components.PosterFill
 import tw.pp.kazi.ui.components.PullToRefreshBoxIfCompact
 import tw.pp.kazi.ui.components.ScreenScaffold
-import tw.pp.kazi.ui.components.ViewModeToggle
 import tw.pp.kazi.ui.components.rememberScreenSnapshot
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
@@ -327,10 +328,6 @@ fun SearchScreen(
                 primary = false,
                 iconOnly = compact,
             )
-            ViewModeToggle(
-                current = settings.viewMode,
-                onPick = { scope.launch { container.configRepository.updateViewMode(it) } },
-            )
             AppButton(
                 text = if (incognito) "無痕中" else "無痕",
                 icon = Icons.Filled.VisibilityOff,
@@ -471,7 +468,8 @@ fun SearchScreen(
             }
         } else {
             // 有結果 → 搜尋輸入 + 統計列塞進 grid header，跟著影片一起捲，省垂直空間
-            val vm = settings.viewMode
+            // 混站結果方向不一：抽前幾張多數決決定格子形狀，Fit 不裁切，少數派用模糊邊墊底
+            val vm = rememberAutoViewMode(aggregated.map { it.pic })
             val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
             // 內層換頁：先換 displayPage、捲回卡片列起點、等動畫＋一個 layout frame 再 focus 第一張卡。
             // 之前用 pendingResultFocus + LaunchedEffect(displayedSlice) 那條路，會跟 animateScroll 比賽：
@@ -545,6 +543,7 @@ fun SearchScreen(
                         fromSite = if (agg.sources.size > 1) "${agg.sources.size} 來源"
                             else agg.sources.firstOrNull()?.fromSite,
                         aspectRatio = vm.aspectRatio,
+                        fill = PosterFill.Fit,
                         onClick = {
                             val first = agg.sources.firstOrNull() ?: return@PosterCard
                             val sid = first.fromSiteId ?: return@PosterCard

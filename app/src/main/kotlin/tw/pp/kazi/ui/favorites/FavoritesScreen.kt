@@ -23,9 +23,11 @@ import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.columnsFor
+import tw.pp.kazi.ui.rememberAutoViewMode
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.PosterCard
+import tw.pp.kazi.ui.components.PosterFill
 import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
@@ -39,7 +41,6 @@ fun FavoritesScreen() {
     val nav = LocalNavController.current
     val windowSize = LocalWindowSize.current
     val favorites by container.favoriteRepository.items.collectAsState()
-    val settings by container.configRepository.settings.collectAsState()
     val incognito by container.incognito.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -87,7 +88,8 @@ fun FavoritesScreen() {
                 return@Column
             }
 
-            val vm = settings.viewMode
+            // 收藏可能來自多個站台、方向不一：多數決決定形狀，Fit 不裁切
+            val vm = rememberAutoViewMode(favorites.map { it.videoPic })
             LazyVerticalGrid(
                 columns = GridCells.Fixed(vm.columnsFor(windowSize)),
                 contentPadding = PaddingValues(
@@ -107,6 +109,7 @@ fun FavoritesScreen() {
                         imageUrl = fav.videoPic,
                         fromSite = fav.siteName,
                         aspectRatio = vm.aspectRatio,
+                        fill = PosterFill.Fit,
                         onClick = { nav.navigate(Routes.detail(fav.siteId, fav.videoId)) },
                         focusRequester = if (key == firstKey) firstCardFocus else null,
                     )

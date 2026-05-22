@@ -93,6 +93,22 @@ object SearchConfig {
     const val HISTORY_MAX = 20
 }
 
+object PosterConfig {
+    // 自動判斷預覽圖方向：抽前 N 張實際解碼出長寬，多數決決定整個 grid 的格子形狀。
+    // 只看前幾張就夠代表一個站台 / 一批搜尋結果，多了只是浪費頻寬。
+    const val DETECT_SAMPLE_COUNT = 5
+
+    // 偵測時把圖縮到這個邊長再解碼即可（只要長寬比，不需要原圖）→ 省記憶體，電視盒不會 OOM。
+    const val DETECT_DECODE_PX = 256
+
+    // 長寬比 (width / height) 分類門檻：>= 橫、<= 直、之間算方形。
+    const val LANDSCAPE_RATIO = 1.2f
+    const val PORTRAIT_RATIO = 0.85f
+
+    // 混站畫面用 Fit 不裁切，空白處墊一張同圖的超小縮圖放大 → 天然模糊、不吃 GPU、不挑 Android 版本。
+    const val BLUR_BG_DECODE_PX = 24
+}
+
 object LanConfig {
     const val DEFAULT_PORT = 38721
 }
@@ -105,8 +121,8 @@ object CheckStatusKeys {
 object ConfigKeys {
     const val SITE_TITLE = "site_title"
     const val REQUEST_TIMEOUT = "request_timeout"
-    const val VIEW_MODE = "view_mode"
     const val LAN_SHARE_ENABLED = "lan_share_enabled"
     const val INCOGNITO_MODE = "incognito_mode"
     const val SEARCH_HISTORY = "search_history"
+    const val SITE_VIEW_MODES = "site_view_modes"
 }

@@ -50,6 +50,7 @@ import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.ui.columnsFor
+import tw.pp.kazi.ui.detectViewMode
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
@@ -58,7 +59,6 @@ import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
 import tw.pp.kazi.ui.components.PullToRefreshBoxIfCompact
 import tw.pp.kazi.ui.components.ScreenScaffold
-import tw.pp.kazi.ui.components.ViewModeToggle
 import tw.pp.kazi.ui.components.rememberScreenSnapshot
 import tw.pp.kazi.ui.gridGap
 import tw.pp.kazi.ui.isCompact
@@ -191,6 +191,18 @@ fun HomeScreen() {
         }
         loading = false
     }
+
+    // 每個站台的預覽圖方向自動偵測一次後記在 config；之後重進直接讀快取、不再偵測。
+    // 偵測完成 → settings 更新 → 下面 viewMode 重算 → grid 用貼合該站方向的形狀（Crop 幾乎不裁圖）。
+    LaunchedEffect(selectedSite?.id, videos) {
+        val id = selectedSite?.id ?: return@LaunchedEffect
+        if (settings.siteViewModes.containsKey(id) || videos.isEmpty()) return@LaunchedEffect
+        val detected = detectViewMode(context, videos.map { it.vodPic }, ViewMode.Default)
+        container.configRepository.setSiteViewMode(id, detected)
+    }
+
+    val viewMode = settings.siteViewModes[selectedSite?.id]
+        ?.let { ViewMode.fromKey(it) } ?: ViewMode.Default
 
     LaunchedEffect(enabledSites.isNotEmpty()) {
         // 優先順序：(1) 點過卡片 → 等卡片 focus 回去；(2) 有 top bar key 就 focus 那顆；(3) 預設 focus 搜尋
@@ -351,11 +363,6 @@ fun HomeScreen() {
                         iconOnly = compact,
                         modifier = Modifier.focusRequester(favoritesFocusRequester).then(topBarDownMod),
                     )
-                    ViewModeToggle(
-                        current = settings.viewMode,
-                        onPick = { scope.launch { container.configRepository.updateViewMode(it) } },
-                        modifier = topBarDownMod,
-                    )
                     AppButton(
                         text = if (incognito) "無痕中" else "無痕",
                         icon = Icons.Filled.VisibilityOff,
@@ -505,7 +512,7 @@ fun HomeScreen() {
                     )
                     else -> VideoGrid(
                         videos = videos,
-                        viewMode = settings.viewMode,
+                        viewMode = viewMode,
                         windowSize = windowSize,
                         firstItemFocus = firstVideoFocus,
                         clickedVodId = restoreClickedVodId,
