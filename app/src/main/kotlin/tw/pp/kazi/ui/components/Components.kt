@@ -252,6 +252,8 @@ fun PosterCard(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
     fill: PosterFill = PosterFill.Crop,
+    // 瀑布流要知道每張圖的真實長寬比 → 圖載入完成時回報 width/height，呼叫端拿去算卡片高度
+    onRatio: ((Float) -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -311,6 +313,14 @@ fun PosterCard(
                     model = imageRequest,
                     contentDescription = title,
                     contentScale = if (fill == PosterFill.Fit) ContentScale.Fit else ContentScale.Crop,
+                    onSuccess = onRatio?.let { cb ->
+                        { state ->
+                            val d = state.result.drawable
+                            if (d.intrinsicWidth > 0 && d.intrinsicHeight > 0) {
+                                cb(d.intrinsicWidth.toFloat() / d.intrinsicHeight)
+                            }
+                        }
+                    },
                     modifier = Modifier.fillMaxSize(),
                 )
             }

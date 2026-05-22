@@ -15,7 +15,10 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import tw.pp.kazi.data.PosterConfig
+import tw.pp.kazi.data.PosterDensity
+import tw.pp.kazi.data.PosterDisplayMode
 import tw.pp.kazi.data.ViewMode
+import tw.pp.kazi.ui.components.PosterFill
 
 /** 由單張圖的長寬比 (width / height) 判斷它屬於哪種方向。 */
 private fun classify(ratio: Float): ViewMode = when {
@@ -72,4 +75,29 @@ fun rememberAutoViewMode(imageUrls: List<String>, default: ViewMode = ViewMode.D
         if (sample.isNotEmpty()) value = detectViewMode(context, sample, default)
     }
     return mode
+}
+
+enum class GridLayout { Uniform, Masonry }
+
+/** 把「顯示方式設定 + 自動偵測到的方向」算成實際 grid 要怎麼排：用哪種版型、格子什麼形狀、圖怎麼填。 */
+data class GridStyle(val layout: GridLayout, val cellMode: ViewMode, val fill: PosterFill)
+
+fun resolveGridStyle(display: PosterDisplayMode, detected: ViewMode): GridStyle = when (display) {
+    PosterDisplayMode.CropAuto -> GridStyle(GridLayout.Uniform, detected, PosterFill.Crop)
+    PosterDisplayMode.FitAuto -> GridStyle(GridLayout.Uniform, detected, PosterFill.Fit)
+    PosterDisplayMode.SquareFit -> GridStyle(GridLayout.Uniform, ViewMode.Square, PosterFill.Fit)
+    // 瀑布流每張卡用自己的真實比例，格子形狀無意義；fill=Crop 是因為格子已等於圖比例 → 不會真的裁到
+    PosterDisplayMode.Masonry -> GridStyle(GridLayout.Masonry, detected, PosterFill.Crop)
+}
+
+/** 欄數 = 該模式的基準欄數（依形狀 + 螢幕大小）再疊加密度調整，並夾住下限。 */
+fun gridColumns(
+    display: PosterDisplayMode,
+    cellMode: ViewMode,
+    size: WindowSize,
+    density: PosterDensity,
+): Int {
+    val base = if (display == PosterDisplayMode.Masonry) ViewMode.Portrait.columnsFor(size)
+    else cellMode.columnsFor(size)
+    return (base + density.columnDelta).coerceAtLeast(PosterConfig.MIN_COLUMNS)
 }

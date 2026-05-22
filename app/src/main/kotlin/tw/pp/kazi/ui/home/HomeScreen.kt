@@ -14,11 +14,14 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed as staggeredItemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -42,8 +45,14 @@ import kotlinx.coroutines.launch
 import tw.pp.kazi.data.ApiResult
 import tw.pp.kazi.data.Category
 import tw.pp.kazi.data.Site
+import tw.pp.kazi.data.PosterConfig
+import tw.pp.kazi.data.PosterDensity
+import tw.pp.kazi.data.PosterDisplayMode
 import tw.pp.kazi.data.Video
 import tw.pp.kazi.data.ViewMode
+import tw.pp.kazi.ui.GridLayout
+import tw.pp.kazi.ui.gridColumns
+import tw.pp.kazi.ui.resolveGridStyle
 import tw.pp.kazi.ui.LocalAppContainer
 import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
@@ -57,6 +66,7 @@ import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
+import tw.pp.kazi.ui.components.PosterFill
 import tw.pp.kazi.ui.components.PullToRefreshBoxIfCompact
 import tw.pp.kazi.ui.components.ScreenScaffold
 import tw.pp.kazi.ui.components.rememberScreenSnapshot
@@ -485,6 +495,15 @@ fun HomeScreen() {
                 )
             }
 
+            // 實驗用：直接在首頁切海報顯示方式(1-4)與密度(a-c)，方便實機比較後回報編號
+            PosterModeBar(
+                displayMode = settings.posterDisplayMode,
+                density = settings.posterDensity,
+                windowSize = windowSize,
+                onPickMode = { scope.launch { container.configRepository.setPosterDisplayMode(it) } },
+                onPickDensity = { scope.launch { container.configRepository.setPosterDensity(it) } },
+            )
+
             val err = errorMsg
             Box(modifier = Modifier.weight(1f)) {
                 when {
@@ -512,7 +531,9 @@ fun HomeScreen() {
                     )
                     else -> VideoGrid(
                         videos = videos,
-                        viewMode = viewMode,
+                        displayMode = settings.posterDisplayMode,
+                        detected = viewMode,
+                        density = settings.posterDensity,
                         windowSize = windowSize,
                         firstItemFocus = firstVideoFocus,
                         clickedVodId = restoreClickedVodId,
@@ -525,26 +546,24 @@ fun HomeScreen() {
                         },
                         nextPageRequester = nextPageFocus,
                         canGoNextPage = pageCount > 1 && page < pageCount,
-                        footer = if (pageCount > 1) {
+                        footerContent = if (pageCount > 1) {
                             {
-                                item(span = { GridItemSpan(maxLineSpan) }) {
-                                    Pager(
-                                        page = page,
-                                        pageCount = pageCount,
-                                        onPrev = {
-                                            if (page > 1) { page--; pendingContentFocus = true }
-                                        },
-                                        onNext = {
-                                            if (page < pageCount) { page++; pendingContentFocus = true }
-                                        },
-                                        onJump = { target ->
-                                            page = target
-                                            pendingContentFocus = true
-                                        },
-                                        windowSize = windowSize,
-                                        nextPageRequester = nextPageFocus,
-                                    )
-                                }
+                                Pager(
+                                    page = page,
+                                    pageCount = pageCount,
+                                    onPrev = {
+                                        if (page > 1) { page--; pendingContentFocus = true }
+                                    },
+                                    onNext = {
+                                        if (page < pageCount) { page++; pendingContentFocus = true }
+                                    },
+                                    onJump = { target ->
+                                        page = target
+                                        pendingContentFocus = true
+                                    },
+                                    windowSize = windowSize,
+                                    nextPageRequester = nextPageFocus,
+                                )
                             }
                         } else null,
                     )
@@ -777,11 +796,47 @@ private fun CategoryStrip(
     }
 }
 
+@Composable
+private fun PosterModeBar(
+    displayMode: PosterDisplayMode,
+    density: PosterDensity,
+    windowSize: WindowSize,
+    onPickMode: (PosterDisplayMode) -> Unit,
+    onPickDensity: (PosterDensity) -> Unit,
+) {
+    val modeTags = listOf(
+        PosterDisplayMode.CropAuto to "1 大圖",
+        PosterDisplayMode.FitAuto to "2 完整",
+        PosterDisplayMode.Masonry to "3 瀑布",
+        PosterDisplayMode.SquareFit to "4 方形",
+    )
+    val densityTags = listOf(
+        PosterDensity.Large to "a 大",
+        PosterDensity.Standard to "b 標準",
+        PosterDensity.Compact to "c 緊湊",
+    )
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = windowSize.pagePadding(), vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        items(modeTags) { (mode, label) ->
+            FocusableTag(text = label, selected = mode == displayMode, onClick = { onPickMode(mode) })
+        }
+        item { Spacer(Modifier.width(16.dp)) }
+        items(densityTags) { (d, label) ->
+            FocusableTag(text = label, selected = d == density, onClick = { onPickDensity(d) })
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun VideoGrid(
     videos: List<Video>,
-    viewMode: ViewMode,
+    displayMode: PosterDisplayMode,
+    detected: ViewMode,
+    density: PosterDensity,
     windowSize: WindowSize,
     firstItemFocus: FocusRequester,
     clickedVodId: Long?,
@@ -789,17 +844,58 @@ private fun VideoGrid(
     onClick: (Video) -> Unit,
     nextPageRequester: FocusRequester? = null,
     canGoNextPage: Boolean = false,
-    footer: (LazyGridScope.() -> Unit)? = null,
+    footerContent: (@Composable () -> Unit)? = null,
 ) {
-    val columns = viewMode.columnsFor(windowSize)
+    val style = resolveGridStyle(displayMode, detected)
+    val columns = gridColumns(displayMode, style.cellMode, windowSize, density)
+    val padding = PaddingValues(horizontal = windowSize.pagePadding(), vertical = 12.dp)
+    val gap = windowSize.gridGap()
+
+    fun focusFor(idx: Int, v: Video): FocusRequester? = when {
+        clickedVodId != null && v.vodId == clickedVodId -> clickedItemFocus
+        idx == 0 -> firstItemFocus
+        else -> null
+    }
+
+    if (style.layout == GridLayout.Masonry) {
+        // 瀑布流：每張卡高度跟著圖的真實比例跑。比例要等圖載入後才知道，先用預設值撐著、
+        // 載到了再更新 → 卡片高度重排（masonry 本來就會這樣）。電視導航靠空間搜尋，不掛↓ redirect。
+        val ratios = remember { mutableStateMapOf<String, Float>() }
+        LazyVerticalStaggeredGrid(
+            columns = StaggeredGridCells.Fixed(columns),
+            contentPadding = padding,
+            horizontalArrangement = Arrangement.spacedBy(gap),
+            verticalItemSpacing = gap,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            staggeredItemsIndexed(
+                videos,
+                key = { _, v -> v.vodId },
+            ) { idx, v ->
+                PosterCard(
+                    title = v.vodName,
+                    remarks = v.vodRemarks,
+                    imageUrl = v.vodPic,
+                    fromSite = v.fromSite,
+                    aspectRatio = ratios[v.vodPic] ?: PosterConfig.MASONRY_DEFAULT_RATIO,
+                    fill = PosterFill.Crop,
+                    onRatio = { ratios[v.vodPic] = it },
+                    onClick = { onClick(v) },
+                    focusRequester = focusFor(idx, v),
+                )
+            }
+            if (footerContent != null) {
+                item(span = StaggeredGridItemSpan.FullLine) { footerContent() }
+            }
+        }
+        return
+    }
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
-        contentPadding = PaddingValues(
-            horizontal = windowSize.pagePadding(),
-            vertical = 12.dp,
-        ),
-        horizontalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
-        verticalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
+        contentPadding = padding,
+        horizontalArrangement = Arrangement.spacedBy(gap),
+        verticalArrangement = Arrangement.spacedBy(gap),
         modifier = Modifier.fillMaxSize(),
     ) {
         itemsIndexed(videos, key = { _, v -> v.vodId }) { idx, v ->
@@ -815,17 +911,16 @@ private fun VideoGrid(
                 remarks = v.vodRemarks,
                 imageUrl = v.vodPic,
                 fromSite = v.fromSite,
-                aspectRatio = viewMode.aspectRatio,
+                aspectRatio = style.cellMode.aspectRatio,
+                fill = style.fill,
                 onClick = { onClick(v) },
                 modifier = downModifier,
-                focusRequester = when {
-                    clickedVodId != null && v.vodId == clickedVodId -> clickedItemFocus
-                    idx == 0 -> firstItemFocus
-                    else -> null
-                },
+                focusRequester = focusFor(idx, v),
             )
         }
-        footer?.invoke(this)
+        if (footerContent != null) {
+            item(span = { GridItemSpan(maxLineSpan) }) { footerContent() }
+        }
     }
 }
 
