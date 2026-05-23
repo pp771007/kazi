@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
 import tw.pp.kazi.ui.theme.AppColors
 
 private const val DRAG_RESISTANCE = 0.6f       // 內容跟手指位移的比例(越大越跟手)
-private const val COMMIT_FRACTION = 0.15f      // 拖過螢幕寬 15% 就換頁(手指實際約 1/4 螢幕)
+private val COMMIT_DISTANCE = 56.dp            // 內容位移超過這距離就換頁。用固定 dp(非螢幕寬%)→ 橫式不必滑超遠
 private const val FLICK_VELOCITY = 800f        // 快速一甩也換頁(px/s),不必拖滿門檻
 private const val MAX_DRAG_FRACTION = 0.5f     // 能換的方向最多拖半個螢幕寬
 private const val DISABLED_PEEK_FRACTION = 0.06f // 沒得換的方向只給一點點回彈手感
@@ -63,6 +63,7 @@ fun HorizontalPageSwipe(
         return
     }
     val scope = rememberCoroutineScope()
+    val commitPx = with(androidx.compose.ui.platform.LocalDensity.current) { COMMIT_DISTANCE.toPx() }
     var offsetX by remember { mutableFloatStateOf(0f) }
     var widthPx by remember { mutableIntStateOf(1) }
 
@@ -81,7 +82,7 @@ fun HorizontalPageSwipe(
                 state = dragState,
                 orientation = Orientation.Horizontal,
                 onDragStopped = { velocity ->
-                    val commit = widthPx * COMMIT_FRACTION
+                    val commit = commitPx
                     val o = offsetX
                     // 快速一甩(velocity 過門檻、且有移動一點)也算,不必拖滿距離
                     val flick = abs(velocity) >= FLICK_VELOCITY && abs(o) > widthPx * 0.04f
@@ -95,7 +96,7 @@ fun HorizontalPageSwipe(
     ) {
         Box(Modifier.graphicsLayer { translationX = offsetX }) { content() }
 
-        val commit = widthPx * COMMIT_FRACTION
+        val commit = commitPx
         if (offsetX < -1f && canNext) {
             EdgeHint(Alignment.CenterEnd, Icons.AutoMirrored.Filled.ArrowForward, "下一頁", ready = -offsetX >= commit)
         } else if (offsetX > 1f && canPrev) {
