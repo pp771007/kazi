@@ -43,6 +43,7 @@ import tw.pp.kazi.ui.theme.AppColors
 private const val DRAG_RESISTANCE = 0.6f       // 內容跟手指位移的比例(越大越跟手)
 private val COMMIT_DISTANCE = 56.dp            // 內容位移超過這距離就換頁。用固定 dp(非螢幕寬%)→ 橫式不必滑超遠
 private const val FLICK_VELOCITY = 800f        // 快速一甩也換頁(px/s),不必拖滿門檻
+private const val DISARM_RATIO = 0.5f          // 上膛後要往回拉超過門檻一半才解除(遲滯,免得門檻邊緣抖動反覆)
 private const val MAX_DRAG_FRACTION = 0.5f     // 能換的方向最多拖半個螢幕寬
 private const val DISABLED_PEEK_FRACTION = 0.06f // 沒得換的方向只給一點點回彈手感
 
@@ -70,17 +71,22 @@ fun HorizontalPageSwipe(
     val commitPx = with(androidx.compose.ui.platform.LocalDensity.current) { COMMIT_DISTANCE.toPx() }
     var offsetX by remember { mutableFloatStateOf(0f) }
     var widthPx by remember { mutableIntStateOf(1) }
+    // 上膛方向:-1=下一頁(左滑) +1=上一頁(右滑) 0=未上膛。滑過門檻就上膛、變藍鎖定,
+    // 往回拉超過門檻一半(DISARM_RATIO)才解除 → 結尾往回一點點不會被取消。
+    var armedDir by remember { mutableIntStateOf(0) }
 
     fun finishDrag(velocity: Float) {
         val o = offsetX
-        // 換頁方向「只看拖到哪邊(位移正負)」決定;速度只在「跟拖動同方向」時幫忙降門檻。
-        // → 結尾往回的小回甩不會把它取消或翻錯邊(修「往右滑結尾左回一點就被取消」)。
         val movedEnough = abs(o) > widthPx * 0.04f
         when {
-            o < 0f && canNext && (o <= -commitPx || (velocity <= -FLICK_VELOCITY && movedEnough)) -> { onNext(); offsetX = 0f }
-            o > 0f && canPrev && (o >= commitPx || (velocity >= FLICK_VELOCITY && movedEnough)) -> { onPrev(); offsetX = 0f }
+            // 已上膛 → 照鎖定方向換;或同方向快速一甩(還沒拖滿門檻)也換
+            armedDir < 0 && canNext -> { onNext(); offsetX = 0f }
+            armedDir > 0 && canPrev -> { onPrev(); offsetX = 0f }
+            velocity <= -FLICK_VELOCITY && movedEnough && canNext -> { onNext(); offsetX = 0f }
+            velocity >= FLICK_VELOCITY && movedEnough && canPrev -> { onPrev(); offsetX = 0f }
             else -> scope.launch { animate(o, 0f, animationSpec = spring()) { v, _ -> offsetX = v } }
         }
+        armedDir = 0
     }
 
     Box(
@@ -121,6 +127,11 @@ fun HorizontalPageSwipe(
                             val factor = if (allowed) DRAG_RESISTANCE else DRAG_RESISTANCE * 0.25f
                             val limit = if (allowed) widthPx * MAX_DRAG_FRACTION else widthPx * DISABLED_PEEK_FRACTION
                             offsetX = (offsetX + pc.x * factor).coerceIn(-limit, limit)
+                            when {
+                                offsetX <= -commitPx && canNext -> armedDir = -1
+                                offsetX >= commitPx && canPrev -> armedDir = 1
+                                abs(offsetX) < commitPx * DISARM_RATIO -> armedDir = 0
+                            }
                         }
                     }
                     if (decided && horizontal) finishDrag(tracker.calculateVelocity().x)
@@ -129,11 +140,10 @@ fun HorizontalPageSwipe(
     ) {
         Box(Modifier.graphicsLayer { translationX = offsetX }) { content() }
 
-        val commit = commitPx
         if (offsetX < -1f && canNext) {
-            EdgeHint(Alignment.CenterEnd, Icons.AutoMirrored.Filled.ArrowForward, "下一頁", ready = -offsetX >= commit)
+            EdgeHint(Alignment.CenterEnd, Icons.AutoMirrored.Filled.ArrowForward, "下一頁", ready = armedDir < 0)
         } else if (offsetX > 1f && canPrev) {
-            EdgeHint(Alignment.CenterStart, Icons.AutoMirrored.Filled.ArrowBack, "上一頁", ready = offsetX >= commit)
+            EdgeHint(Alignment.CenterStart, Icons.AutoMirrored.Filled.ArrowBack, "上一頁", ready = armedDir > 0)
         }
     }
 }
