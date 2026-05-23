@@ -77,6 +77,7 @@ import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.HorizontalPageSwipe
+import tw.pp.kazi.ui.components.pageSwipeIgnore
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
@@ -891,6 +892,7 @@ private fun SiteSelector(
             state = listState,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier
+                .pageSwipeIgnore("search-sites")  // 站台 chip 列自己水平捲動,不從這列觸發換頁
                 .focusGroup()
                 // 落點站台被捲出畫面時 requester 沒掛上，restore 直接回它會崩 → 可見才用
                 .focusRestorer {
@@ -1018,6 +1020,7 @@ private fun StatsBar(r: MultiSearchResult, aggregatedCount: Int, windowSize: Win
         }
         androidx.compose.foundation.lazy.LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.pageSwipeIgnore("search-stats"),  // 各站狀態列自己水平捲動,不觸發換頁
         ) {
             items(r.perSite.sortedWith(compareBy({ statusOrder(it.status) }, { -it.count }))) { s ->
                 SiteStatusPill(s.siteName, s.count, s.status, s.message)

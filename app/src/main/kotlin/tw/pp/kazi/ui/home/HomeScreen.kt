@@ -58,6 +58,7 @@ import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.HorizontalPageSwipe
+import tw.pp.kazi.ui.components.pageSwipeIgnore
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
@@ -397,7 +398,9 @@ fun HomeScreen() {
             // 載入 / 錯誤 / 空清單時釘在上方,讓使用者還能切站台或分類。只有頂列(時鐘)保留下滑回出來。
             @Composable
             fun Strips() {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                // 站點 / 分類列自己會水平捲動 → 標記為換頁手勢排除區,左右滑不從這兩列觸發換頁。
+                // 在無 swipe 包裹的分支(載入 / 空清單)裡這個 modifier 自動退化成 no-op。
+                Column(modifier = Modifier.fillMaxWidth().pageSwipeIgnore("home-strips")) {
                     SiteStrip(
                         sites = enabledSites,
                         selected = selectedSite,
