@@ -32,11 +32,13 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import kotlin.math.abs
 import kotlinx.coroutines.launch
 import tw.pp.kazi.ui.theme.AppColors
 
-private const val DRAG_RESISTANCE = 0.5f       // 內容只跟手指位移的一半 → 不會太靈敏
-private const val COMMIT_FRACTION = 0.25f      // 拖過螢幕寬 1/4 才換頁
+private const val DRAG_RESISTANCE = 0.6f       // 內容跟手指位移的比例(越大越跟手)
+private const val COMMIT_FRACTION = 0.15f      // 拖過螢幕寬 15% 就換頁(手指實際約 1/4 螢幕)
+private const val FLICK_VELOCITY = 800f        // 快速一甩也換頁(px/s),不必拖滿門檻
 private const val MAX_DRAG_FRACTION = 0.5f     // 能換的方向最多拖半個螢幕寬
 private const val DISABLED_PEEK_FRACTION = 0.06f // 沒得換的方向只給一點點回彈手感
 
@@ -78,12 +80,14 @@ fun HorizontalPageSwipe(
             .draggable(
                 state = dragState,
                 orientation = Orientation.Horizontal,
-                onDragStopped = {
+                onDragStopped = { velocity ->
                     val commit = widthPx * COMMIT_FRACTION
                     val o = offsetX
+                    // 快速一甩(velocity 過門檻、且有移動一點)也算,不必拖滿距離
+                    val flick = abs(velocity) >= FLICK_VELOCITY && abs(o) > widthPx * 0.04f
                     when {
-                        o <= -commit && canNext -> { onNext(); offsetX = 0f }
-                        o >= commit && canPrev -> { onPrev(); offsetX = 0f }
+                        (o <= -commit || (flick && velocity < 0)) && canNext -> { onNext(); offsetX = 0f }
+                        (o >= commit || (flick && velocity > 0)) && canPrev -> { onPrev(); offsetX = 0f }
                         else -> scope.launch { animate(o, 0f, animationSpec = spring()) { v, _ -> offsetX = v } }
                     }
                 },
