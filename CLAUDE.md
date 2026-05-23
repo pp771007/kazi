@@ -14,7 +14,8 @@ Android(手機 + 電視盒)MacCMS 影片 app,Kotlin + Jetpack Compose。手機 /
 - focusRestorer 的 fallback 一定要是「選中項真的 visible 才回 selectedFocus,否則回 `FocusRequester.Default`」。直接無條件回 selectedFocus 會在虛擬化時 crash。
 - 橫向循環(first 按←跳 last)用 `onPreviewKeyEvent` + `scope.launch { listState.scrollToItem(...); runCatching { target.requestFocus() } }`(先捲到對端確保 compose,再 focus,且包 runCatching)。
 - **動到焦點 / header / 版面結構前,先在模擬器實測一輪再 commit。** v0.8.0 因為把站點/分類列搬進可收合 header + 在 ScreenScaffold 包一層,動到頂列焦點結構 → 電視盒按鍵閃退,整個退回(v0.8.1)。
-- **不要用 `onFocusChanged { ... requestFocus() }` 去「強制進入某列停某顆」。** 試過(v0.9.1 enterFocusOn),會跟收合 header 的捲動 / IME 互相觸發成無窮迴圈 → 整個 app ANR(沒響應),首頁翻頁、進搜尋頁全卡死。在 focus 事件回呼裡 requestFocus 是 Compose 明確警告的反模式。「進入某列預設停某顆」目前沒有安全的通用解 —— 接受空間搜尋的自然落點(下一頁在第1頁本來就會停、搜尋框靠進頁自動 focus),不要硬做。
+- **不要用 `onFocusChanged { ... requestFocus() }` 去「強制進入某列停某顆」。** 試過(v0.9.1 enterFocusOn),會跟收合 header 的捲動 / IME 互相觸發成無窮迴圈 → 整個 app ANR(沒響應)。在 focus 事件回呼裡 requestFocus 是 Compose 明確警告的反模式。
+- **要做「按某方向鍵時跳到指定那顆」用 `Modifier.keyFocusJump(key, target)`(`ui/FocusHelpers.kt`)—— 這是唯一驗證過安全的做法。** 它是「按鍵事件(onPreviewKeyEvent)」觸發、不是焦點狀態觸發 → 不會 ANR 迴圈;requestFocus 包 runCatching → target 沒掛上時退回正常空間搜尋、不閃退;不是 focusProperties/focusGroup → 不吃 OK 點擊。用在:影片格/搜尋結果最後一列↓→分頁「下一頁」、搜尋頁全選/全不選↓→站台 chip(這些「從右側元素往下會跳過下一排」的情況純空間搜尋補不滿)。「第一次進某列停第一顆」則用 focusRestorer 的 fallback 指 firstFocus(focusRestorer 本身會記住上次位置)。
 - **不要把「裡面有按鈕(AppButton)的 Row」包成 `focusGroup()` + `focusRestorer`(尤其是分頁 Pager)。** 這會讓按鈕看起來有 focus(白框在),但按 OK / DPAD_CENTER 點不動 —— group 把點擊事件吃掉了。「下一頁按了沒反應」這個 bug 重複發生過至少 3 次,每次都是這個原因。需要「進入某列預設停在某顆」時:LazyRow 的 chip 列用 focusRestorer 沒問題(實測可點);但按鈕 Row 不要用 focusGroup,改用其他不吃點擊的方式(例如靠版面幾何讓空間搜尋自然落點,或只在該顆掛 focusRequester 不包 group)。改完一定要在模擬器上「真的按一下 OK 確認會動作」,不能只看 focus 框在不在。
 
 ## 在模擬器上測電視盒焦點(可自驗,不必每次丟給使用者)
