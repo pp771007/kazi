@@ -71,7 +71,6 @@ import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.data.PosterConfig
 import tw.pp.kazi.ui.GridLayout
-import tw.pp.kazi.ui.enterFocusOn
 import tw.pp.kazi.ui.posterLayoutFor
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
@@ -756,9 +755,7 @@ private fun SearchField(
             }
         }
     } else {
-        // 進到這一列(從上面 top bar↓ / 從下面站台列↑)固定停在搜尋框,跟分頁固定停下一頁同一套做法
         Row(
-            modifier = Modifier.enterFocusOn(focusRequester),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
