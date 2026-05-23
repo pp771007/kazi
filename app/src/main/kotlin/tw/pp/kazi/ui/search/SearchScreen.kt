@@ -161,10 +161,6 @@ fun SearchScreen(
     val historyRowFocus = remember { FocusRequester() }
     val firstResultFocus = remember { FocusRequester() }
     val clickedResultFocus = remember { FocusRequester() }
-    // grid 最後一列卡片按↓的 redirect 目標 — 內層底端 Pager 跟外層 Pager 各一個。
-    // 卡片用「內層優先、否則外層」動態挑（見 cardDownTarget）。
-    val innerNextPageFocus = remember { FocusRequester() }
-    val outerNextPageFocus = remember { FocusRequester() }
     // 進畫面那一瞬間的值即「上次點過的卡」；之後 onClick 會更新成新值，
     // 但 restoreClickedAggName 已經 capture 起來，繼續代表「這次進畫面要 focus 的那張」
     val restoreClickedAggName = remember { lastClickedAggName }
@@ -496,13 +492,6 @@ fun SearchScreen(
                     }
                 }
             }
-            // 卡片按↓的 redirect 目標：內層底端 Pager 優先，否則外層 Pager(只在 TV 整齊網格用得到)
-            val cardDownTarget: FocusRequester? = when {
-                innerPageCount > 1 && displayPage < innerPageCount -> innerNextPageFocus
-                pageCount > 1 && page < pageCount -> outerNextPageFocus
-                else -> null
-            }
-
             @Composable
             fun resultCard(idx: Int, agg: AggregatedVideo, aspectRatio: Float, fill: PosterFill, modifier: Modifier, onRatio: ((Float) -> Unit)?) {
                 PosterCard(
@@ -557,7 +546,6 @@ fun SearchScreen(
                     simplified = true,
                     accent = true,
                     label = "顯示頁",
-                    nextPageRequester = innerNextPageFocus,
                 )
             }
 
@@ -571,7 +559,6 @@ fun SearchScreen(
                     onJump = { target -> runSearch(target) },
                     windowSize = windowSize,
                     label = "資料頁",
-                    nextPageRequester = outerNextPageFocus,
                 )
             }
 
@@ -622,15 +609,11 @@ fun SearchScreen(
                         item(span = { GridItemSpan(maxLineSpan) }) { topInnerPager() }
                     }
                     itemsIndexed(displayedSlice, key = { _, agg -> agg.name }) { idx, agg ->
-                        val isLastRow = idx >= displayedSlice.size - columns
-                        val downModifier = if (isLastRow && cardDownTarget != null) {
-                            Modifier.focusProperties { down = cardDownTarget }
-                        } else Modifier
                         resultCard(
                             idx, agg,
                             aspectRatio = layout.cellAspect,
                             fill = layout.fill,
-                            modifier = downModifier,
+                            modifier = Modifier,
                             onRatio = null,
                         )
                     }

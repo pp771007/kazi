@@ -137,10 +137,7 @@ fun HomeScreen() {
     val firstVideoFocus = remember { FocusRequester() }
     val clickedVideoFocus = remember { FocusRequester() }
     val retryFocus = remember { FocusRequester() }
-    // grid 最後一列卡片按↓的 redirect 目標 — 掛在 footer Pager 的「下一頁」上
-    val nextPageFocus = remember { FocusRequester() }
-    // D-pad 垂直流向：top bar ↓ → 站點 strip → 分類 strip → 影片格。每一段明確指定下一段的落點，
-    // 不交給 Compose 空間搜尋自己猜（靠右的按鈕按↓會跳過靠左的列）。掛在各 strip「當前選中」那顆上。
+    // 站點 / 分類「當前選中」那顆的 requester（focusRestorer 進入時的 fallback 落點）。
     val siteStripFocus = remember { FocusRequester() }
     val categoryStripFocus = remember { FocusRequester() }
     // 切站、切分類、換頁後要把 focus 移到新內容（成功 → 第一張卡；失敗 → 重試按鈕），
@@ -243,55 +240,14 @@ fun HomeScreen() {
         headerState.offsetPx.floatValue = 0f
     }
 
-    // 站台 / 類別 strip 的捲動位置 hoist 到這層：一來避免 CategoryStrip 因暫時 categories=[] 從
-    // composition 拔掉再重掛時把 scroll position 弄丟；二來下面要靠它判斷「選中項現在是否 visible」。
+    // 站台 / 類別 strip 的捲動位置 hoist 到這層：避免 CategoryStrip 因暫時 categories=[] 從
+    // composition 拔掉再重掛時把 scroll position 弄丟。
     val siteStripState = rememberLazyListState()
     val categoryStripState = rememberLazyListState()
 
-    // D-pad ↓ 落點（只在 TV、且目標那一列「確定 render 且 requester 已掛上」時才指；
-    // 否則 null = 維持原本空間搜尋，絕不把焦點導到不存在的元素造成卡死）
-    val videosShown = !loading && errorMsg == null && videos.isNotEmpty()
-    // siteStripFocus 掛在「選中站台」那顆上 → 必須 selectedSite 真的在清單內（排除幽靈站台那一瞬間沒人掛）
-    val siteStripAttached = enabledSites.any { it.id == selectedSite?.id }
-    // 但「在清單內」不等於「已 compose」：LazyRow 會把捲到畫面外的 item 虛擬化拔掉，它掛的
-    // FocusRequester 就沒有對應節點。focusProperties 的 up/down 指到這種沒掛上的 requester，D-pad 一移動
-    // Compose 解析落點時會 check 失敗直接 crash（站台選左、分類選右時分類「全部」被捲出畫面就會中）。
-    // 所以「選中項落點」再加一道：它真的 visible 時才指，否則退回 null（空間搜尋，相鄰列仍會正確落下）。
-    val siteSelectedVisible by remember {
-        derivedStateOf {
-            val id = selectedSite?.id
-            id != null && siteStripState.layoutInfo.visibleItemsInfo.any { it.key == id }
-        }
-    }
-    val categorySelectedVisible by remember {
-        derivedStateOf {
-            val sel = selectedCategory
-            if (sel == null) {
-                // 「全部」是 index 0 的無 key item
-                categoryStripState.layoutInfo.visibleItemsInfo.any { it.index == 0 }
-            } else {
-                categoryStripState.layoutInfo.visibleItemsInfo.any { it.key == sel.typeId }
-            }
-        }
-    }
-    // firstVideoFocus 掛在第一張卡上，但「第一張卡剛好是上次點過的卡」時 VideoGrid 會改掛 clickedItemFocus
-    // → 這種情況 firstVideoFocus 沒人掛，不能當落點
-    val firstVideoAttached = videosShown &&
-        (restoreClickedVodId == null || videos.firstOrNull()?.vodId != restoreClickedVodId)
-    val topBarDown = if (windowSize.isTv && siteStripAttached && siteSelectedVisible) siteStripFocus else null
-    val siteStripDown = if (windowSize.isTv) when {
-        categories.isNotEmpty() && categorySelectedVisible -> categoryStripFocus
-        firstVideoAttached -> firstVideoFocus
-        else -> null
-    } else null
-    val categoryStripDown = if (windowSize.isTv && firstVideoAttached) firstVideoFocus else null
-    // ↑ 方向（對稱補上，否則從靠右元素往上一樣會跳過靠左的中間列）：
-    // 站台列↑→top bar 的「搜尋」鈕（永遠存在）；分類列↑→當前選中站台
-    val siteStripUp = if (windowSize.isTv) searchFocusRequester else null
-    val categoryStripUp = if (windowSize.isTv && siteStripAttached && siteSelectedVisible) siteStripFocus else null
-    val topBarDownMod = if (topBarDown != null) {
-        Modifier.focusProperties { down = topBarDown }
-    } else Modifier
+    // D-pad 列間移動全交給 focusGroup + focusRestorer + 框架空間搜尋（見各 strip 的 focusGroup()）。
+    // 不再手動指定上下落點 —— 以前那套手動落點 + 守衛正是「跳過分類」與「指到沒掛上的 requester 閃退」的病根，
+    // 實機(模擬器)驗證拿掉後上下移動全對、記住上次位置、虛擬化也不崩。
 
     ScreenScaffold(
         title = "咔滋影院",
@@ -331,7 +287,7 @@ fun HomeScreen() {
                             nav.navigate(Routes.search())
                         },
                         iconOnly = compact,
-                        modifier = Modifier.focusRequester(searchFocusRequester).then(topBarDownMod),
+                        modifier = Modifier.focusRequester(searchFocusRequester),
                     )
                     AppButton(
                         text = "歷史",
@@ -342,7 +298,7 @@ fun HomeScreen() {
                         },
                         primary = false,
                         iconOnly = compact,
-                        modifier = Modifier.focusRequester(historyFocusRequester).then(topBarDownMod),
+                        modifier = Modifier.focusRequester(historyFocusRequester),
                     )
                     AppButton(
                         text = "收藏",
@@ -353,7 +309,7 @@ fun HomeScreen() {
                         },
                         primary = false,
                         iconOnly = compact,
-                        modifier = Modifier.focusRequester(favoritesFocusRequester).then(topBarDownMod),
+                        modifier = Modifier.focusRequester(favoritesFocusRequester),
                     )
                     AppButton(
                         text = if (incognito) "無痕中" else "無痕",
@@ -361,7 +317,6 @@ fun HomeScreen() {
                         onClick = { container.setIncognito(!incognito) },
                         primary = incognito,
                         iconOnly = compact,
-                        modifier = topBarDownMod,
                     )
                     AppButton(
                         text = "遠端遙控",
@@ -388,7 +343,7 @@ fun HomeScreen() {
                         },
                         primary = lanState.running,
                         iconOnly = compact,
-                        modifier = Modifier.focusRequester(lanFocusRequester).then(topBarDownMod),
+                        modifier = Modifier.focusRequester(lanFocusRequester),
                     )
                     AppButton(
                         text = "設定",
@@ -399,7 +354,7 @@ fun HomeScreen() {
                         },
                 primary = false,
                 iconOnly = compact,
-                modifier = Modifier.focusRequester(settingsFocusRequester).then(topBarDownMod),
+                modifier = Modifier.focusRequester(settingsFocusRequester),
             )
         },
         onBack = null,
@@ -456,8 +411,6 @@ fun HomeScreen() {
                 windowSize = windowSize,
                 listState = siteStripState,
                 selectedFocus = siteStripFocus,
-                downTarget = siteStripDown,
-                upTarget = siteStripUp,
             )
             if (categories.isNotEmpty()) {
                 CategoryStrip(
@@ -472,8 +425,6 @@ fun HomeScreen() {
                     windowSize = windowSize,
                     listState = categoryStripState,
                     selectedFocus = categoryStripFocus,
-                    downTarget = categoryStripDown,
-                    upTarget = categoryStripUp,
                 )
             }
 
@@ -514,8 +465,6 @@ fun HomeScreen() {
                             lastClickedVodId = v.vodId
                             nav.navigate(Routes.detail(site.id, v.vodId))
                         },
-                        nextPageRequester = nextPageFocus,
-                        canGoNextPage = pageCount > 1 && page < pageCount,
                         footerContent = if (pageCount > 1) {
                             {
                                 Pager(
@@ -532,7 +481,6 @@ fun HomeScreen() {
                                         pendingContentFocus = true
                                     },
                                     windowSize = windowSize,
-                                    nextPageRequester = nextPageFocus,
                                 )
                             }
                         } else null,
@@ -552,21 +500,12 @@ private fun SiteStrip(
     onPick: (Site) -> Unit,
     windowSize: WindowSize,
     listState: LazyListState,
-    // 由 HomeScreen hoist 進來：掛在「當前選中站台」那顆上，當 top bar↓ 的落點 + restorer fallback
+    // 掛在「當前選中站台」那顆上，當 focusRestorer 第一次進來的 fallback 落點
     selectedFocus: FocusRequester,
-    // 這一列任一顆按↓/↑的固定落點（↓=分類 strip / 第一張卡；↑=top bar）；null = 維持原本空間搜尋
-    downTarget: FocusRequester? = null,
-    upTarget: FocusRequester? = null,
 ) {
     val compact = windowSize.isCompact
-    // TV：D-pad 進入這列時，focus 應該停在當前選中的站台，不是離卡片最近的那顆。
-    // restorer 第一次進來用 fallback（指向 selected 的 requester），之後記住使用者最後 focus 的位置
-    val dirMod = if (downTarget != null || upTarget != null) {
-        Modifier.focusProperties {
-            if (downTarget != null) down = downTarget
-            if (upTarget != null) up = upTarget
-        }
-    } else Modifier
+    // TV：D-pad 進入這列時，focus 停在當前選中站台（focusRestorer fallback），之後記住使用者最後位置。
+    // 列間上下移動交給框架空間搜尋,不手動指落點(見檔頭 CLAUDE.md 焦點守則)
     val firstFocus = remember { FocusRequester() }
     val lastFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
@@ -645,7 +584,7 @@ private fun SiteStrip(
                     text = s.name,
                     selected = isSelected,
                     onClick = { onPick(s) },
-                    modifier = reqMod.then(keyMod).then(dirMod),
+                    modifier = reqMod.then(keyMod),
                 )
             }
         }
@@ -660,19 +599,10 @@ private fun CategoryStrip(
     onPick: (Category?) -> Unit,
     windowSize: WindowSize,
     listState: LazyListState,
-    // 由 HomeScreen hoist 進來：掛在「當前分類（或全部）」那顆上，當站點 strip↓ 的落點 + restorer fallback
+    // 掛在「當前分類（或全部）」那顆上，當 focusRestorer 第一次進來的 fallback 落點
     selectedFocus: FocusRequester,
-    // 這一列任一顆按↓/↑的固定落點（↓=第一張卡；↑=站台 strip）；null = 維持原本空間搜尋
-    downTarget: FocusRequester? = null,
-    upTarget: FocusRequester? = null,
 ) {
     val compact = windowSize.isCompact
-    val dirMod = if (downTarget != null || upTarget != null) {
-        Modifier.focusProperties {
-            if (downTarget != null) down = downTarget
-            if (upTarget != null) up = upTarget
-        }
-    } else Modifier
     val firstFocus = remember { FocusRequester() }  // 「全部」永遠在 first 位置
     val lastFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
@@ -732,8 +662,7 @@ private fun CategoryStrip(
                                 }
                                 true
                             } else false
-                        }
-                        .then(dirMod),
+                        },
                 )
             }
             items(categories, key = { it.typeId }) { c ->
@@ -759,7 +688,7 @@ private fun CategoryStrip(
                     text = c.typeName,
                     selected = isSelected,
                     onClick = { onPick(c) },
-                    modifier = reqMod.then(keyMod).then(dirMod),
+                    modifier = reqMod.then(keyMod),
                 )
             }
         }
@@ -775,8 +704,6 @@ private fun VideoGrid(
     clickedVodId: Long?,
     clickedItemFocus: FocusRequester,
     onClick: (Video) -> Unit,
-    nextPageRequester: FocusRequester? = null,
-    canGoNextPage: Boolean = false,
     footerContent: (@Composable () -> Unit)? = null,
 ) {
     val layout = posterLayoutFor(windowSize)
@@ -832,13 +759,8 @@ private fun VideoGrid(
         modifier = Modifier.fillMaxSize(),
     ) {
         itemsIndexed(videos, key = { _, v -> v.vodId }) { idx, v ->
-            // 最後一列卡片：按↓強制 focus 到「下一頁」。focusProperties.down 是 stable API，
-            // 只在 spatial down 觸發、不會干擾 OK / Enter 點擊（v0.5.68–73 的 focusGroup 坑就是因為
-            // group container 攔了 click event）。下一頁 disabled 時不掛，避免無效 redirect 焦點卡死
-            val isLastRow = idx >= videos.size - columns
-            val downModifier = if (isLastRow && nextPageRequester != null && canGoNextPage) {
-                Modifier.focusProperties { down = nextPageRequester }
-            } else Modifier
+            // 列間移動(含最後一列↓到分頁)交給框架空間搜尋;分頁自己會預設停在「下一頁」(見 Pager)。
+            // 不再手動指落點 — 那是 FocusRequester 沒掛上時閃退的來源(見 CLAUDE.md 焦點守則)。
             PosterCard(
                 title = v.vodName,
                 remarks = v.vodRemarks,
@@ -847,7 +769,6 @@ private fun VideoGrid(
                 aspectRatio = layout.cellAspect,
                 fill = layout.fill,
                 onClick = { onClick(v) },
-                modifier = downModifier,
                 focusRequester = focusFor(idx, v),
             )
         }

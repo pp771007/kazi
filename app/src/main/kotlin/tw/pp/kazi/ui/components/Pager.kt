@@ -25,8 +25,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -46,7 +48,7 @@ import androidx.tv.material3.Text
 private const val JUMP_INPUT_MAX_DIGITS = 4
 private val JUMP_INPUT_WIDTH = 64.dp
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun Pager(
     page: Int,
@@ -60,13 +62,14 @@ fun Pager(
     // accent: 整顆 Pager 包淡 primary 底色 + 圓框，跟旁邊的「外層 API 翻頁」視覺上分開
     accent: Boolean = false,
     label: String? = null,
-    // caller 給定的 FocusRequester，掛在「下一頁」按鈕上 — 配合 grid 卡片的 focusProperties.down
-    // 強制 TV 從最後一列卡片按↓固定 focus 到下一頁。null = 不掛（手機觸控不需要）
-    nextPageRequester: FocusRequester? = null,
     modifier: Modifier = Modifier,
 ) {
     val compact = windowSize.isCompact
     val tv = windowSize.isTv
+    // 進入這組分頁時預設 focus 在「下一頁」(還有下一頁時)。靠 focusGroup + focusRestorer,
+    // 不靠外部 grid 卡片手動指落點(那種跨元件落點正是 FocusRequester 沒掛上時的閃退來源)。
+    // Pager 是 Row 不是 LazyRow，按鈕不會被虛擬化 → 有下一頁時 nextFocus 必定掛著、安全。
+    val nextFocus = remember { FocusRequester() }
     // page 變動時把 input 清掉，避免使用者輸入完按下「跳轉」之後欄位殘留舊值
     var jumpInput by remember(page) { mutableStateOf("") }
     val parsedJump = jumpInput.toIntOrNull()
@@ -95,7 +98,9 @@ fun Pager(
     }
 
     Row(
-        modifier = outer,
+        modifier = outer
+            .focusGroup()
+            .focusRestorer { if (page < pageCount) nextFocus else FocusRequester.Default },
         horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -133,9 +138,7 @@ fun Pager(
             enabled = page < pageCount,
             primary = false,
             iconOnly = compact,
-            modifier = if (nextPageRequester != null)
-                Modifier.focusRequester(nextPageRequester)
-            else Modifier,
+            modifier = Modifier.focusRequester(nextFocus),
         )
         if (!simplified) {
             Spacer(Modifier.weight(1f))
