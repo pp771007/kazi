@@ -122,11 +122,12 @@ fun HorizontalPageSwipe(
                             if (!horizontal) break  // 垂直手勢 → 放掉,讓子層捲動
                             change.consume()
                             tracker.addPosition(change.uptimeMillis, change.position)
-                            val goingNext = pc.x < 0
-                            val allowed = if (goingNext) canNext else canPrev
-                            val factor = if (allowed) DRAG_RESISTANCE else DRAG_RESISTANCE * 0.25f
-                            val limit = if (allowed) widthPx * MAX_DRAG_FRACTION else widthPx * DISABLED_PEEK_FRACTION
-                            offsetX = (offsetX + pc.x * factor).coerceIn(-limit, limit)
+                            // 兩側各自的可拖上限:能換的方向給半螢幕、不能換的方向只給小幅 peek。
+                            // 用「offset 落在哪一側(正負)」夾,不看單次移動方向 →
+                            // 從深處往回甩時不會因「這一刻往反方向移」就把上限縮成 peek、把 offset 瞬間夾回原點(修「往回一點就變黑」)。
+                            val minOff = if (canNext) -widthPx * MAX_DRAG_FRACTION else -widthPx * DISABLED_PEEK_FRACTION
+                            val maxOff = if (canPrev) widthPx * MAX_DRAG_FRACTION else widthPx * DISABLED_PEEK_FRACTION
+                            offsetX = (offsetX + pc.x * DRAG_RESISTANCE).coerceIn(minOff, maxOff)
                             when {
                                 offsetX <= -commitPx && canNext -> armedDir = -1
                                 offsetX >= commitPx && canPrev -> armedDir = 1
