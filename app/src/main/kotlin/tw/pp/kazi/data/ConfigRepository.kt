@@ -26,11 +26,6 @@ data class AppSettings(
     val lanShareEnabled: Boolean = false,
     val incognitoMode: Boolean = false,
     val searchHistory: List<String> = emptyList(),
-    // 每個站台自動偵測出的預覽圖方向（siteId → ViewMode.key）。首頁進站時偵測一次後記住，
-    // 之後重進不必再偵測；使用者沒有手動切換 UI，這層純粹是「猜對一次就快取」。
-    val siteViewModes: Map<Long, String> = emptyMap(),
-    val posterDisplayMode: PosterDisplayMode = PosterDisplayMode.Default,
-    val posterDensity: PosterDensity = PosterDensity.Default,
 ) {
     companion object {
         const val DEFAULT_SITE_TITLE = "咔滋影院"
@@ -57,12 +52,6 @@ class ConfigRepository(context: Context) {
             val historyArr = obj[ConfigKeys.SEARCH_HISTORY] as? JsonArray
             val history = historyArr?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList()
 
-            val siteModesObj = obj[ConfigKeys.SITE_VIEW_MODES] as? JsonObject
-            val siteModes = siteModesObj?.mapNotNull { (k, v) ->
-                val id = k.toLongOrNull() ?: return@mapNotNull null
-                id to ((v as? JsonPrimitive)?.content ?: return@mapNotNull null)
-            }?.toMap() ?: emptyMap()
-
             _settings.value = AppSettings(
                 siteTitle = (obj[ConfigKeys.SITE_TITLE] as? JsonPrimitive)?.content
                     ?: AppSettings.DEFAULT_SITE_TITLE,
@@ -73,27 +62,8 @@ class ConfigRepository(context: Context) {
                 incognitoMode = (obj[ConfigKeys.INCOGNITO_MODE] as? JsonPrimitive)?.booleanOrNull
                     ?: false,
                 searchHistory = history,
-                siteViewModes = siteModes,
-                posterDisplayMode = PosterDisplayMode.fromKey(
-                    (obj[ConfigKeys.POSTER_DISPLAY_MODE] as? JsonPrimitive)?.content
-                ),
-                posterDensity = PosterDensity.fromKey(
-                    (obj[ConfigKeys.POSTER_DENSITY] as? JsonPrimitive)?.content
-                ),
             )
         }
-    }
-
-    suspend fun setSiteViewMode(siteId: Long, mode: ViewMode) = update {
-        it.copy(siteViewModes = it.siteViewModes + (siteId to mode.key))
-    }
-
-    suspend fun setPosterDisplayMode(mode: PosterDisplayMode) = update {
-        it.copy(posterDisplayMode = mode)
-    }
-
-    suspend fun setPosterDensity(density: PosterDensity) = update {
-        it.copy(posterDensity = density)
     }
 
     suspend fun updateLanShare(enabled: Boolean) = update { it.copy(lanShareEnabled = enabled) }
@@ -140,12 +110,6 @@ class ConfigRepository(context: Context) {
                 ConfigKeys.SEARCH_HISTORY to AppJson.parseToJsonElement(
                     AppJson.encodeToString(stringListSerializer, settings.searchHistory)
                 ),
-                ConfigKeys.SITE_VIEW_MODES to JsonObject(
-                    settings.siteViewModes.mapKeys { it.key.toString() }
-                        .mapValues { JsonPrimitive(it.value) }
-                ),
-                ConfigKeys.POSTER_DISPLAY_MODE to JsonPrimitive(settings.posterDisplayMode.key),
-                ConfigKeys.POSTER_DENSITY to JsonPrimitive(settings.posterDensity.key),
             )
         )
         configFile.atomicWriteText(AppJson.encodeToString(JsonObject.serializer(), obj))

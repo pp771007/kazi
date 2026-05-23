@@ -46,20 +46,14 @@ import tw.pp.kazi.data.ApiResult
 import tw.pp.kazi.data.Category
 import tw.pp.kazi.data.Site
 import tw.pp.kazi.data.PosterConfig
-import tw.pp.kazi.data.PosterDensity
-import tw.pp.kazi.data.PosterDisplayMode
 import tw.pp.kazi.data.Video
-import tw.pp.kazi.data.ViewMode
 import tw.pp.kazi.ui.GridLayout
-import tw.pp.kazi.ui.gridColumns
-import tw.pp.kazi.ui.resolveGridStyle
 import tw.pp.kazi.ui.LocalAppContainer
 import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
-import tw.pp.kazi.ui.columnsFor
-import tw.pp.kazi.ui.detectViewMode
+import tw.pp.kazi.ui.posterLayoutFor
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
@@ -201,18 +195,6 @@ fun HomeScreen() {
         }
         loading = false
     }
-
-    // 每個站台的預覽圖方向自動偵測一次後記在 config；之後重進直接讀快取、不再偵測。
-    // 偵測完成 → settings 更新 → 下面 viewMode 重算 → grid 用貼合該站方向的形狀（Crop 幾乎不裁圖）。
-    LaunchedEffect(selectedSite?.id, videos) {
-        val id = selectedSite?.id ?: return@LaunchedEffect
-        if (settings.siteViewModes.containsKey(id) || videos.isEmpty()) return@LaunchedEffect
-        val detected = detectViewMode(context, videos.map { it.vodPic }, ViewMode.Default)
-        container.configRepository.setSiteViewMode(id, detected)
-    }
-
-    val viewMode = settings.siteViewModes[selectedSite?.id]
-        ?.let { ViewMode.fromKey(it) } ?: ViewMode.Default
 
     LaunchedEffect(enabledSites.isNotEmpty()) {
         // 優先順序：(1) 點過卡片 → 等卡片 focus 回去；(2) 有 top bar key 就 focus 那顆；(3) 預設 focus 搜尋
@@ -421,6 +403,46 @@ fun HomeScreen() {
             )
         },
         onBack = null,
+        // 站點 / 分類列接進 header → 跟頂列一起隨捲動收合,內容區更大。只在有可用站台時顯示。
+        subHeader = {
+            if (sitesLoaded && enabledSites.isNotEmpty()) {
+                SiteStrip(
+                    sites = enabledSites,
+                    selected = selectedSite,
+                    onPick = { picked ->
+                        if (picked.id == selectedSite?.id) return@SiteStrip
+                        selectedSite = picked
+                        categories = emptyList()
+                        selectedCategory = null
+                        page = 1
+                        pendingContentFocus = true
+                        scope.launch { categoryStripState.scrollToItem(0) }
+                    },
+                    windowSize = windowSize,
+                    listState = siteStripState,
+                    selectedFocus = siteStripFocus,
+                    downTarget = siteStripDown,
+                    upTarget = siteStripUp,
+                )
+                if (categories.isNotEmpty()) {
+                    CategoryStrip(
+                        categories = categories,
+                        selected = selectedCategory,
+                        onPick = {
+                            if (it?.typeId == selectedCategory?.typeId) return@CategoryStrip
+                            selectedCategory = it
+                            page = 1
+                            pendingContentFocus = true
+                        },
+                        windowSize = windowSize,
+                        listState = categoryStripState,
+                        selectedFocus = categoryStripFocus,
+                        downTarget = categoryStripDown,
+                        upTarget = categoryStripUp,
+                    )
+                }
+            }
+        },
     ) { innerPadding ->
         PullToRefreshBoxIfCompact(
             isRefreshing = loading,
@@ -453,57 +475,7 @@ fun HomeScreen() {
                 return@Column
             }
 
-            // 站點 / 類別 strip 固定釘在頂部，不再隨 loading / showVideos 切換在「grid header」跟
-            // 「直接 Column 子層」之間搬家。原本搬家會把 SiteStrip 卸載再重掛，剛點過的 site tag
-            // 失去 focus，Compose 把焦點 fallback 到 top bar 的「無痕」按鈕。
-            SiteStrip(
-                sites = enabledSites,
-                selected = selectedSite,
-                onPick = { picked ->
-                    // 點到當前站台 no-op；不然命令式清掉 categories 但 LaunchedEffect
-                    // 沒任何 key 改變不會 re-fire，類別列表會永久消失
-                    if (picked.id == selectedSite?.id) return@SiteStrip
-                    selectedSite = picked
-                    categories = emptyList()
-                    selectedCategory = null
-                    page = 1
-                    pendingContentFocus = true
-                    // 切站 → 分類列表會被換掉，舊的捲動位置在新的列表上沒意義，回到開頭
-                    scope.launch { categoryStripState.scrollToItem(0) }
-                },
-                windowSize = windowSize,
-                listState = siteStripState,
-                selectedFocus = siteStripFocus,
-                downTarget = siteStripDown,
-                upTarget = siteStripUp,
-            )
-            if (categories.isNotEmpty()) {
-                CategoryStrip(
-                    categories = categories,
-                    selected = selectedCategory,
-                    onPick = {
-                        if (it?.typeId == selectedCategory?.typeId) return@CategoryStrip
-                        selectedCategory = it
-                        page = 1
-                        pendingContentFocus = true
-                    },
-                    windowSize = windowSize,
-                    listState = categoryStripState,
-                    selectedFocus = categoryStripFocus,
-                    downTarget = categoryStripDown,
-                    upTarget = categoryStripUp,
-                )
-            }
-
-            // 實驗用：直接在首頁切海報顯示方式(1-4)與密度(a-c)，方便實機比較後回報編號
-            PosterModeBar(
-                displayMode = settings.posterDisplayMode,
-                density = settings.posterDensity,
-                windowSize = windowSize,
-                onPickMode = { scope.launch { container.configRepository.setPosterDisplayMode(it) } },
-                onPickDensity = { scope.launch { container.configRepository.setPosterDensity(it) } },
-            )
-
+            // 站點 / 分類列已移到 header（subHeader），跟頂列一起收合，不再佔住內容區
             val err = errorMsg
             Box(modifier = Modifier.weight(1f)) {
                 when {
@@ -531,9 +503,6 @@ fun HomeScreen() {
                     )
                     else -> VideoGrid(
                         videos = videos,
-                        displayMode = settings.posterDisplayMode,
-                        detected = viewMode,
-                        density = settings.posterDensity,
                         windowSize = windowSize,
                         firstItemFocus = firstVideoFocus,
                         clickedVodId = restoreClickedVodId,
@@ -796,47 +765,10 @@ private fun CategoryStrip(
     }
 }
 
-@Composable
-private fun PosterModeBar(
-    displayMode: PosterDisplayMode,
-    density: PosterDensity,
-    windowSize: WindowSize,
-    onPickMode: (PosterDisplayMode) -> Unit,
-    onPickDensity: (PosterDensity) -> Unit,
-) {
-    val modeTags = listOf(
-        PosterDisplayMode.CropAuto to "1 大圖",
-        PosterDisplayMode.FitAuto to "2 完整",
-        PosterDisplayMode.Masonry to "3 瀑布",
-        PosterDisplayMode.SquareFit to "4 方形",
-    )
-    val densityTags = listOf(
-        PosterDensity.Large to "a 大",
-        PosterDensity.Standard to "b 標準",
-        PosterDensity.Compact to "c 緊湊",
-    )
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = windowSize.pagePadding(), vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        items(modeTags) { (mode, label) ->
-            FocusableTag(text = label, selected = mode == displayMode, onClick = { onPickMode(mode) })
-        }
-        item { Spacer(Modifier.width(16.dp)) }
-        items(densityTags) { (d, label) ->
-            FocusableTag(text = label, selected = d == density, onClick = { onPickDensity(d) })
-        }
-    }
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun VideoGrid(
     videos: List<Video>,
-    displayMode: PosterDisplayMode,
-    detected: ViewMode,
-    density: PosterDensity,
     windowSize: WindowSize,
     firstItemFocus: FocusRequester,
     clickedVodId: Long?,
@@ -846,8 +778,8 @@ private fun VideoGrid(
     canGoNextPage: Boolean = false,
     footerContent: (@Composable () -> Unit)? = null,
 ) {
-    val style = resolveGridStyle(displayMode, detected)
-    val columns = gridColumns(displayMode, style.cellMode, windowSize, density)
+    val layout = posterLayoutFor(windowSize)
+    val columns = layout.columns
     val padding = PaddingValues(horizontal = windowSize.pagePadding(), vertical = 12.dp)
     val gap = windowSize.gridGap()
 
@@ -857,7 +789,7 @@ private fun VideoGrid(
         else -> null
     }
 
-    if (style.layout == GridLayout.Masonry) {
+    if (layout.grid == GridLayout.Masonry) {
         // 瀑布流：每張卡高度跟著圖的真實比例跑。比例要等圖載入後才知道，先用預設值撐著、
         // 載到了再更新 → 卡片高度重排（masonry 本來就會這樣）。電視導航靠空間搜尋，不掛↓ redirect。
         val ratios = remember { mutableStateMapOf<String, Float>() }
@@ -911,8 +843,8 @@ private fun VideoGrid(
                 remarks = v.vodRemarks,
                 imageUrl = v.vodPic,
                 fromSite = v.fromSite,
-                aspectRatio = style.cellMode.aspectRatio,
-                fill = style.fill,
+                aspectRatio = layout.cellAspect,
+                fill = layout.fill,
                 onClick = { onClick(v) },
                 modifier = downModifier,
                 focusRequester = focusFor(idx, v),

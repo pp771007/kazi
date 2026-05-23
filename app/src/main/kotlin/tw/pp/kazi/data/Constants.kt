@@ -94,22 +94,15 @@ object SearchConfig {
 }
 
 object PosterConfig {
-    // 自動判斷預覽圖方向：抽前 N 張實際解碼出長寬，多數決決定整個 grid 的格子形狀。
-    // 只看前幾張就夠代表一個站台 / 一批搜尋結果，多了只是浪費頻寬。
-    const val DETECT_SAMPLE_COUNT = 5
+    // 電視方形網格欄數。
+    const val TV_SQUARE_COLUMNS = 5
 
-    // 偵測時把圖縮到這個邊長再解碼即可（只要長寬比，不需要原圖）→ 省記憶體，電視盒不會 OOM。
-    const val DETECT_DECODE_PX = 256
+    // 手機瀑布流欄數：直式 2 欄大圖、橫式 / 小平板 3 欄。
+    const val MASONRY_COLUMNS_COMPACT = 2
+    const val MASONRY_COLUMNS_MEDIUM = 3
 
-    // 長寬比 (width / height) 分類門檻：>= 橫、<= 直、之間算方形。
-    const val LANDSCAPE_RATIO = 1.2f
-    const val PORTRAIT_RATIO = 0.85f
-
-    // 混站畫面用 Fit 不裁切，空白處墊一張同圖的超小縮圖放大 → 天然模糊、不吃 GPU、不挑 Android 版本。
+    // 電視方形用 Fit 不裁切，空白處墊一張同圖的超小縮圖放大 → 天然模糊、不吃 GPU、不挑 Android 版本。
     const val BLUR_BG_DECODE_PX = 24
-
-    // 密度往「緊湊」加欄時的下限，避免極端情況算出 0 / 1 欄。
-    const val MIN_COLUMNS = 2
 
     // 瀑布流卡片在量到真實比例前先用的預設比例（直式 2:3），載入後依實際圖更新。
     const val MASONRY_DEFAULT_RATIO = 2f / 3f
@@ -130,7 +123,4 @@ object ConfigKeys {
     const val LAN_SHARE_ENABLED = "lan_share_enabled"
     const val INCOGNITO_MODE = "incognito_mode"
     const val SEARCH_HISTORY = "search_history"
-    const val SITE_VIEW_MODES = "site_view_modes"
-    const val POSTER_DISPLAY_MODE = "poster_display_mode"
-    const val POSTER_DENSITY = "poster_density"
 }

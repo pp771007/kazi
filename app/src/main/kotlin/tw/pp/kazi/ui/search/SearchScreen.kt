@@ -18,6 +18,11 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed as staggeredItemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -65,8 +70,9 @@ import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
-import tw.pp.kazi.ui.columnsFor
-import tw.pp.kazi.ui.rememberAutoViewMode
+import tw.pp.kazi.data.PosterConfig
+import tw.pp.kazi.ui.GridLayout
+import tw.pp.kazi.ui.posterLayoutFor
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
@@ -467,13 +473,12 @@ fun SearchScreen(
                 }
             }
         } else {
-            // 有結果 → 搜尋輸入 + 統計列塞進 grid header，跟著影片一起捲，省垂直空間
-            // 混站結果方向不一：抽前幾張多數決決定格子形狀，Fit 不裁切，少數派用模糊邊墊底
-            val vm = rememberAutoViewMode(aggregated.map { it.pic })
+            // 有結果 → 搜尋輸入 + 統計列塞進 grid header，跟著影片一起捲，省垂直空間。
+            // 排版規則跟全 App 一致：手機瀑布流、電視方形(Fit 不裁切)。
+            val layout = posterLayoutFor(windowSize)
             val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+            val staggeredState = rememberLazyStaggeredGridState()
             // 內層換頁：先換 displayPage、捲回卡片列起點、等動畫＋一個 layout frame 再 focus 第一張卡。
-            // 之前用 pendingResultFocus + LaunchedEffect(displayedSlice) 那條路，會跟 animateScroll 比賽：
-            // 動畫還沒結束、新第一張卡還沒被 LazyGrid compose 出來時 requestFocus 就被丟掉，焦點時有時無。
             // 把 scroll → focus 串成同一個 coroutine 並等動畫完成才 focus，順序就保證了。
             // FIRST_CARD_INDEX = searchControls(0) + StatsBar(1) + 頂部 Pager(2) → 3
             val goToInnerPage: (Int) -> Unit = { target ->
@@ -481,8 +486,9 @@ fun SearchScreen(
                 if (clamped != displayPage) {
                     displayPage = clamped
                     scope.launch {
-                        gridState.animateScrollToItem(FIRST_CARD_INDEX)
-                        // 動畫結束後再給 LazyGrid 一格時間 attach focusRequester；只在 TV 搶焦
+                        if (layout.grid == GridLayout.Masonry) staggeredState.animateScrollToItem(FIRST_CARD_INDEX)
+                        else gridState.animateScrollToItem(FIRST_CARD_INDEX)
+                        // 動畫結束後再給 grid 一格時間 attach focusRequester；只在 TV 搶焦(TV 必為整齊網格)
                         if (windowSize.isTv) {
                             kotlinx.coroutines.delay(50)
                             runCatching { firstResultFocus.requestFocus() }
@@ -490,105 +496,149 @@ fun SearchScreen(
                     }
                 }
             }
-            LazyVerticalGrid(
-                state = gridState,
-                columns = GridCells.Fixed(vm.columnsFor(windowSize)),
-                contentPadding = PaddingValues(
-                    horizontal = windowSize.pagePadding(),
-                    vertical = 12.dp,
-                ),
-                horizontalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
-                verticalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                item(span = { GridItemSpan(maxLineSpan) }) { searchControls() }
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    StatsBar(r!!, aggregated.size, windowSize)
-                }
-                // 內層分頁鈕（頂）：只有 aggregated 多到要切時才出現
-                if (innerPageCount > 1) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Pager(
-                            page = displayPage,
-                            pageCount = innerPageCount,
-                            onPrev = { goToInnerPage(displayPage - 1) },
-                            onNext = { goToInnerPage(displayPage + 1) },
-                            windowSize = windowSize,
-                            simplified = true,
-                            accent = true,
-                            label = "顯示頁",
+            // 卡片按↓的 redirect 目標：內層底端 Pager 優先，否則外層 Pager(只在 TV 整齊網格用得到)
+            val cardDownTarget: FocusRequester? = when {
+                innerPageCount > 1 && displayPage < innerPageCount -> innerNextPageFocus
+                pageCount > 1 && page < pageCount -> outerNextPageFocus
+                else -> null
+            }
+
+            @Composable
+            fun resultCard(idx: Int, agg: AggregatedVideo, aspectRatio: Float, fill: PosterFill, modifier: Modifier, onRatio: ((Float) -> Unit)?) {
+                PosterCard(
+                    title = agg.name,
+                    remarks = agg.remarks,
+                    imageUrl = agg.pic,
+                    fromSite = if (agg.sources.size > 1) "${agg.sources.size} 來源"
+                        else agg.sources.firstOrNull()?.fromSite,
+                    aspectRatio = aspectRatio,
+                    fill = fill,
+                    onRatio = onRatio,
+                    onClick = {
+                        val first = agg.sources.firstOrNull() ?: return@PosterCard
+                        val sid = first.fromSiteId ?: return@PosterCard
+                        container.pendingDetailPeers =
+                            if (agg.sources.size > 1) agg.sources else null
+                        // 記下這次點的影片名（用名字做 key 因為聚合後沒有單一 vodId）
+                        lastClickedAggName = agg.name
+                        nav.navigate(Routes.detail(sid, first.vodId))
+                    },
+                    modifier = modifier,
+                    focusRequester = when {
+                        restoreClickedAggName != null && agg.name == restoreClickedAggName -> clickedResultFocus
+                        idx == 0 -> firstResultFocus
+                        else -> null
+                    },
+                )
+            }
+
+            @Composable
+            fun topInnerPager() {
+                Pager(
+                    page = displayPage,
+                    pageCount = innerPageCount,
+                    onPrev = { goToInnerPage(displayPage - 1) },
+                    onNext = { goToInnerPage(displayPage + 1) },
+                    windowSize = windowSize,
+                    simplified = true,
+                    accent = true,
+                    label = "顯示頁",
+                )
+            }
+
+            @Composable
+            fun bottomInnerPager() {
+                Pager(
+                    page = displayPage,
+                    pageCount = innerPageCount,
+                    onPrev = { goToInnerPage(displayPage - 1) },
+                    onNext = { goToInnerPage(displayPage + 1) },
+                    windowSize = windowSize,
+                    simplified = true,
+                    accent = true,
+                    label = "顯示頁",
+                    nextPageRequester = innerNextPageFocus,
+                )
+            }
+
+            @Composable
+            fun outerPager() {
+                Pager(
+                    page = page,
+                    pageCount = pageCount,
+                    onPrev = { if (page > 1) runSearch(page - 1) },
+                    onNext = { if (page < pageCount) runSearch(page + 1) },
+                    onJump = { target -> runSearch(target) },
+                    windowSize = windowSize,
+                    label = "資料頁",
+                    nextPageRequester = outerNextPageFocus,
+                )
+            }
+
+            if (layout.grid == GridLayout.Masonry) {
+                val ratios = remember { mutableStateMapOf<String, Float>() }
+                LazyVerticalStaggeredGrid(
+                    state = staggeredState,
+                    columns = StaggeredGridCells.Fixed(layout.columns),
+                    contentPadding = PaddingValues(horizontal = windowSize.pagePadding(), vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
+                    verticalItemSpacing = windowSize.gridGap(),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    item(span = StaggeredGridItemSpan.FullLine) { searchControls() }
+                    item(span = StaggeredGridItemSpan.FullLine) { StatsBar(r!!, aggregated.size, windowSize) }
+                    if (innerPageCount > 1) {
+                        item(span = StaggeredGridItemSpan.FullLine) { topInnerPager() }
+                    }
+                    staggeredItemsIndexed(displayedSlice, key = { _, agg -> agg.name }) { idx, agg ->
+                        resultCard(
+                            idx, agg,
+                            aspectRatio = ratios[agg.pic] ?: PosterConfig.MASONRY_DEFAULT_RATIO,
+                            fill = PosterFill.Crop,
+                            modifier = Modifier,
+                            onRatio = { ratios[agg.pic] = it },
                         )
                     }
-                }
-                // 卡片按↓的 redirect 目標：內層底端 Pager 優先，否則外層 Pager
-                // (focusProperties.down 是 stable API，只在 spatial down 觸發，不會吃 click event)
-                val columns = vm.columnsFor(windowSize)
-                val cardDownTarget: FocusRequester? = when {
-                    innerPageCount > 1 && displayPage < innerPageCount -> innerNextPageFocus
-                    pageCount > 1 && page < pageCount -> outerNextPageFocus
-                    else -> null
-                }
-                itemsIndexed(
-                    displayedSlice,
-                    key = { _, agg -> agg.name },
-                ) { idx, agg ->
-                    val isLastRow = idx >= displayedSlice.size - columns
-                    val downModifier = if (isLastRow && cardDownTarget != null) {
-                        Modifier.focusProperties { down = cardDownTarget }
-                    } else Modifier
-                    PosterCard(
-                        title = agg.name,
-                        remarks = agg.remarks,
-                        imageUrl = agg.pic,
-                        fromSite = if (agg.sources.size > 1) "${agg.sources.size} 來源"
-                            else agg.sources.firstOrNull()?.fromSite,
-                        aspectRatio = vm.aspectRatio,
-                        fill = PosterFill.Fit,
-                        onClick = {
-                            val first = agg.sources.firstOrNull() ?: return@PosterCard
-                            val sid = first.fromSiteId ?: return@PosterCard
-                            container.pendingDetailPeers =
-                                if (agg.sources.size > 1) agg.sources else null
-                            // 記下這次點的影片名（用名字做 key 因為聚合後沒有單一 vodId）
-                            lastClickedAggName = agg.name
-                            nav.navigate(Routes.detail(sid, first.vodId))
-                        },
-                        modifier = downModifier,
-                        focusRequester = when {
-                            restoreClickedAggName != null && agg.name == restoreClickedAggName -> clickedResultFocus
-                            idx == 0 -> firstResultFocus
-                            else -> null
-                        },
-                    )
-                }
-                // 內層分頁鈕（底）：跟頂部同一組；nextPageRequester 掛在這個底端的下一頁按鈕上
-                if (innerPageCount > 1) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Pager(
-                            page = displayPage,
-                            pageCount = innerPageCount,
-                            onPrev = { goToInnerPage(displayPage - 1) },
-                            onNext = { goToInnerPage(displayPage + 1) },
-                            windowSize = windowSize,
-                            simplified = true,
-                            accent = true,
-                            label = "顯示頁",
-                            nextPageRequester = innerNextPageFocus,
-                        )
+                    if (innerPageCount > 1) {
+                        item(span = StaggeredGridItemSpan.FullLine) { bottomInnerPager() }
+                    }
+                    if (pageCount > 1) {
+                        item(span = StaggeredGridItemSpan.FullLine) { outerPager() }
                     }
                 }
-                if (pageCount > 1) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Pager(
-                            page = page,
-                            pageCount = pageCount,
-                            onPrev = { if (page > 1) runSearch(page - 1) },
-                            onNext = { if (page < pageCount) runSearch(page + 1) },
-                            onJump = { target -> runSearch(target) },
-                            windowSize = windowSize,
-                            label = "資料頁",
-                            nextPageRequester = outerNextPageFocus,
+            } else {
+                val columns = layout.columns
+                LazyVerticalGrid(
+                    state = gridState,
+                    columns = GridCells.Fixed(columns),
+                    contentPadding = PaddingValues(horizontal = windowSize.pagePadding(), vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
+                    verticalArrangement = Arrangement.spacedBy(windowSize.gridGap()),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    item(span = { GridItemSpan(maxLineSpan) }) { searchControls() }
+                    item(span = { GridItemSpan(maxLineSpan) }) { StatsBar(r!!, aggregated.size, windowSize) }
+                    if (innerPageCount > 1) {
+                        item(span = { GridItemSpan(maxLineSpan) }) { topInnerPager() }
+                    }
+                    itemsIndexed(displayedSlice, key = { _, agg -> agg.name }) { idx, agg ->
+                        val isLastRow = idx >= displayedSlice.size - columns
+                        val downModifier = if (isLastRow && cardDownTarget != null) {
+                            Modifier.focusProperties { down = cardDownTarget }
+                        } else Modifier
+                        resultCard(
+                            idx, agg,
+                            aspectRatio = layout.cellAspect,
+                            fill = layout.fill,
+                            modifier = downModifier,
+                            onRatio = null,
                         )
+                    }
+                    if (innerPageCount > 1) {
+                        item(span = { GridItemSpan(maxLineSpan) }) { bottomInnerPager() }
+                    }
+                    if (pageCount > 1) {
+                        item(span = { GridItemSpan(maxLineSpan) }) { outerPager() }
                     }
                 }
             }
