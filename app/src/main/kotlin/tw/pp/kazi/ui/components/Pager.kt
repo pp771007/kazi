@@ -25,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -58,6 +60,9 @@ fun Pager(
     // accent: 整顆 Pager 包淡 primary 底色 + 圓框，跟旁邊的「外層 API 翻頁」視覺上分開
     accent: Boolean = false,
     label: String? = null,
+    // 掛在「下一頁」鈕上,讓 grid 最後一列卡片按↓時能 requestFocus 到這裡(預設停下一頁)。
+    // 用 key 事件觸發的 requestFocus(非焦點狀態觸發)→ 不會像 onFocusChanged 那樣 ANR。
+    nextPageRequester: FocusRequester? = null,
     modifier: Modifier = Modifier,
 ) {
     val compact = windowSize.isCompact
@@ -128,6 +133,7 @@ fun Pager(
             enabled = page < pageCount,
             primary = false,
             iconOnly = compact,
+            modifier = if (nextPageRequester != null) Modifier.focusRequester(nextPageRequester) else Modifier,
         )
         if (!simplified) {
             Spacer(Modifier.weight(1f))

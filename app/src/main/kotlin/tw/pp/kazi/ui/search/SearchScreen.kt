@@ -71,6 +71,7 @@ import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.data.PosterConfig
 import tw.pp.kazi.ui.GridLayout
+import tw.pp.kazi.ui.keyFocusJump
 import tw.pp.kazi.ui.posterLayoutFor
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
@@ -156,6 +157,9 @@ fun SearchScreen(
     val focusRequester = remember { FocusRequester() }
     val firstResultFocus = remember { FocusRequester() }
     val clickedResultFocus = remember { FocusRequester() }
+    // 結果最後一列按↓ → 跳分頁「下一頁」(內層優先,否則外層)。key 事件 + runCatching 觸發,安全不 ANR/閃退。
+    val innerNextPageFocus = remember { FocusRequester() }
+    val outerNextPageFocus = remember { FocusRequester() }
     // 進畫面那一瞬間的值即「上次點過的卡」；之後 onClick 會更新成新值，
     // 但 restoreClickedAggName 已經 capture 起來，繼續代表「這次進畫面要 focus 的那張」
     val restoreClickedAggName = remember { lastClickedAggName }
@@ -528,6 +532,7 @@ fun SearchScreen(
                     simplified = true,
                     accent = true,
                     label = "顯示頁",
+                    nextPageRequester = innerNextPageFocus,
                 )
             }
 
@@ -541,6 +546,7 @@ fun SearchScreen(
                     onJump = { target -> runSearch(target) },
                     windowSize = windowSize,
                     label = "資料頁",
+                    nextPageRequester = outerNextPageFocus,
                 )
             }
 
@@ -590,12 +596,20 @@ fun SearchScreen(
                     if (innerPageCount > 1) {
                         item(span = { GridItemSpan(maxLineSpan) }) { topInnerPager() }
                     }
+                    // 最後一列卡片按↓ → 跳分頁「下一頁」(內層優先,否則外層);keyFocusJump 安全做法
+                    val cardNext: FocusRequester? = when {
+                        innerPageCount > 1 && displayPage < innerPageCount -> innerNextPageFocus
+                        pageCount > 1 && page < pageCount -> outerNextPageFocus
+                        else -> null
+                    }
                     itemsIndexed(displayedSlice, key = { _, agg -> agg.name }) { idx, agg ->
+                        val isLastRow = idx >= displayedSlice.size - columns
+                        val downMod = if (isLastRow) Modifier.keyFocusJump(Key.DirectionDown, cardNext) else Modifier
                         resultCard(
                             idx, agg,
                             aspectRatio = layout.cellAspect,
                             fill = layout.fill,
-                            modifier = Modifier,
+                            modifier = downMod,
                             onRatio = null,
                         )
                     }
@@ -833,6 +847,11 @@ private fun SiteSelector(
     // 對端剛好是 firstSelected 那顆時就請求 firstSelectedFocus，否則用 first/last 的 anchor。
     val cycleTargetForFirst = if (lastId != null && lastId == firstSelectedId) firstSelectedFocus else lastSiteFocus
     val cycleTargetForLast = if (firstId != null && firstId == firstSelectedId) firstSelectedFocus else firstSiteFocus
+    // 「站點數 / 全選 / 全不選」這排在 chip 上面;從這排按↓,空間搜尋會跳過 chip。用 keyFocusJump 直接跳到第一顆 chip。
+    val chipDownMod = Modifier.keyFocusJump(
+        Key.DirectionDown,
+        if (firstSelectedId != null) firstSelectedFocus else firstSiteFocus,
+    )
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -844,8 +863,8 @@ private fun SiteSelector(
                 style = MaterialTheme.typography.labelMedium,
             )
             Spacer(Modifier.weight(1f))
-            AppButton(text = "全選", onClick = onSelectAll, primary = false, modifier = entryModifier)
-            AppButton(text = "全不選", onClick = onSelectNone, primary = false)
+            AppButton(text = "全選", onClick = onSelectAll, primary = false, modifier = chipDownMod)
+            AppButton(text = "全不選", onClick = onSelectNone, primary = false, modifier = chipDownMod)
         }
         LazyRow(
             state = listState,

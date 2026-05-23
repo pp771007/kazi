@@ -52,6 +52,7 @@ import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
+import tw.pp.kazi.ui.keyFocusJump
 import tw.pp.kazi.ui.posterLayoutFor
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
@@ -136,9 +137,8 @@ fun HomeScreen() {
     val firstVideoFocus = remember { FocusRequester() }
     val clickedVideoFocus = remember { FocusRequester() }
     val retryFocus = remember { FocusRequester() }
-    // 站點 / 分類「當前選中」那顆的 requester（focusRestorer 進入時的 fallback 落點）。
-    val siteStripFocus = remember { FocusRequester() }
-    val categoryStripFocus = remember { FocusRequester() }
+    // 影片格最後一列按↓時,跳到分頁的「下一頁」(掛在這顆上)。用 key 事件 + runCatching 觸發,安全不 ANR。
+    val nextPageFocus = remember { FocusRequester() }
     // 切站、切分類、換頁後要把 focus 移到新內容（成功 → 第一張卡；失敗 → 重試按鈕），
     // 避免 focus 卡在剛剛點過的 strip tag 或「下一頁」按鈕上。
     var pendingContentFocus by remember { mutableStateOf(false) }
@@ -376,7 +376,6 @@ fun HomeScreen() {
                         },
                         windowSize = windowSize,
                         listState = siteStripState,
-                        selectedFocus = siteStripFocus,
                     )
                     if (categories.isNotEmpty()) {
                         CategoryStrip(
@@ -390,7 +389,6 @@ fun HomeScreen() {
                             },
                             windowSize = windowSize,
                             listState = categoryStripState,
-                            selectedFocus = categoryStripFocus,
                         )
                     }
                 }
@@ -466,6 +464,7 @@ fun HomeScreen() {
                             lastClickedVodId = v.vodId
                             nav.navigate(Routes.detail(site.id, v.vodId))
                         },
+                        nextPageRequester = if (pageCount > 1 && page < pageCount) nextPageFocus else null,
                         footerContent = if (pageCount > 1) {
                             {
                                 Pager(
@@ -482,6 +481,7 @@ fun HomeScreen() {
                                         pendingContentFocus = true
                                     },
                                     windowSize = windowSize,
+                                    nextPageRequester = nextPageFocus,
                                 )
                             }
                         } else null,
@@ -501,11 +501,9 @@ private fun SiteStrip(
     onPick: (Site) -> Unit,
     windowSize: WindowSize,
     listState: LazyListState,
-    // 掛在「當前選中站台」那顆上，當 focusRestorer 第一次進來的 fallback 落點
-    selectedFocus: FocusRequester,
 ) {
     val compact = windowSize.isCompact
-    // TV：D-pad 進入這列時，focus 停在當前選中站台（focusRestorer fallback），之後記住使用者最後位置。
+    // TV：D-pad 第一次進這列(沒記錄)→ 停第一顆;之後 focusRestorer 自動記住上次位置、回上次。
     // 列間上下移動交給框架空間搜尋,不手動指落點(見檔頭 CLAUDE.md 焦點守則)
     val firstFocus = remember { FocusRequester() }
     val lastFocus = remember { FocusRequester() }
@@ -513,17 +511,13 @@ private fun SiteStrip(
     val firstId = sites.firstOrNull()?.id
     val lastId = sites.lastOrNull()?.id
     val selectedId = selected?.id
-    // 循環 focus 目標：first 按 ← 要去 last。如果 last 同時也是 selected，請求 selectedFocus；否則 lastFocus。
-    // last 按 → 要去 first，同理
-    val cycleTargetForFirst = if (lastId != null && lastId == selectedId) selectedFocus else lastFocus
-    val cycleTargetForLast = if (firstId != null && firstId == selectedId) selectedFocus else firstFocus
-    // selectedFocus 掛在「選中站台」那顆上。但啟動瞬間 selectedSite 還是 null（稍後 LaunchedEffect 才設），
-    // 或選中項被 LazyRow 捲出畫面虛擬化時，這顆 requester 就沒掛在任何節點上。focusRestorer 直接回它的話，
-    // Compose 觸發 restore → requestFocus → 「FocusRequester is not initialized」直接 crash（電視盒啟動閃退的元兇）。
-    // 所以「選中項真的可見」時才用它，否則回 Default（交給預設行為，不會崩）。
-    val selectedVisible by remember {
+    // 循環：first 按 ← 去 last、last 按 → 去 first。
+    val cycleTargetForFirst = lastFocus
+    val cycleTargetForLast = firstFocus
+    // 第一顆可見才把 fallback 指它(避免被捲出畫面虛擬化時 requestFocus 沒掛上的 requester 而 crash)。
+    val firstVisible by remember {
         derivedStateOf {
-            selectedId != null && listState.layoutInfo.visibleItemsInfo.any { it.key == selectedId }
+            firstId != null && listState.layoutInfo.visibleItemsInfo.any { it.key == firstId }
         }
     }
     Column(
@@ -546,15 +540,13 @@ private fun SiteStrip(
             // (category strip 或 video grid)，不會因 spatial 距離計算跳過 category 直接到 video card
             modifier = Modifier
                 .focusGroup()
-                .focusRestorer { if (selectedVisible) selectedFocus else FocusRequester.Default },
+                .focusRestorer { if (firstVisible) firstFocus else FocusRequester.Default },
         ) {
             items(sites, key = { it.id }) { s ->
                 val isSelected = s.id == selectedId
                 val isFirst = s.id == firstId
                 val isLast = s.id == lastId
-                // 一個 item 只能掛一個 FocusRequester（chain 多次只用最後一個），優先 selected > first > last
                 val itemRequester: FocusRequester? = when {
-                    isSelected -> selectedFocus
                     isFirst -> firstFocus
                     isLast -> lastFocus
                     else -> null
@@ -600,8 +592,6 @@ private fun CategoryStrip(
     onPick: (Category?) -> Unit,
     windowSize: WindowSize,
     listState: LazyListState,
-    // 掛在「當前分類（或全部）」那顆上，當 focusRestorer 第一次進來的 fallback 落點
-    selectedFocus: FocusRequester,
 ) {
     val compact = windowSize.isCompact
     val firstFocus = remember { FocusRequester() }  // 「全部」永遠在 first 位置
@@ -609,21 +599,14 @@ private fun CategoryStrip(
     val scope = rememberCoroutineScope()
     val isAllSelected = selected == null
     val lastCategoryId = categories.lastOrNull()?.typeId
-    val isLastCategorySelected = lastCategoryId != null && selected?.typeId == lastCategoryId
-    // 「全部」按 ← → 跳 last category（若 last 是 selected 則用 selectedFocus）
-    val cycleTargetForFirst = if (isLastCategorySelected) selectedFocus else lastFocus
-    // last category 按 → → 跳「全部」（若「全部」是 selected 則用 selectedFocus）
-    val cycleTargetForLast = if (isAllSelected) selectedFocus else firstFocus
+    // 循環：「全部」按 ← 去 last、last 按 → 去「全部」。
+    val cycleTargetForFirst = lastFocus
+    val cycleTargetForLast = firstFocus
     // 列表總長度（含「全部」項）：scroll 用得到
     val totalItems = categories.size + 1
-    // 同 SiteStrip：選中分類被捲出畫面時 selectedFocus 沒掛上，focusRestorer 直接回它會 crash。
-    // 「全部」是 index 0 的無 key item，其餘用 typeId 當 key 判斷可見。
-    val selectedVisible by remember {
-        derivedStateOf {
-            val sel = selected
-            if (sel == null) listState.layoutInfo.visibleItemsInfo.any { it.index == 0 }
-            else listState.layoutInfo.visibleItemsInfo.any { it.key == sel.typeId }
-        }
+    // 第一次進這列(沒記錄)→ 停「全部」(第一顆)。「全部」是 index 0 的無 key item,可見才指它。
+    val firstVisible by remember {
+        derivedStateOf { listState.layoutInfo.visibleItemsInfo.any { it.index == 0 } }
     }
     Column(
         modifier = Modifier
@@ -644,16 +627,15 @@ private fun CategoryStrip(
             // focusGroup：見 SiteStrip 同款註解；focusRestorer 讓 D-pad 進這列時 focus 落在當前分類
             modifier = Modifier
                 .focusGroup()
-                .focusRestorer { if (selectedVisible) selectedFocus else FocusRequester.Default },
+                .focusRestorer { if (firstVisible) firstFocus else FocusRequester.Default },
         ) {
             item {
-                val itemRequester = if (isAllSelected) selectedFocus else firstFocus
                 FocusableTag(
                     text = "全部",
                     selected = isAllSelected,
                     onClick = { onPick(null) },
                     modifier = Modifier
-                        .focusRequester(itemRequester)
+                        .focusRequester(firstFocus)
                         .onPreviewKeyEvent { ke ->
                             if (ke.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                             if (ke.key == Key.DirectionLeft && categories.isNotEmpty()) {
@@ -669,11 +651,7 @@ private fun CategoryStrip(
             items(categories, key = { it.typeId }) { c ->
                 val isSelected = selected?.typeId == c.typeId
                 val isLast = c.typeId == lastCategoryId
-                val itemRequester: FocusRequester? = when {
-                    isSelected -> selectedFocus
-                    isLast -> lastFocus
-                    else -> null
-                }
+                val itemRequester: FocusRequester? = if (isLast) lastFocus else null
                 val reqMod = if (itemRequester != null) Modifier.focusRequester(itemRequester) else Modifier
                 val keyMod = if (isLast) Modifier.onPreviewKeyEvent { ke ->
                     if (ke.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -705,6 +683,8 @@ private fun VideoGrid(
     clickedVodId: Long?,
     clickedItemFocus: FocusRequester,
     onClick: (Video) -> Unit,
+    // 整齊網格最後一列按↓時跳到的「下一頁」requester(掛在 footer 分頁上);可用時才傳
+    nextPageRequester: FocusRequester? = null,
     footerContent: (@Composable () -> Unit)? = null,
 ) {
     val layout = posterLayoutFor(windowSize)
@@ -760,8 +740,9 @@ private fun VideoGrid(
         modifier = Modifier.fillMaxSize(),
     ) {
         itemsIndexed(videos, key = { _, v -> v.vodId }) { idx, v ->
-            // 列間移動(含最後一列↓到分頁)交給框架空間搜尋;分頁自己會預設停在「下一頁」(見 Pager)。
-            // 不再手動指落點 — 那是 FocusRequester 沒掛上時閃退的來源(見 CLAUDE.md 焦點守則)。
+            // 最後一列卡片按↓ → 跳到分頁「下一頁」(預設停下一頁)。keyFocusJump 是安全做法(見 FocusHelpers)。
+            val isLastRow = idx >= videos.size - columns
+            val downKeyMod = if (isLastRow) Modifier.keyFocusJump(Key.DirectionDown, nextPageRequester) else Modifier
             PosterCard(
                 title = v.vodName,
                 remarks = v.vodRemarks,
@@ -770,6 +751,7 @@ private fun VideoGrid(
                 aspectRatio = layout.cellAspect,
                 fill = layout.fill,
                 onClick = { onClick(v) },
+                modifier = downKeyMod,
                 focusRequester = focusFor(idx, v),
             )
         }
