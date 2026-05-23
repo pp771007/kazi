@@ -3,6 +3,8 @@ package tw.pp.kazi.ui.components
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.Composable
+import tw.pp.kazi.ui.LocalWindowSize
+import tw.pp.kazi.ui.isTv
 
 /**
  * 子畫面共用的外殼：頂列（標題 + 返回 + trailing actions）+ 捲動時自動收合 + 內容區
@@ -21,8 +23,11 @@ fun ScreenScaffold(
     headerState: CollapsibleHeaderState = rememberCollapsibleHeaderState(),
     content: @Composable (PaddingValues) -> Unit,
 ) {
+    // 電視盒固定頂列(時鐘隨時可見);手機隨捲動收合,把空間讓給內容
+    val collapsible = !LocalWindowSize.current.isTv
     CollapsibleHeader(
         state = headerState,
+        collapsible = collapsible,
         topBar = {
             GradientTopBar(
                 title = title,

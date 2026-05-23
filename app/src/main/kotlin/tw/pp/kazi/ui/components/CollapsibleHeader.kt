@@ -60,16 +60,19 @@ fun rememberCollapsibleHeaderState(): CollapsibleHeaderState = remember { Collap
 fun CollapsibleHeader(
     modifier: Modifier = Modifier,
     state: CollapsibleHeaderState = rememberCollapsibleHeaderState(),
+    // false = 頂列固定不收合（電視盒用：時鐘隨時看得到）。true = 隨捲動收合（手機用：把空間讓給內容）。
+    collapsible: Boolean = true,
     topBar: @Composable () -> Unit,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val density = LocalDensity.current
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .nestedScroll(state.nestedScrollConnection),
-    ) {
-        val visibleBarPx = (state.heightPx.floatValue + state.offsetPx.floatValue).coerceAtLeast(0f)
+    val barModifier = if (collapsible) {
+        Modifier.fillMaxSize().nestedScroll(state.nestedScrollConnection)
+    } else Modifier.fillMaxSize()
+    Box(modifier = modifier.then(barModifier)) {
+        // 固定模式 offset 恆 0 → 頂列釘住、內容固定空出整個頂列高度
+        val offset = if (collapsible) state.offsetPx.floatValue else 0f
+        val visibleBarPx = (state.heightPx.floatValue + offset).coerceAtLeast(0f)
         val topPadding = with(density) { visibleBarPx.toDp() }
         content(PaddingValues(top = topPadding))
 
@@ -77,7 +80,7 @@ fun CollapsibleHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .onSizeChanged { state.heightPx.floatValue = it.height.toFloat() }
-                .offset { IntOffset(0, state.offsetPx.floatValue.roundToInt()) },
+                .offset { IntOffset(0, offset.roundToInt()) },
         ) {
             topBar()
         }
