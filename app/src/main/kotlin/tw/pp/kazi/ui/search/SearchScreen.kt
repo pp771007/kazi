@@ -76,6 +76,7 @@ import tw.pp.kazi.ui.posterLayoutFor
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
+import tw.pp.kazi.ui.components.HorizontalPageSwipe
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
@@ -550,6 +551,20 @@ fun SearchScreen(
                 )
             }
 
+            // 手機左右滑換頁:內層(顯示頁)優先,內層翻完才翻外層(資料頁)。電視盒不攔。
+            HorizontalPageSwipe(
+                enabled = !windowSize.isTv && (innerPageCount > 1 || pageCount > 1),
+                canPrev = displayPage > 1 || page > 1,
+                canNext = displayPage < innerPageCount || page < pageCount,
+                onPrev = {
+                    if (displayPage > 1) goToInnerPage(displayPage - 1)
+                    else if (page > 1) runSearch(page - 1)
+                },
+                onNext = {
+                    if (displayPage < innerPageCount) goToInnerPage(displayPage + 1)
+                    else if (page < pageCount) runSearch(page + 1)
+                },
+            ) {
             if (layout.grid == GridLayout.Masonry) {
                 val ratios = remember { mutableStateMapOf<String, Float>() }
                 LazyVerticalStaggeredGrid(
@@ -626,6 +641,7 @@ fun SearchScreen(
                         item(span = { GridItemSpan(maxLineSpan) }) { outerPager() }
                     }
                 }
+            }
             }
         }
         }

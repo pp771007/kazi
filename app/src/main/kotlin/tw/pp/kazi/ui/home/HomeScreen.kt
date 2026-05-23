@@ -57,6 +57,7 @@ import tw.pp.kazi.ui.posterLayoutFor
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
+import tw.pp.kazi.ui.components.HorizontalPageSwipe
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
@@ -452,40 +453,49 @@ fun HomeScreen() {
                         subtitle = "試試切換其他分類或搜尋",
                         icon = Icons.Filled.MovieFilter,
                     )
-                    else -> VideoGrid(
-                        videos = videos,
-                        windowSize = windowSize,
-                        firstItemFocus = firstVideoFocus,
-                        clickedVodId = restoreClickedVodId,
-                        clickedItemFocus = clickedVideoFocus,
-                        onClick = { v ->
-                            val site = selectedSite ?: return@VideoGrid
-                            // 記下這次點的 vodId，從 detail 返回時 focus 會自動回到這張卡
-                            lastClickedVodId = v.vodId
-                            nav.navigate(Routes.detail(site.id, v.vodId))
-                        },
-                        nextPageRequester = if (pageCount > 1 && page < pageCount) nextPageFocus else null,
-                        footerContent = if (pageCount > 1) {
-                            {
-                                Pager(
-                                    page = page,
-                                    pageCount = pageCount,
-                                    onPrev = {
-                                        if (page > 1) { page--; pendingContentFocus = true }
-                                    },
-                                    onNext = {
-                                        if (page < pageCount) { page++; pendingContentFocus = true }
-                                    },
-                                    onJump = { target ->
-                                        page = target
-                                        pendingContentFocus = true
-                                    },
-                                    windowSize = windowSize,
-                                    nextPageRequester = nextPageFocus,
-                                )
-                            }
-                        } else null,
-                    )
+                    // 手機(非電視)左右滑換頁:左滑下一頁、右滑上一頁。電視盒不攔(用 D-pad + 分頁鈕)。
+                    else -> HorizontalPageSwipe(
+                        enabled = !windowSize.isTv && pageCount > 1,
+                        canPrev = page > 1,
+                        canNext = page < pageCount,
+                        onPrev = { if (page > 1) { page--; pendingContentFocus = true } },
+                        onNext = { if (page < pageCount) { page++; pendingContentFocus = true } },
+                    ) {
+                        VideoGrid(
+                            videos = videos,
+                            windowSize = windowSize,
+                            firstItemFocus = firstVideoFocus,
+                            clickedVodId = restoreClickedVodId,
+                            clickedItemFocus = clickedVideoFocus,
+                            onClick = { v ->
+                                val site = selectedSite ?: return@VideoGrid
+                                // 記下這次點的 vodId，從 detail 返回時 focus 會自動回到這張卡
+                                lastClickedVodId = v.vodId
+                                nav.navigate(Routes.detail(site.id, v.vodId))
+                            },
+                            nextPageRequester = if (pageCount > 1 && page < pageCount) nextPageFocus else null,
+                            footerContent = if (pageCount > 1) {
+                                {
+                                    Pager(
+                                        page = page,
+                                        pageCount = pageCount,
+                                        onPrev = {
+                                            if (page > 1) { page--; pendingContentFocus = true }
+                                        },
+                                        onNext = {
+                                            if (page < pageCount) { page++; pendingContentFocus = true }
+                                        },
+                                        onJump = { target ->
+                                            page = target
+                                            pendingContentFocus = true
+                                        },
+                                        windowSize = windowSize,
+                                        nextPageRequester = nextPageFocus,
+                                    )
+                                }
+                            } else null,
+                        )
+                    }
                 }
             }
         }
