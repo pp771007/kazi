@@ -14,6 +14,7 @@ Android(手機 + 電視盒)MacCMS 影片 app,Kotlin + Jetpack Compose。手機 /
 - focusRestorer 的 fallback 一定要是「選中項真的 visible 才回 selectedFocus,否則回 `FocusRequester.Default`」。直接無條件回 selectedFocus 會在虛擬化時 crash。
 - 橫向循環(first 按←跳 last)用 `onPreviewKeyEvent` + `scope.launch { listState.scrollToItem(...); runCatching { target.requestFocus() } }`(先捲到對端確保 compose,再 focus,且包 runCatching)。
 - **動到焦點 / header / 版面結構前,先在模擬器實測一輪再 commit。** v0.8.0 因為把站點/分類列搬進可收合 header + 在 ScreenScaffold 包一層,動到頂列焦點結構 → 電視盒按鍵閃退,整個退回(v0.8.1)。
+- **不要把「裡面有按鈕(AppButton)的 Row」包成 `focusGroup()` + `focusRestorer`(尤其是分頁 Pager)。** 這會讓按鈕看起來有 focus(白框在),但按 OK / DPAD_CENTER 點不動 —— group 把點擊事件吃掉了。「下一頁按了沒反應」這個 bug 重複發生過至少 3 次,每次都是這個原因。需要「進入某列預設停在某顆」時:LazyRow 的 chip 列用 focusRestorer 沒問題(實測可點);但按鈕 Row 不要用 focusGroup,改用其他不吃點擊的方式(例如靠版面幾何讓空間搜尋自然落點,或只在該顆掛 focusRequester 不包 group)。改完一定要在模擬器上「真的按一下 OK 確認會動作」,不能只看 focus 框在不在。
 
 ## 在模擬器上測電視盒焦點(可自驗,不必每次丟給使用者)
 

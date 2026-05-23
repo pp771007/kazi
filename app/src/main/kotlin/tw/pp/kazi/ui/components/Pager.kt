@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import tw.pp.kazi.ui.WindowSize
+import tw.pp.kazi.ui.enterFocusOn
 import tw.pp.kazi.ui.isCompact
 import tw.pp.kazi.ui.isTv
 import tw.pp.kazi.ui.pagePadding
@@ -97,10 +98,10 @@ fun Pager(
             .padding(horizontal = windowSize.pagePadding(), vertical = 12.dp)
     }
 
+    // 進到這組分頁時固定停在「下一頁」(還有下一頁時)。onFocusChanged+requestFocus 是真 focus 可按,
+    // 且只在進入瞬間導向 → 之後按←到上一頁仍可用。
     Row(
-        modifier = outer
-            .focusGroup()
-            .focusRestorer { if (page < pageCount) nextFocus else FocusRequester.Default },
+        modifier = outer.enterFocusOn(nextFocus, enabled = page < pageCount),
         horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
