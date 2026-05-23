@@ -72,6 +72,7 @@ import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.data.PosterConfig
 import tw.pp.kazi.ui.GridLayout
 import tw.pp.kazi.ui.keyFocusJump
+import tw.pp.kazi.ui.keyScrollFocus
 import tw.pp.kazi.ui.posterLayoutFor
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
@@ -596,15 +597,21 @@ fun SearchScreen(
                     if (innerPageCount > 1) {
                         item(span = { GridItemSpan(maxLineSpan) }) { topInnerPager() }
                     }
-                    // 最後一列卡片按↓ → 跳分頁「下一頁」(內層優先,否則外層);keyFocusJump 安全做法
+                    // 最後一列卡片按↓ → 跳分頁「下一頁」(內層優先,否則外層)。分頁在卡片下方還沒 compose,
+                    // 用 keyScrollFocus 先捲到底(內外層分頁都在最底、相鄰)再 focus 目標。
                     val cardNext: FocusRequester? = when {
                         innerPageCount > 1 && displayPage < innerPageCount -> innerNextPageFocus
                         pageCount > 1 && page < pageCount -> outerNextPageFocus
                         else -> null
                     }
+                    val headerCount = 2 + (if (innerPageCount > 1) 1 else 0)
+                    val footerCount = (if (innerPageCount > 1) 1 else 0) + (if (pageCount > 1) 1 else 0)
+                    val lastItemIndex = (headerCount + displayedSlice.size + footerCount - 1).coerceAtLeast(0)
                     itemsIndexed(displayedSlice, key = { _, agg -> agg.name }) { idx, agg ->
                         val isLastRow = idx >= displayedSlice.size - columns
-                        val downMod = if (isLastRow) Modifier.keyFocusJump(Key.DirectionDown, cardNext) else Modifier
+                        val downMod = if (isLastRow) {
+                            Modifier.keyScrollFocus(scope, cardNext) { gridState.animateScrollToItem(lastItemIndex) }
+                        } else Modifier
                         resultCard(
                             idx, agg,
                             aspectRatio = layout.cellAspect,

@@ -52,7 +52,7 @@ import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
-import tw.pp.kazi.ui.keyFocusJump
+import tw.pp.kazi.ui.keyScrollFocus
 import tw.pp.kazi.ui.posterLayoutFor
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
@@ -691,6 +691,8 @@ private fun VideoGrid(
     val columns = layout.columns
     val padding = PaddingValues(horizontal = windowSize.pagePadding(), vertical = 12.dp)
     val gap = windowSize.gridGap()
+    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    val scope = rememberCoroutineScope()
 
     fun focusFor(idx: Int, v: Video): FocusRequester? = when {
         clickedVodId != null && v.vodId == clickedVodId -> clickedItemFocus
@@ -733,6 +735,7 @@ private fun VideoGrid(
     }
 
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Fixed(columns),
         contentPadding = padding,
         horizontalArrangement = Arrangement.spacedBy(gap),
@@ -740,9 +743,12 @@ private fun VideoGrid(
         modifier = Modifier.fillMaxSize(),
     ) {
         itemsIndexed(videos, key = { _, v -> v.vodId }) { idx, v ->
-            // 最後一列卡片按↓ → 跳到分頁「下一頁」(預設停下一頁)。keyFocusJump 是安全做法(見 FocusHelpers)。
+            // 最後一列卡片按↓ → 先把分頁捲進畫面、再 focus「下一頁」(分頁在卡片下方、按↓當下還沒 compose,
+            // 直接 requestFocus 會落空 → 用 keyScrollFocus 先捲再 focus)。footer 在 videos.size 這個 index。
             val isLastRow = idx >= videos.size - columns
-            val downKeyMod = if (isLastRow) Modifier.keyFocusJump(Key.DirectionDown, nextPageRequester) else Modifier
+            val downKeyMod = if (isLastRow) {
+                Modifier.keyScrollFocus(scope, nextPageRequester) { gridState.animateScrollToItem(videos.size) }
+            } else Modifier
             PosterCard(
                 title = v.vodName,
                 remarks = v.vodRemarks,

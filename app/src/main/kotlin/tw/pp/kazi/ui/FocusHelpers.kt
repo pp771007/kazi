@@ -7,6 +7,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 按下某方向鍵時,把 focus 直接 requestFocus 到 [target]。電視盒 D-pad 純空間搜尋會「跳過下一排」
@@ -25,6 +28,31 @@ fun Modifier.keyFocusJump(key: Key, target: FocusRequester?): Modifier {
     return this.onPreviewKeyEvent { ke ->
         if (ke.type == KeyEventType.KeyDown && ke.key == key) {
             runCatching { target.requestFocus() }.isSuccess
+        } else false
+    }
+}
+
+/**
+ * 跟 [keyFocusJump] 一樣是「按↓跳到 [target]」,但 [target] 可能在畫面下方還沒 compose(例如整頁卡片
+ * 下面的分頁、內層分頁下面的外層分頁)。直接 requestFocus 會失敗 → 改成「先 [scrollToTarget] 把它捲進畫面、
+ * 等一格 frame 畫出來、再 requestFocus(包 runCatching)」。一律消費↓事件(避免又被正常空間搜尋帶去上一頁)。
+ *
+ * [scope] 用呼叫端的 rememberCoroutineScope;[scrollToTarget] 例如 gridState.animateScrollToItem(footerIndex)。
+ */
+fun Modifier.keyScrollFocus(
+    scope: CoroutineScope,
+    target: FocusRequester?,
+    scrollToTarget: suspend () -> Unit,
+): Modifier {
+    if (target == null) return this
+    return this.onPreviewKeyEvent { ke ->
+        if (ke.type == KeyEventType.KeyDown && ke.key == Key.DirectionDown) {
+            scope.launch {
+                scrollToTarget()
+                delay(50)
+                runCatching { target.requestFocus() }
+            }
+            true
         } else false
     }
 }
