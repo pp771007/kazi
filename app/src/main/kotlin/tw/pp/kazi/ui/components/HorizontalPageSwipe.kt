@@ -73,11 +73,12 @@ fun HorizontalPageSwipe(
 
     fun finishDrag(velocity: Float) {
         val o = offsetX
-        // 快速一甩(velocity 過門檻、且有移動一點)也算,不必拖滿距離
-        val flick = abs(velocity) >= FLICK_VELOCITY && abs(o) > widthPx * 0.04f
+        // 換頁方向「只看拖到哪邊(位移正負)」決定;速度只在「跟拖動同方向」時幫忙降門檻。
+        // → 結尾往回的小回甩不會把它取消或翻錯邊(修「往右滑結尾左回一點就被取消」)。
+        val movedEnough = abs(o) > widthPx * 0.04f
         when {
-            (o <= -commitPx || (flick && velocity < 0)) && canNext -> { onNext(); offsetX = 0f }
-            (o >= commitPx || (flick && velocity > 0)) && canPrev -> { onPrev(); offsetX = 0f }
+            o < 0f && canNext && (o <= -commitPx || (velocity <= -FLICK_VELOCITY && movedEnough)) -> { onNext(); offsetX = 0f }
+            o > 0f && canPrev && (o >= commitPx || (velocity >= FLICK_VELOCITY && movedEnough)) -> { onPrev(); offsetX = 0f }
             else -> scope.launch { animate(o, 0f, animationSpec = spring()) { v, _ -> offsetX = v } }
         }
     }
