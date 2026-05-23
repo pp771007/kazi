@@ -91,7 +91,7 @@ fun HistoryScreen() {
         onBack = { nav.popBackStack() },
         trailing = {
                 AppButton(
-                    text = if (checking) "檢查中" else "檢查更新",
+                    text = if (checking) "檢查中" else "檢查影片更新",
                     icon = Icons.Filled.Refresh,
                     iconOnly = compact,
                     onClick = {

@@ -278,7 +278,17 @@ private fun AddSiteCard(
     onAdd: () -> Unit,
     onScan: () -> Unit,
 ) {
-    SectionHeader(title = "新增站點")
+    SectionHeader(
+        title = "新增站點",
+        action = {
+            AppButton(
+                text = "掃描站台",
+                icon = Icons.Filled.TravelExplore,
+                onClick = onScan,
+                primary = false,
+            )
+        },
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -306,15 +316,7 @@ private fun AddSiteCard(
         successMsg?.let {
             Text(it, color = AppColors.Success, style = MaterialTheme.typography.bodySmall)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AppButton(text = "新增", icon = Icons.Filled.Add, onClick = onAdd)
-            AppButton(
-                text = "掃描站台",
-                icon = Icons.Filled.TravelExplore,
-                onClick = onScan,
-                primary = false,
-            )
-        }
+        AppButton(text = "新增", icon = Icons.Filled.Add, onClick = onAdd)
     }
 }
 
@@ -347,7 +349,7 @@ private fun BatchOpsCard(
             onToggle = onToggleInclude,
         )
         AppButton(
-            text = if (batchChecking) "並行檢查中⋯" else "檢查所有站點",
+            text = if (batchChecking) "並行檢查中⋯" else "檢查所有站點是否存活",
             icon = Icons.Filled.HealthAndSafety,
             onClick = onCheckAll,
             enabled = !batchChecking && sitesEnabled,
