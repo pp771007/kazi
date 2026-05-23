@@ -403,46 +403,6 @@ fun HomeScreen() {
             )
         },
         onBack = null,
-        // 站點 / 分類列接進 header → 跟頂列一起隨捲動收合,內容區更大。只在有可用站台時顯示。
-        subHeader = {
-            if (sitesLoaded && enabledSites.isNotEmpty()) {
-                SiteStrip(
-                    sites = enabledSites,
-                    selected = selectedSite,
-                    onPick = { picked ->
-                        if (picked.id == selectedSite?.id) return@SiteStrip
-                        selectedSite = picked
-                        categories = emptyList()
-                        selectedCategory = null
-                        page = 1
-                        pendingContentFocus = true
-                        scope.launch { categoryStripState.scrollToItem(0) }
-                    },
-                    windowSize = windowSize,
-                    listState = siteStripState,
-                    selectedFocus = siteStripFocus,
-                    downTarget = siteStripDown,
-                    upTarget = siteStripUp,
-                )
-                if (categories.isNotEmpty()) {
-                    CategoryStrip(
-                        categories = categories,
-                        selected = selectedCategory,
-                        onPick = {
-                            if (it?.typeId == selectedCategory?.typeId) return@CategoryStrip
-                            selectedCategory = it
-                            page = 1
-                            pendingContentFocus = true
-                        },
-                        windowSize = windowSize,
-                        listState = categoryStripState,
-                        selectedFocus = categoryStripFocus,
-                        downTarget = categoryStripDown,
-                        upTarget = categoryStripUp,
-                    )
-                }
-            }
-        },
     ) { innerPadding ->
         PullToRefreshBoxIfCompact(
             isRefreshing = loading,
@@ -475,7 +435,48 @@ fun HomeScreen() {
                 return@Column
             }
 
-            // 站點 / 分類列已移到 header（subHeader），跟頂列一起收合，不再佔住內容區
+            // 站點 / 類別 strip 固定釘在頂部，不再隨 loading / showVideos 切換在「grid header」跟
+            // 「直接 Column 子層」之間搬家。原本搬家會把 SiteStrip 卸載再重掛，剛點過的 site tag
+            // 失去 focus，Compose 把焦點 fallback 到 top bar 的「無痕」按鈕。
+            SiteStrip(
+                sites = enabledSites,
+                selected = selectedSite,
+                onPick = { picked ->
+                    // 點到當前站台 no-op；不然命令式清掉 categories 但 LaunchedEffect
+                    // 沒任何 key 改變不會 re-fire，類別列表會永久消失
+                    if (picked.id == selectedSite?.id) return@SiteStrip
+                    selectedSite = picked
+                    categories = emptyList()
+                    selectedCategory = null
+                    page = 1
+                    pendingContentFocus = true
+                    // 切站 → 分類列表會被換掉，舊的捲動位置在新的列表上沒意義，回到開頭
+                    scope.launch { categoryStripState.scrollToItem(0) }
+                },
+                windowSize = windowSize,
+                listState = siteStripState,
+                selectedFocus = siteStripFocus,
+                downTarget = siteStripDown,
+                upTarget = siteStripUp,
+            )
+            if (categories.isNotEmpty()) {
+                CategoryStrip(
+                    categories = categories,
+                    selected = selectedCategory,
+                    onPick = {
+                        if (it?.typeId == selectedCategory?.typeId) return@CategoryStrip
+                        selectedCategory = it
+                        page = 1
+                        pendingContentFocus = true
+                    },
+                    windowSize = windowSize,
+                    listState = categoryStripState,
+                    selectedFocus = categoryStripFocus,
+                    downTarget = categoryStripDown,
+                    upTarget = categoryStripUp,
+                )
+            }
+
             val err = errorMsg
             Box(modifier = Modifier.weight(1f)) {
                 when {
