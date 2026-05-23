@@ -51,6 +51,7 @@ import tw.pp.kazi.data.ApiResult
 import tw.pp.kazi.data.FavoriteItem
 import tw.pp.kazi.data.HistoryConfig
 import tw.pp.kazi.data.HistoryItem
+import tw.pp.kazi.data.PosterConfig
 import tw.pp.kazi.data.Site
 import tw.pp.kazi.data.VideoDetails
 import tw.pp.kazi.ui.LocalAppContainer
@@ -479,13 +480,26 @@ private fun CompactLayout(
                     ),
             ) {
                 if (v.vodPic.isNotBlank()) {
+                    // 不裁切 + 同圖模糊放大墊底（跟首頁海報同款顯示方式）
+                    val blurRequest = remember(v.vodPic) {
+                        ImageRequest.Builder(context).data(v.vodPic)
+                            .size(PosterConfig.BLUR_BG_DECODE_PX, PosterConfig.BLUR_BG_DECODE_PX)
+                            .crossfade(false).build()
+                    }
+                    AsyncImage(
+                        model = blurRequest,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Box(Modifier.fillMaxSize().background(Color(0x40000000)))
                     val imageRequest = remember(v.vodPic) {
                         ImageRequest.Builder(context).data(v.vodPic).crossfade(true).build()
                     }
                     AsyncImage(
                         model = imageRequest,
                         contentDescription = v.vodName,
-                        contentScale = ContentScale.Crop,
+                        contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -719,13 +733,26 @@ private fun WideLayout(
                 contentAlignment = Alignment.Center,
             ) {
                 if (v.vodPic.isNotBlank()) {
+                    // 不裁切 + 同圖模糊放大墊底（跟首頁海報同款顯示方式）
+                    val blurRequest = remember(v.vodPic) {
+                        ImageRequest.Builder(context).data(v.vodPic)
+                            .size(PosterConfig.BLUR_BG_DECODE_PX, PosterConfig.BLUR_BG_DECODE_PX)
+                            .crossfade(false).build()
+                    }
+                    AsyncImage(
+                        model = blurRequest,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Box(Modifier.fillMaxSize().background(Color(0x40000000)))
                     val imageRequest = remember(v.vodPic) {
                         ImageRequest.Builder(context).data(v.vodPic).crossfade(true).build()
                     }
                     AsyncImage(
                         model = imageRequest,
                         contentDescription = v.vodName,
-                        contentScale = ContentScale.Crop,
+                        contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
