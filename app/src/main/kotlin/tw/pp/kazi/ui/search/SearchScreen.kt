@@ -71,7 +71,6 @@ import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.data.PosterConfig
 import tw.pp.kazi.ui.GridLayout
-import tw.pp.kazi.ui.keyFocusJump
 import tw.pp.kazi.ui.keyScrollFocus
 import tw.pp.kazi.ui.posterLayoutFor
 import tw.pp.kazi.ui.components.AppButton
@@ -854,11 +853,10 @@ private fun SiteSelector(
     // 對端剛好是 firstSelected 那顆時就請求 firstSelectedFocus，否則用 first/last 的 anchor。
     val cycleTargetForFirst = if (lastId != null && lastId == firstSelectedId) firstSelectedFocus else lastSiteFocus
     val cycleTargetForLast = if (firstId != null && firstId == firstSelectedId) firstSelectedFocus else firstSiteFocus
-    // 「站點數 / 全選 / 全不選」這排在 chip 上面;從這排按↓,空間搜尋會跳過 chip。用 keyFocusJump 直接跳到第一顆 chip。
-    val chipDownMod = Modifier.keyFocusJump(
-        Key.DirectionDown,
-        if (firstSelectedId != null) firstSelectedFocus else firstSiteFocus,
-    )
+    // 「站點數 / 全選 / 全不選」這排在 chip 上面;從這排按↓,空間搜尋會跳過 chip。
+    // 跟分頁同一套「先確認顯示再 focus」:先把 chip 列捲到第一顆、再 focus(雖然第一顆通常本就可見)。
+    val chipTarget = if (firstId != null && firstId == firstSelectedId) firstSelectedFocus else firstSiteFocus
+    val chipDownMod = Modifier.keyScrollFocus(scope, chipTarget) { listState.animateScrollToItem(0) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
