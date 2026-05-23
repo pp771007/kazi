@@ -35,7 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
@@ -72,6 +71,7 @@ import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.WindowSize
 import tw.pp.kazi.data.PosterConfig
 import tw.pp.kazi.ui.GridLayout
+import tw.pp.kazi.ui.enterFocusOn
 import tw.pp.kazi.ui.posterLayoutFor
 import tw.pp.kazi.ui.components.AppButton
 import tw.pp.kazi.ui.components.EmptyState
@@ -155,10 +155,6 @@ fun SearchScreen(
     var pageCount by searchSnap.state("pageCount") { 1 }
     var lastClickedAggName by searchSnap.state<String?>("lastClickedAggName") { null }
     val focusRequester = remember { FocusRequester() }
-    // 電視盒 D-pad：搜尋框↓固定落到「站點 chip / 站台選擇」這一列的進入點，避免跳過它
-    val selectorRowFocus = remember { FocusRequester() }
-    // 「最近搜尋」這一列的進入點：chip↓ 落到這、這列↑ 回 chip（避免↑時跳過 chip 直接回搜尋框）
-    val historyRowFocus = remember { FocusRequester() }
     val firstResultFocus = remember { FocusRequester() }
     val clickedResultFocus = remember { FocusRequester() }
     // 進畫面那一瞬間的值即「上次點過的卡」；之後 onClick 會更新成新值，
@@ -398,20 +394,12 @@ fun SearchScreen(
                     focusRequester = focusRequester,
                     compact = windowSize.isCompact,
                     incognito = incognito,
-                    downTarget = if (windowSize.isTv) selectorRowFocus else null,
                 )
                 if (parsedQuery.excludes.isNotEmpty()) {
                     ExcludeHint(parsedQuery.excludes)
                 }
-                // 站點選擇這一列的「進入點」：搜尋框↓會落到這裡，↑回搜尋框，↓再往下到「最近搜尋」（有的話）
-                val hasHistory = settings.searchHistory.isNotEmpty()
-                val selectorEntryMod = if (windowSize.isTv) {
-                    Modifier.focusRequester(selectorRowFocus).focusProperties {
-                        up = focusRequester
-                        if (hasHistory) down = historyRowFocus
-                    }
-                } else Modifier
-                // 站台選擇一律展開（不再有收合 chip）：進搜尋頁就能直接挑站台，少一層展開操作
+                // 站台選擇一律展開（不再有收合 chip）：進搜尋頁就能直接挑站台，少一層展開操作。
+                // 列間上下移動交給框架空間搜尋（chip LazyRow 自帶 focusGroup），不手動指落點。
                 SiteSelector(
                     sites = enabledSites,
                     selected = selectedIds,
@@ -420,15 +408,10 @@ fun SearchScreen(
                     },
                     onSelectAll = { selectedIds = enabledSites.map { s -> s.id }.toSet() },
                     onSelectNone = { selectedIds = emptySet() },
-                    entryModifier = selectorEntryMod,
                 )
                 // 最近搜尋 pills 一律放外面，搜過 / 沒搜過都看得到
                 if (settings.searchHistory.isNotEmpty()) {
                     HistoryPills(
-                        entryModifier = if (windowSize.isTv) {
-                            Modifier.focusRequester(historyRowFocus)
-                                .focusProperties { up = selectorRowFocus }
-                        } else Modifier,
                         items = settings.searchHistory,
                         onPick = { kw ->
                             // 點 pill 時把 IME 收起來（電視盒上 BasicTextField 會被 focus 到，不收會彈鍵盤）
@@ -641,14 +624,18 @@ private fun SearchField(
     focusRequester: FocusRequester,
     compact: Boolean,
     incognito: Boolean,
-    // 電視盒 D-pad：搜尋框這一列按↓固定 focus 到下一列（站點 chip / 站台選擇），
-    // 不交給 Compose 的空間搜尋自己猜 — 不然站在靠右的「搜尋」鈕按↓會跳過靠左的 chip 直接到第三列
-    downTarget: FocusRequester? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val downMod = if (downTarget != null) Modifier.focusProperties { down = downTarget } else Modifier
+    val focusManager = LocalFocusManager.current
+    // BasicTextField 會吃掉方向鍵(游標移動),按↓不會自己往下換列 → 卡在搜尋框。
+    // 攔↓改叫 focusManager.moveFocus(Down):交給框架找下面那列(不寫死落點),這樣才能離開搜尋框。
+    val releaseDownMod = Modifier.onPreviewKeyEvent { ke ->
+        if (ke.type == KeyEventType.KeyDown && ke.key == Key.DirectionDown) {
+            focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+        } else false
+    }
 
     // 用 TextFieldValue 自己管 selection（String overload 控不了游標位置）。
     // 對外仍維持 String API：value 是 source of truth，內部只是多帶一個 selection。
@@ -702,7 +689,7 @@ private fun SearchField(
                     ),
                     keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
                     interactionSource = interaction,
-                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).then(downMod),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).then(releaseDownMod),
                     decorationBox = { inner ->
                         if (value.isEmpty()) {
                             Text(
@@ -728,7 +715,6 @@ private fun SearchField(
                             if (clearFocused) AppColors.FocusRing else Color.Transparent,
                             RoundedCornerShape(999.dp),
                         )
-                        .then(downMod)
                         .focusable(interactionSource = clearInteraction)
                         .clickable(interactionSource = clearInteraction, indication = null) {
                             onChange("")
@@ -770,7 +756,9 @@ private fun SearchField(
             }
         }
     } else {
+        // 進到這一列(從上面 top bar↓ / 從下面站台列↑)固定停在搜尋框,跟分頁固定停下一頁同一套做法
         Row(
+            modifier = Modifier.enterFocusOn(focusRequester),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -781,13 +769,11 @@ private fun SearchField(
                 onClick = onToSimplified,
                 enabled = value.isNotBlank(),
                 primary = false,
-                modifier = downMod,
             )
             AppButton(
                 text = "搜尋",
                 icon = Icons.Filled.Search,
                 onClick = onSubmit,
-                modifier = downMod,
             )
             trailing?.invoke(this)
         }
