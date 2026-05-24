@@ -169,6 +169,8 @@ class AppContainer(private val context: Context) {
                 siteRepository = siteRepository,
                 onRemoteSearch = { req -> submitRemoteSearch(req) },
                 appContext = appContext,
+                currentSyncUrl = { configRepository.settings.value.syncServerUrl },
+                saveSync = { url, pw -> saveAndTestSync(url, pw) },
             )
             if (s.safeStart()) s else null
         }

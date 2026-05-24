@@ -26,6 +26,9 @@ class LanServer(
     private val siteRepository: SiteRepository,
     private val onRemoteSearch: (RemoteSearchRequest) -> Boolean,
     private val appContext: Context,
+    // 帳號同步:讀目前伺服器網址(預填面板)、存設定並測試登入(回傳是否成功)
+    private val currentSyncUrl: () -> String = { "" },
+    private val saveSync: suspend (String, String) -> Boolean = { _, _ -> false },
 ) : NanoHTTPD(port) {
 
     // 注意：handler 內呼叫的 SiteRepository.* 都是 suspend + 自帶 mutex，
@@ -56,6 +59,8 @@ class LanServer(
                 uri == PATH_API_SITES_IMPORT && method == Method.POST -> importSites(session)
                 uri == PATH_API_REMOTE_SEARCH && method == Method.POST -> remoteSearch(session)
                 uri == PATH_API_T2S && method == Method.POST -> t2s(session)
+                uri == PATH_API_SYNC && method == Method.GET -> syncConfig()
+                uri == PATH_API_SYNC && method == Method.POST -> saveSyncConfig(session)
                 uri.startsWith(PATH_API_SITE_PREFIX) && uri.endsWith(PATH_MOVE_SUFFIX) -> moveSite(session)
                 uri.startsWith(PATH_API_SITE_PREFIX) && method == Method.DELETE -> deleteSite(session)
                 uri.startsWith(PATH_API_SITE_PREFIX) && method == Method.PUT -> updateSite(session)
@@ -71,6 +76,27 @@ class LanServer(
                 put("message", e.message ?: "Unknown error")
             })
         }
+    }
+
+    private fun syncConfig(): Response {
+        val url = currentSyncUrl()
+        return jsonResponse(Response.Status.OK, buildJsonObject {
+            put("configured", url.isNotBlank())
+            put("url", url)
+        })
+    }
+
+    private fun saveSyncConfig(session: IHTTPSession): Response = runBlocking {
+        val body = readBody(session)
+        val obj = parseJsonObject(body) ?: return@runBlocking badRequest("Invalid JSON")
+        val url = (obj["url"] as? JsonPrimitive)?.content?.trim().orEmpty()
+        val pw = (obj["password"] as? JsonPrimitive)?.content.orEmpty()
+        if (url.isBlank() || pw.isBlank()) return@runBlocking badRequest("網址與密碼都要填")
+        val ok = saveSync(url, pw)
+        jsonResponse(if (ok) Response.Status.OK else Response.Status.BAD_REQUEST, buildJsonObject {
+            put("status", if (ok) STATUS_SUCCESS else STATUS_ERROR)
+            put("message", if (ok) "已連線,開始同步" else "登入失敗,請確認網址與密碼")
+        })
     }
 
     private fun listSites(): Response {
@@ -250,6 +276,7 @@ class LanServer(
         private const val PATH_API_SITES_IMPORT = "/api/sites/import"
         private const val PATH_API_REMOTE_SEARCH = "/api/remote_search"
         private const val PATH_API_T2S = "/api/t2s"
+        private const val PATH_API_SYNC = "/api/sync"
         private const val PATH_API_SITE_PREFIX = "/api/sites/"
         private const val PATH_MOVE_SUFFIX = "/move"
 
@@ -405,6 +432,7 @@ class LanServer(
   <button class="tab active" data-tab="search">📱 遠端搜尋</button>
   <button class="tab" data-tab="import">📥 匯入站點</button>
   <button class="tab" data-tab="sites">⚙️ 站點管理</button>
+  <button class="tab" data-tab="sync">🔄 同步</button>
 </div>
 
 <div id="panel-search" class="panel active">
@@ -467,6 +495,24 @@ class LanServer(
   </div>
 </div>
 
+<div id="panel-sync" class="panel">
+  <div class="hero">
+    <h2>帳號同步設定</h2>
+    <p>填你的網頁版網址 + 密碼,觀看歷史與收藏就會跟網頁、其他裝置同步(在這裡打字比用遙控器方便)</p>
+  </div>
+  <div class="card">
+    <label>伺服器網址</label>
+    <div class="input-with-clear">
+      <input id="syncUrl" type="text" placeholder="https://你的網址.vercel.app" autocapitalize="off" autocomplete="off" oninput="updateClearBtn(this)">
+      <button class="clear-btn" onclick="clearInput('syncUrl')" title="清空" tabindex="-1">✕</button>
+    </div>
+    <label style="margin-top:12px">密碼</label>
+    <input id="syncPw" type="password" placeholder="網頁登入密碼" autocomplete="off">
+    <button onclick="saveSync()" id="syncBtn" style="width:100%; margin-top:14px">💾 儲存並測試連線</button>
+    <div id="syncMsg" class="err"></div>
+  </div>
+</div>
+
 <div id="panel-sites" class="panel">
   <div class="card">
     <label>站點 URL</label>
@@ -523,6 +569,25 @@ document.querySelectorAll('.tab').forEach(t => {
 
 const recentKw = JSON.parse(localStorage.getItem('maccms_recent_kw') || '[]');
 let lastSites = [];
+loadSync();
+
+async function loadSync(){
+  const r = await api('/api/sync');
+  if (r.ok && r.data && r.data.url) document.getElementById('syncUrl').value = r.data.url;
+}
+async function saveSync(){
+  const url = document.getElementById('syncUrl').value.trim();
+  const pw = document.getElementById('syncPw').value;
+  const msg = document.getElementById('syncMsg');
+  const btn = document.getElementById('syncBtn');
+  if (!url || !pw){ msg.style.color='#f87171'; msg.textContent='網址與密碼都要填'; return; }
+  btn.disabled = true; btn.textContent = '連線中…'; msg.textContent='';
+  const r = await api('/api/sync', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url:url, password:pw}) });
+  btn.disabled = false; btn.textContent = '💾 儲存並測試連線';
+  const ok = r.ok && r.data && r.data.status === 'success';
+  msg.style.color = ok ? '#4ade80' : '#f87171';
+  msg.textContent = (r.data && r.data.message) || (ok ? '已連線' : '失敗');
+}
 
 async function api(path, opts){
   const r = await fetch(path, opts);
