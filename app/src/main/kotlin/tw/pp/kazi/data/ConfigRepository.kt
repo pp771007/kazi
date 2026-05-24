@@ -26,7 +26,12 @@ data class AppSettings(
     val lanShareEnabled: Boolean = false,
     val incognitoMode: Boolean = false,
     val searchHistory: List<String> = emptyList(),
+    // 帳號同步:連到 maccms-parser 伺服器,歷史/收藏跨裝置共用。空字串=未設定。
+    val syncServerUrl: String = "",
+    val syncPassword: String = "",
 ) {
+    val syncEnabled: Boolean get() = syncServerUrl.isNotBlank() && syncPassword.isNotBlank()
+
     companion object {
         const val DEFAULT_SITE_TITLE = "咔滋影院"
         const val DEFAULT_TIMEOUT_SECONDS = 8
@@ -62,6 +67,8 @@ class ConfigRepository(context: Context) {
                 incognitoMode = (obj[ConfigKeys.INCOGNITO_MODE] as? JsonPrimitive)?.booleanOrNull
                     ?: false,
                 searchHistory = history,
+                syncServerUrl = (obj[ConfigKeys.SYNC_SERVER_URL] as? JsonPrimitive)?.content ?: "",
+                syncPassword = (obj[ConfigKeys.SYNC_PASSWORD] as? JsonPrimitive)?.content ?: "",
             )
         }
     }
@@ -74,6 +81,10 @@ class ConfigRepository(context: Context) {
 
     suspend fun updateSiteTitle(title: String) = update {
         it.copy(siteTitle = title.ifBlank { AppSettings.DEFAULT_SITE_TITLE })
+    }
+
+    suspend fun updateSyncServer(url: String, password: String) = update {
+        it.copy(syncServerUrl = url.trim(), syncPassword = password)
     }
 
     suspend fun addSearchKeyword(keyword: String) {
@@ -110,6 +121,8 @@ class ConfigRepository(context: Context) {
                 ConfigKeys.SEARCH_HISTORY to AppJson.parseToJsonElement(
                     AppJson.encodeToString(stringListSerializer, settings.searchHistory)
                 ),
+                ConfigKeys.SYNC_SERVER_URL to JsonPrimitive(settings.syncServerUrl),
+                ConfigKeys.SYNC_PASSWORD to JsonPrimitive(settings.syncPassword),
             )
         )
         configFile.atomicWriteText(AppJson.encodeToString(JsonObject.serializer(), obj))

@@ -60,6 +60,15 @@ class HistoryRepository(context: Context) {
         }
     }
 
+    // 同步合併後整批覆寫
+    suspend fun replaceAll(items: List<HistoryItem>) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val updated = items.sortedByDescending { it.updatedAt }.take(HistoryConfig.MAX_ITEMS)
+            _items.value = updated
+            persist(updated)
+        }
+    }
+
     suspend fun markUpdateStatus(videoId: Long, siteId: Long, totalEpisodes: Int) =
         withContext(Dispatchers.IO) {
             mutex.withLock {

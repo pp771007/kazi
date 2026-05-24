@@ -123,4 +123,6 @@ object ConfigKeys {
     const val LAN_SHARE_ENABLED = "lan_share_enabled"
     const val INCOGNITO_MODE = "incognito_mode"
     const val SEARCH_HISTORY = "search_history"
+    const val SYNC_SERVER_URL = "sync_server_url"
+    const val SYNC_PASSWORD = "sync_password"
 }

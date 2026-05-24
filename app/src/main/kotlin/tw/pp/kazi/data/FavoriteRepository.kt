@@ -68,6 +68,15 @@ class FavoriteRepository(context: Context) {
         }
     }
 
+    // 同步合併後整批覆寫
+    suspend fun replaceAll(items: List<FavoriteItem>) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val updated = items.sortedByDescending { it.addedAt }.take(FavoriteConfig.MAX_ITEMS)
+            _items.value = updated
+            persist(updated)
+        }
+    }
+
     private fun persist(items: List<FavoriteItem>) {
         file.atomicWriteText(AppJson.encodeToString(listSerializer, items))
     }

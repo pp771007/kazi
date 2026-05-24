@@ -57,6 +57,9 @@ class AppContainer(private val context: Context) {
     val favoriteRepository = tw.pp.kazi.data.FavoriteRepository(context)
     val macCmsApi = MacCmsApi()
     val siteScanner = SiteScanner(macCmsApi)
+    val syncManager = tw.pp.kazi.data.SyncManager(
+        configRepository, historyRepository, favoriteRepository, siteRepository, appScope,
+    )
 
     private var lanServer: LanServer? = null
     private var lanNetworkCallback: ConnectivityManager.NetworkCallback? = null
@@ -144,6 +147,15 @@ class AppContainer(private val context: Context) {
             UpdateChecker.cleanupCache(appContext)
         }
         if (configRepository.settings.value.lanShareEnabled) startLan()
+        syncManager.start() // 內部會檢查是否已設定同步伺服器
+    }
+
+    /** 設定頁 / 遠端遙控用:存同步伺服器設定並測試登入;成功就立刻開始同步。回傳是否登入成功。 */
+    suspend fun saveAndTestSync(url: String, password: String): Boolean {
+        configRepository.updateSyncServer(url, password)
+        val ok = syncManager.testLogin()
+        if (ok) syncManager.start()
+        return ok
     }
 
     fun startLan(): Boolean {
