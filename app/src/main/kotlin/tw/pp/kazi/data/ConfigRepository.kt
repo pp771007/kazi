@@ -93,7 +93,7 @@ class ConfigRepository(context: Context) {
 
     suspend fun updateSyncServer(url: String, password: String) = update {
         // 換伺服器/密碼 = 可能換帳號,清掉舊 token/暱稱/時間,等重新綁定
-        it.copy(syncServerUrl = url.trim(), syncPassword = password, syncToken = "", syncNickname = "", syncLastSyncAt = 0)
+        it.copy(syncServerUrl = normalizeServerUrl(url), syncPassword = password, syncToken = "", syncNickname = "", syncLastSyncAt = 0)
     }
 
     /** 用密碼換到 token 後:存 token、清掉不再需要的密碼。 */
@@ -158,5 +158,25 @@ class ConfigRepository(context: Context) {
     companion object {
         const val DATA_DIR_NAME = "data"
         const val CONFIG_FILE_NAME = "config.json"
+
+        /**
+         * 同步伺服器網址正規化:只留 origin(scheme://host[:port]),丟掉 /profile 這種路徑與 query。
+         * 沒填協定時補 https://。解析失敗就退回原字串去尾斜線。
+         * 例:"https://x.vercel.app/profile" → "https://x.vercel.app";"192.168.0.5:5000/a" → "https://..." 由解析決定。
+         */
+        fun normalizeServerUrl(input: String): String {
+            var s = input.trim()
+            if (s.isEmpty()) return ""
+            if (!s.startsWith("http://", true) && !s.startsWith("https://", true)) s = "https://$s"
+            return try {
+                val u = java.net.URI(s)
+                val host = u.host ?: return s.trimEnd('/')
+                val scheme = (u.scheme ?: "https").lowercase()
+                val port = if (u.port != -1) ":${u.port}" else ""
+                "$scheme://$host$port"
+            } catch (e: Exception) {
+                s.trimEnd('/')
+            }
+        }
     }
 }
