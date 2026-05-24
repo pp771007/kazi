@@ -36,6 +36,8 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
+import kotlinx.coroutines.launch
+
 private const val GITHUB_REPO_URL = "https://github.com/pp771007/kazi"
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -46,6 +48,8 @@ fun SettingsScreen() {
     val windowSize = LocalWindowSize.current
     val context = LocalContext.current
     val sites by container.siteRepository.sites.collectAsState()
+    val settings by container.configRepository.settings.collectAsState()
+    var syncMsg by remember { mutableStateOf<String?>(null) }
 
     // 進設定頁預設 focus 到「站點管理」(主要操作)；不要讓 UpdateSection 預設搶走 focus。
     // 只在 TV 跑：手機觸控不需要 visible focus 起點
@@ -83,6 +87,36 @@ fun SettingsScreen() {
                     onClick = { nav.navigate(Routes.Setup) },
                     modifier = Modifier.focusRequester(siteManagementFocus),
                 )
+            }
+
+            Card {
+                SectionHeader(title = "帳號同步")
+                if (settings.syncEnabled) {
+                    Text(
+                        "已連線:${settings.syncServerUrl}",
+                        color = AppColors.OnBgMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    AppButton(
+                        text = syncMsg ?: "立即同步",
+                        icon = Icons.Filled.Sync,
+                        primary = false,
+                        onClick = {
+                            syncMsg = "同步中…"
+                            container.appScope.launch {
+                                val ok = container.syncManager.sync()
+                                syncMsg = if (ok) "已同步" else "同步失敗,請檢查設定"
+                            }
+                        },
+                    )
+                } else {
+                    Text(
+                        "尚未設定。開啟「區網分享」後,用手機瀏覽器進控制台的「🔄 同步」分頁,輸入網頁版網址 + 密碼即可。歷史與收藏會跨裝置同步。",
+                        color = AppColors.OnBgMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
 
             // 「關於」放在「疑難排解」前面：原本 UpdateSection（檢查更新）放在最底下，按下檢查
