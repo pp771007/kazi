@@ -20,15 +20,31 @@ class FavoriteRepository(context: Context) {
     private val mutex = Mutex()
     private val listSerializer = ListSerializer(FavoriteItem.serializer())
 
+    // _all = 含墓碑的完整清單(持久化 + 同步用);items = 只有未刪的(給 UI)
+    private val _all = MutableStateFlow<List<FavoriteItem>>(emptyList())
+    val allItems: StateFlow<List<FavoriteItem>> = _all.asStateFlow()
     private val _items = MutableStateFlow<List<FavoriteItem>>(emptyList())
     val items: StateFlow<List<FavoriteItem>> = _items.asStateFlow()
 
     suspend fun load() = withContext(Dispatchers.IO) {
         mutex.withLock {
-            _items.value = file.readJsonOrBackup(fallback = { emptyList() }) {
+            val loaded = file.readJsonOrBackup(fallback = { emptyList() }) {
                 AppJson.decodeFromString(listSerializer, it)
-            }.sortedByDescending { it.addedAt }
+            }
+            setAll(loaded)
         }
+    }
+
+    private fun setAll(list: List<FavoriteItem>) {
+        val now = System.currentTimeMillis()
+        val active = list.filter { it.deletedAt == 0L }
+            .sortedByDescending { it.addedAt }
+            .take(FavoriteConfig.MAX_ITEMS)
+        val tombstones = list.filter { it.deletedAt > 0L && it.deletedAt > now - TOMBSTONE_TTL_MS }
+        val combined = active + tombstones
+        _all.value = combined
+        _items.value = active
+        persist(combined)
     }
 
     fun isFavorite(videoId: Long, siteId: Long): Boolean =
@@ -36,45 +52,43 @@ class FavoriteRepository(context: Context) {
 
     suspend fun toggle(item: FavoriteItem): Boolean = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val existing = _items.value.firstOrNull {
-                it.videoId == item.videoId && it.siteId == item.siteId
-            }
+            val isActive = _items.value.any { it.videoId == item.videoId && it.siteId == item.siteId }
+            val others = _all.value.filterNot { it.videoId == item.videoId && it.siteId == item.siteId }
             val nowFavorite: Boolean
-            val updated = if (existing != null) {
+            if (isActive) {
+                // 取消收藏 = 留一個墓碑跟著同步
                 nowFavorite = false
-                _items.value.filterNot { it.videoId == item.videoId && it.siteId == item.siteId }
+                setAll(others + item.copy(deletedAt = System.currentTimeMillis()))
             } else {
+                // 收藏(可能是之前刪過的,直接以新的 active 蓋過去)
                 nowFavorite = true
-                (listOf(item) + _items.value).take(FavoriteConfig.MAX_ITEMS)
+                setAll(listOf(item.copy(deletedAt = 0)) + others)
             }
-            _items.value = updated
-            persist(updated)
             nowFavorite
         }
     }
 
     suspend fun remove(videoId: Long, siteId: Long) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val updated = _items.value.filterNot { it.videoId == videoId && it.siteId == siteId }
-            _items.value = updated
-            persist(updated)
+            val now = System.currentTimeMillis()
+            val updated = _all.value.map {
+                if (it.videoId == videoId && it.siteId == siteId) it.copy(deletedAt = now) else it
+            }
+            setAll(updated)
         }
     }
 
     suspend fun clear() = withContext(Dispatchers.IO) {
         mutex.withLock {
-            _items.value = emptyList()
-            persist(emptyList())
+            val now = System.currentTimeMillis()
+            val updated = _all.value.map { if (it.deletedAt == 0L) it.copy(deletedAt = now) else it }
+            setAll(updated)
         }
     }
 
-    // 同步合併後整批覆寫
+    // 同步合併後整批覆寫(含墓碑)
     suspend fun replaceAll(items: List<FavoriteItem>) = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            val updated = items.sortedByDescending { it.addedAt }.take(FavoriteConfig.MAX_ITEMS)
-            _items.value = updated
-            persist(updated)
-        }
+        mutex.withLock { setAll(items) }
     }
 
     private fun persist(items: List<FavoriteItem>) {

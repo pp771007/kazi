@@ -110,6 +110,7 @@ data class FavoriteItem(
     val siteName: String,
     val siteUrl: String,
     val addedAt: Long = System.currentTimeMillis(),
+    val deletedAt: Long = 0,  // 軟刪墓碑:>0 = 已刪(時間戳),跟著同步讓刪除跨裝置生效;0 = 正常
 )
 
 @Serializable
@@ -129,6 +130,7 @@ data class HistoryItem(
     val updatedAt: Long = System.currentTimeMillis(),
     val hasUpdate: Boolean = false,
     val newEpisodesCount: Int = 0,
+    val deletedAt: Long = 0,  // 軟刪墓碑:>0 = 已刪(時間戳),跟著同步讓刪除跨裝置生效;0 = 正常
 )
 
 sealed class ApiResult<out T> {

@@ -47,6 +47,9 @@ object FavoriteConfig {
     const val MAX_ITEMS = 500
 }
 
+// 軟刪墓碑保留時間:刪除標記跟著同步,超過這時間就清掉(所有裝置早該同步到了)
+const val TOMBSTONE_TTL_MS = 30L * 24 * 60 * 60 * 1000  // 30 天
+
 object PlayerConfig {
     const val SEEK_STEP_MS = 10_000L
     const val SEEK_STEP_LONG_MS = 60_000L

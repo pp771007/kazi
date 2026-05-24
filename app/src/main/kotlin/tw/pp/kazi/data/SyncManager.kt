@@ -58,8 +58,9 @@ class SyncManager(
         scope.launch { sync() }
         if (started) return
         started = true
-        scope.launch { history.items.drop(1).collect { schedulePush() } }
-        scope.launch { favorites.items.drop(1).collect { schedulePush() } }
+        // 收 allItems(含墓碑)→ 軟刪也算變動、會觸發推送
+        scope.launch { history.allItems.drop(1).collect { schedulePush() } }
+        scope.launch { favorites.allItems.drop(1).collect { schedulePush() } }
     }
 
     private fun schedulePush() {
@@ -107,14 +108,15 @@ class SyncManager(
 
             val remoteHist = authedGet("$base/api/history", t)?.let { parseHistory(it) }
             if (remoteHist != null) {
-                val merged = mergeByKey(history.items.value, remoteHist, { "${it.videoId}|${it.siteUrl}" }, { it.updatedAt })
+                // 用 allItems(含墓碑)合併;有效時間取 max(updatedAt, deletedAt) → 刪除若較新就壓過 active
+                val merged = mergeByKey(history.allItems.value, remoteHist, { "${it.videoId}|${it.siteUrl}" }, { maxOf(it.updatedAt, it.deletedAt) })
                 history.replaceAll(merged)
                 authedPost("$base/api/history", encodeHistory(merged), t)
             }
 
             val remoteFav = authedGet("$base/api/favorites", t)?.let { parseFavorites(it) }
             if (remoteFav != null) {
-                val merged = mergeByKey(favorites.items.value, remoteFav, { "${it.videoId}|${it.siteUrl}" }, { it.addedAt })
+                val merged = mergeByKey(favorites.allItems.value, remoteFav, { "${it.videoId}|${it.siteUrl}" }, { maxOf(it.addedAt, it.deletedAt) })
                 favorites.replaceAll(merged)
                 authedPost("$base/api/favorites", encodeFavorites(merged), t)
             }
@@ -139,8 +141,8 @@ class SyncManager(
     private fun pushAll() {
         val base = baseUrl() ?: return
         val t = ensureToken(base) ?: return
-        val okH = authedPost("$base/api/history", encodeHistory(history.items.value), t)
-        val okF = authedPost("$base/api/favorites", encodeFavorites(favorites.items.value), t)
+        val okH = authedPost("$base/api/history", encodeHistory(history.allItems.value), t)
+        val okF = authedPost("$base/api/favorites", encodeFavorites(favorites.allItems.value), t)
         if (okH || okF) markSynced(null)
     }
 
@@ -196,6 +198,7 @@ class SyncManager(
         put("durationSec", it.durationMs / 1000.0)
         put("totalEpisodes", it.totalEpisodes)
         put("updatedAt", it.updatedAt)
+        put("deletedAt", it.deletedAt)
     }
 
     private fun historyFromCanonical(o: JsonObject): HistoryItem? {
@@ -215,6 +218,7 @@ class SyncManager(
             durationMs = ((o["durationSec"]?.jsonPrimitive?.doubleOrNull ?: 0.0) * 1000).toLong(),
             totalEpisodes = o["totalEpisodes"]?.jsonPrimitive?.intOrNull ?: 0,
             updatedAt = o["updatedAt"]?.jsonPrimitive?.longOrNull ?: System.currentTimeMillis(),
+            deletedAt = o["deletedAt"]?.jsonPrimitive?.longOrNull ?: 0,
         )
     }
 
@@ -226,6 +230,7 @@ class SyncManager(
         put("videoPic", it.videoPic)
         put("vodRemarks", it.vodRemarks)
         put("addedAt", it.addedAt)
+        put("deletedAt", it.deletedAt)
     }
 
     private fun favFromCanonical(o: JsonObject): FavoriteItem? {
@@ -240,6 +245,7 @@ class SyncManager(
             siteName = o["siteName"]?.jsonPrimitive?.contentOrNull ?: "",
             siteUrl = siteUrl,
             addedAt = o["addedAt"]?.jsonPrimitive?.longOrNull ?: System.currentTimeMillis(),
+            deletedAt = o["deletedAt"]?.jsonPrimitive?.longOrNull ?: 0,
         )
     }
 

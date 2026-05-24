@@ -20,15 +20,32 @@ class HistoryRepository(context: Context) {
     private val mutex = Mutex()
     private val listSerializer = ListSerializer(HistoryItem.serializer())
 
+    // _all = 含墓碑的完整清單(持久化 + 同步用);items = 只有未刪的(給 UI)
+    private val _all = MutableStateFlow<List<HistoryItem>>(emptyList())
+    val allItems: StateFlow<List<HistoryItem>> = _all.asStateFlow()
     private val _items = MutableStateFlow<List<HistoryItem>>(emptyList())
     val items: StateFlow<List<HistoryItem>> = _items.asStateFlow()
 
     suspend fun load() = withContext(Dispatchers.IO) {
         mutex.withLock {
-            _items.value = file.readJsonOrBackup(fallback = { emptyList() }) {
+            val loaded = file.readJsonOrBackup(fallback = { emptyList() }) {
                 AppJson.decodeFromString(listSerializer, it)
-            }.sortedByDescending { it.updatedAt }
+            }
+            setAll(loaded)
         }
+    }
+
+    // active 取未刪、按時間排序、限量;墓碑只留 TTL 內的(超過清掉)。同時更新兩個 flow + 落地。
+    private fun setAll(list: List<HistoryItem>) {
+        val now = System.currentTimeMillis()
+        val active = list.filter { it.deletedAt == 0L }
+            .sortedByDescending { it.updatedAt }
+            .take(HistoryConfig.MAX_ITEMS)
+        val tombstones = list.filter { it.deletedAt > 0L && it.deletedAt > now - TOMBSTONE_TTL_MS }
+        val combined = active + tombstones
+        _all.value = combined
+        _items.value = active
+        persist(combined)
     }
 
     fun find(videoId: Long, siteId: Long): HistoryItem? =
@@ -36,43 +53,40 @@ class HistoryRepository(context: Context) {
 
     suspend fun record(item: HistoryItem) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val filtered = _items.value.filterNot {
-                it.videoId == item.videoId && it.siteId == item.siteId
-            }
-            val updated = (listOf(item) + filtered).take(HistoryConfig.MAX_ITEMS)
-            _items.value = updated
-            persist(updated)
+            val filtered = _all.value.filterNot { it.videoId == item.videoId && it.siteId == item.siteId }
+            setAll(listOf(item) + filtered)
         }
     }
 
+    // 軟刪:標記 deletedAt=now 留在清單裡跟著同步(而非真的移除),否則下次同步會被其他裝置推回來復活
     suspend fun remove(videoId: Long, siteId: Long) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val updated = _items.value.filterNot { it.videoId == videoId && it.siteId == siteId }
-            _items.value = updated
-            persist(updated)
+            val now = System.currentTimeMillis()
+            val updated = _all.value.map {
+                if (it.videoId == videoId && it.siteId == siteId) it.copy(deletedAt = now) else it
+            }
+            setAll(updated)
         }
     }
 
+    // 清空 = 把目前所有未刪的標記成墓碑(這樣「清空」也會同步出去)
     suspend fun clear() = withContext(Dispatchers.IO) {
         mutex.withLock {
-            _items.value = emptyList()
-            persist(emptyList())
+            val now = System.currentTimeMillis()
+            val updated = _all.value.map { if (it.deletedAt == 0L) it.copy(deletedAt = now) else it }
+            setAll(updated)
         }
     }
 
-    // 同步合併後整批覆寫
+    // 同步合併後整批覆寫(含墓碑)
     suspend fun replaceAll(items: List<HistoryItem>) = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            val updated = items.sortedByDescending { it.updatedAt }.take(HistoryConfig.MAX_ITEMS)
-            _items.value = updated
-            persist(updated)
-        }
+        mutex.withLock { setAll(items) }
     }
 
     suspend fun markUpdateStatus(videoId: Long, siteId: Long, totalEpisodes: Int) =
         withContext(Dispatchers.IO) {
             mutex.withLock {
-                val updated = _items.value.map { item ->
+                val updated = _all.value.map { item ->
                     if (item.videoId == videoId && item.siteId == siteId) {
                         val newCount = (totalEpisodes - item.totalEpisodes).coerceAtLeast(0)
                         item.copy(
@@ -82,8 +96,7 @@ class HistoryRepository(context: Context) {
                         )
                     } else item
                 }
-                _items.value = updated
-                persist(updated)
+                setAll(updated)
             }
         }
 
