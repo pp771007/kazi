@@ -20,8 +20,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import tw.pp.kazi.data.FavoriteItem
+import tw.pp.kazi.data.HistoryItem
 import tw.pp.kazi.ui.LocalAppContainer
 import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
@@ -46,6 +49,8 @@ fun FavoritesScreen() {
     val nav = LocalNavController.current
     val windowSize = LocalWindowSize.current
     val favorites by container.favoriteRepository.items.collectAsState()
+    // 收藏卡要顯示「看到哪一集 + 進度」並接續觀看 → 用 videoId+siteId 對到歷史
+    val history by container.historyRepository.items.collectAsState()
     val incognito by container.incognito.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -109,15 +114,12 @@ fun FavoritesScreen() {
                 ) {
                     staggeredItems(favorites, key = { "${it.siteId}-${it.videoId}" }) { fav ->
                         val key = "${fav.siteId}-${fav.videoId}"
-                        PosterCard(
-                            title = fav.videoName,
-                            remarks = fav.vodRemarks,
-                            imageUrl = fav.videoPic,
-                            fromSite = fav.siteName,
+                        FavoritePosterCard(
+                            fav = fav,
+                            history = history,
                             aspectRatio = ratios[fav.videoPic] ?: PosterConfig.MASONRY_DEFAULT_RATIO,
                             fill = PosterFill.Crop,
                             onRatio = { ratios[fav.videoPic] = it },
-                            onClick = { nav.navigate(Routes.detail(fav.siteId, fav.videoId)) },
                             focusRequester = if (key == firstKey) firstCardFocus else null,
                         )
                     }
@@ -132,14 +134,11 @@ fun FavoritesScreen() {
                 ) {
                     items(favorites, key = { "${it.siteId}-${it.videoId}" }) { fav ->
                         val key = "${fav.siteId}-${fav.videoId}"
-                        PosterCard(
-                            title = fav.videoName,
-                            remarks = fav.vodRemarks,
-                            imageUrl = fav.videoPic,
-                            fromSite = fav.siteName,
+                        FavoritePosterCard(
+                            fav = fav,
+                            history = history,
                             aspectRatio = layout.cellAspect,
                             fill = layout.fill,
-                            onClick = { nav.navigate(Routes.detail(fav.siteId, fav.videoId)) },
                             focusRequester = if (key == firstKey) firstCardFocus else null,
                         )
                     }
@@ -147,4 +146,46 @@ fun FavoritesScreen() {
             }
         }
     }
+}
+
+// 收藏卡:看過的(有對到歷史)顯示「看到哪一集」徽章 + 海報底部進度條,點下去接續上次的來源/集數/進度;
+// 沒看過的維持原樣(顯示 vodRemarks),點下去進詳情頁挑集數。
+@Composable
+private fun FavoritePosterCard(
+    fav: FavoriteItem,
+    history: List<HistoryItem>,
+    aspectRatio: Float,
+    fill: PosterFill,
+    focusRequester: FocusRequester?,
+    onRatio: ((Float) -> Unit)? = null,
+) {
+    val nav = LocalNavController.current
+    val hist = remember(history, fav.videoId, fav.siteId) {
+        history.firstOrNull { it.videoId == fav.videoId && it.siteId == fav.siteId }
+    }
+    val progress = if (hist != null && hist.durationMs > 0)
+        (hist.positionMs.toFloat() / hist.durationMs) else null
+    val remarks = if (hist != null) {
+        val ep = if (hist.episodeName.isNotBlank() && hist.episodeName != "${hist.episodeIndex + 1}")
+            hist.episodeName else "第 ${hist.episodeIndex + 1} 集"
+        "▶ $ep"
+    } else fav.vodRemarks
+    PosterCard(
+        title = fav.videoName,
+        remarks = remarks,
+        imageUrl = fav.videoPic,
+        fromSite = fav.siteName,
+        aspectRatio = aspectRatio,
+        fill = fill,
+        onRatio = onRatio,
+        progress = progress,
+        focusRequester = focusRequester,
+        onClick = {
+            if (hist != null) {
+                nav.navigate(Routes.player(fav.siteId, fav.videoId, hist.sourceIndex, hist.episodeIndex, hist.positionMs))
+            } else {
+                nav.navigate(Routes.detail(fav.siteId, fav.videoId))
+            }
+        },
+    )
 }

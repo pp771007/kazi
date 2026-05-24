@@ -254,6 +254,8 @@ fun PosterCard(
     fill: PosterFill = PosterFill.Crop,
     // 瀑布流要知道每張圖的真實長寬比 → 圖載入完成時回報 width/height，呼叫端拿去算卡片高度
     onRatio: ((Float) -> Unit)? = null,
+    // 收藏卡用：有觀看進度時(0..1)在海報底部畫一條進度條,表示「看到一半」
+    progress: Float? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -354,6 +356,22 @@ fun PosterCard(
                         color = AppColors.OnBg,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            if (progress != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(Color(0x55000000)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(progress.coerceIn(0f, 1f))
+                            .background(AppColors.Primary),
                     )
                 }
             }
