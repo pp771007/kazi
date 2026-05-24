@@ -104,49 +104,18 @@ fun SettingsScreen() {
 
             Card {
                 SectionHeader(title = "帳號同步")
-                Text(
-                    "填網頁版網址 + 密碼,觀看歷史與收藏就會跟網頁、其他裝置同步。",
-                    color = AppColors.OnBgMuted,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 4.dp),
-                )
-
-                var url by remember(settings.syncServerUrl) { mutableStateOf(settings.syncServerUrl) }
-                var pw by remember(settings.syncPassword) { mutableStateOf(settings.syncPassword) }
-                var saveMsg by remember { mutableStateOf<String?>(null) }
-
-                SyncField(
-                    label = "伺服器網址",
-                    placeholder = "https://你的網址.vercel.app",
-                    value = url,
-                    onValueChange = { url = it; saveMsg = null },
-                )
-                SyncField(
-                    label = "密碼",
-                    placeholder = "網頁登入密碼",
-                    value = pw,
-                    onValueChange = { pw = it; saveMsg = null },
-                    isPassword = true,
-                )
-                AppButton(
-                    text = saveMsg ?: "儲存並測試連線",
-                    icon = Icons.Filled.Save,
-                    onClick = {
-                        saveMsg = "連線中…"
-                        container.appScope.launch {
-                            val ok = container.saveAndTestSync(url.trim(), pw)
-                            saveMsg = if (ok) "已連線,開始同步" else "連線失敗,請檢查網址與密碼"
-                        }
-                    },
-                )
-
                 if (settings.syncEnabled) {
-                    Spacer(Modifier.height(4.dp))
+                    // 已綁定:只顯示狀態與操作,不再顯示網址/密碼(要改先解除綁定)
                     Text(
                         "已綁定:${settings.syncNickname.ifBlank { "(同步中…)" }}",
                         color = AppColors.OnBg,
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        "伺服器:${settings.syncServerUrl}",
+                        color = AppColors.OnBgMuted,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
                         "最後同步:${tw.pp.kazi.ui.components.formatSyncTime(settings.syncLastSyncAt)}",
@@ -172,14 +141,47 @@ fun SettingsScreen() {
                             icon = Icons.Filled.LinkOff,
                             primary = false,
                             onClick = {
-                                container.appScope.launch {
-                                    container.unbindSync()
-                                    saveMsg = null
-                                    syncMsg = null
-                                }
+                                syncMsg = null
+                                container.appScope.launch { container.unbindSync() }
                             },
                         )
                     }
+                } else {
+                    // 未綁定:填網址+密碼換 token(密碼只用一次,不長存)
+                    Text(
+                        "填網頁版網址 + 密碼,觀看歷史與收藏就會跟網頁、其他裝置同步。",
+                        color = AppColors.OnBgMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                    var url by remember(settings.syncServerUrl) { mutableStateOf(settings.syncServerUrl) }
+                    var pw by remember { mutableStateOf("") }
+                    var saveMsg by remember { mutableStateOf<String?>(null) }
+
+                    SyncField(
+                        label = "伺服器網址",
+                        placeholder = "https://你的網址.vercel.app",
+                        value = url,
+                        onValueChange = { url = it; saveMsg = null },
+                    )
+                    SyncField(
+                        label = "密碼",
+                        placeholder = "網頁登入密碼",
+                        value = pw,
+                        onValueChange = { pw = it; saveMsg = null },
+                        isPassword = true,
+                    )
+                    AppButton(
+                        text = saveMsg ?: "儲存並測試連線",
+                        icon = Icons.Filled.Save,
+                        onClick = {
+                            saveMsg = "連線中…"
+                            container.appScope.launch {
+                                val ok = container.saveAndTestSync(url.trim(), pw)
+                                saveMsg = if (ok) "已連線,開始同步" else "連線失敗,請檢查網址與密碼"
+                            }
+                        },
+                    )
                 }
             }
 

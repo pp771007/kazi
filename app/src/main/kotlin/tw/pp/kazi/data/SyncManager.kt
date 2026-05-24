@@ -6,6 +6,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -20,7 +21,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
-import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -38,20 +38,19 @@ class SyncManager(
     private val sites: SiteRepository,
     private val scope: CoroutineScope,
 ) {
-    @Volatile private var sessionCookie: String? = null
     private val syncMutex = Mutex()
     private var pushJob: Job? = null
     private var started = false
 
-    // 伺服器可能是 http(區網)或自簽 https → 用 trust-all client;不自動跟隨轉址(要讀 /login 的 Set-Cookie)
-    private val client by lazy {
-        HttpClients.forSite(false).newBuilder().followRedirects(false).build()
-    }
+    // 伺服器可能是 http(區網)或自簽 https → 用 trust-all client。驗證走裝置 token(X-Sync-Token header),不用 cookie。
+    private val client by lazy { HttpClients.forSite(false) }
 
     private fun baseUrl(): String? {
-        val s = config.settings.value
-        return if (s.syncEnabled) s.syncServerUrl.trimEnd('/') else null
+        val u = config.settings.value.syncServerUrl
+        return if (u.isNotBlank()) u.trimEnd('/') else null
     }
+
+    private fun token(): String? = config.settings.value.syncToken.ifBlank { null }
 
     /** 啟動同步:先拉取合併,再開始監聽本機變動推送。可重複呼叫(只會啟動一次監聽)。 */
     fun start() {
@@ -72,28 +71,56 @@ class SyncManager(
         }
     }
 
-    /** 手動 / 啟動同步:登入 → 拉取 → 合併(較新者贏)→ 寫回本機 + 推回伺服器。回傳成功與否。 */
+    /** 確保有裝置 token:沒有但還存著密碼(剛綁定 / 舊版升級)就用密碼換一次 token、之後清掉密碼。回傳 token 或 null。 */
+    private fun ensureToken(base: String): String? {
+        token()?.let { return it }
+        val pw = config.settings.value.syncPassword
+        if (pw.isBlank()) return null
+        val minted = mintToken(base, pw) ?: return null
+        runBlocking { config.setSyncToken(minted.first) }
+        minted.second?.let { markSynced(it) }
+        return minted.first
+    }
+
+    /** 用密碼換 token(POST /api/sync/token)。回傳 (token, nickname) 或 null。 */
+    private fun mintToken(base: String, password: String): Pair<String, String?>? {
+        val body = buildJsonObject {
+            put("password", password)
+            put("label", android.os.Build.MODEL ?: "Android")
+        }.toString().toRequestBody(JSON_MEDIA)
+        val req = Request.Builder().url("$base/api/sync/token").post(body).build()
+        return try {
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) { Logger.w("mint token failed: ${resp.code}"); return null }
+                val o = AppJson.parseToJsonElement(resp.body?.string() ?: "") as? JsonObject ?: return null
+                val t = o["token"]?.jsonPrimitive?.contentOrNull ?: return null
+                t to o["nickname"]?.jsonPrimitive?.contentOrNull
+            }
+        } catch (e: Exception) { Logger.w("mint token error: ${e.message}"); null }
+    }
+
+    /** 手動 / 啟動同步:確保 token → 拉取 → 合併(較新者贏)→ 寫回本機 + 推回伺服器。回傳成功與否。 */
     suspend fun sync(): Boolean = withContext(Dispatchers.IO) {
         val base = baseUrl() ?: return@withContext false
         syncMutex.withLock {
-            if (sessionCookie == null && !login()) return@withLock false
+            val t = ensureToken(base) ?: return@withLock false
 
-            val remoteHist = authedGet("$base/api/history")?.let { parseHistory(it) }
+            val remoteHist = authedGet("$base/api/history", t)?.let { parseHistory(it) }
             if (remoteHist != null) {
                 val merged = mergeByKey(history.items.value, remoteHist, { "${it.videoId}|${it.siteUrl}" }, { it.updatedAt })
                 history.replaceAll(merged)
-                authedPost("$base/api/history", encodeHistory(merged))
+                authedPost("$base/api/history", encodeHistory(merged), t)
             }
 
-            val remoteFav = authedGet("$base/api/favorites")?.let { parseFavorites(it) }
+            val remoteFav = authedGet("$base/api/favorites", t)?.let { parseFavorites(it) }
             if (remoteFav != null) {
                 val merged = mergeByKey(favorites.items.value, remoteFav, { "${it.videoId}|${it.siteUrl}" }, { it.addedAt })
                 favorites.replaceAll(merged)
-                authedPost("$base/api/favorites", encodeFavorites(merged))
+                authedPost("$base/api/favorites", encodeFavorites(merged), t)
             }
 
             // 記下最後同步時間 + 抓帳號暱稱(讓設定/歷史頁顯示「已綁定:XXX」,跟網頁對照是否同一帳號)
-            val nickname = authedGet("$base/api/account")?.let { parseNickname(it) }
+            val nickname = authedGet("$base/api/account", t)?.let { parseNickname(it) }
             markSynced(nickname)
             true
         }
@@ -111,67 +138,43 @@ class SyncManager(
     /** 只推送本機現況(本機變動後用;不拉取、不合併,避免迴圈)。 */
     private fun pushAll() {
         val base = baseUrl() ?: return
-        if (sessionCookie == null && !loginBlocking()) return
-        val okH = authedPost("$base/api/history", encodeHistory(history.items.value))
-        val okF = authedPost("$base/api/favorites", encodeFavorites(favorites.items.value))
+        val t = ensureToken(base) ?: return
+        val okH = authedPost("$base/api/history", encodeHistory(history.items.value), t)
+        val okF = authedPost("$base/api/favorites", encodeFavorites(favorites.items.value), t)
         if (okH || okF) markSynced(null)
     }
 
-    /** 測試連線用:嘗試登入。給設定頁 / 遠端遙控按「測試」。 */
-    suspend fun testLogin(): Boolean = withContext(Dispatchers.IO) { login() }
-
-    /** 解除綁定:丟掉 session、取消待推送。設定清空(config)後 baseUrl() 即回 null,後續變動不再推。 */
-    fun clear() {
-        pushJob?.cancel()
-        sessionCookie = null
+    /** 綁定 / 測試連線:用目前 config 的密碼換 token。給設定頁 / 遠端遙控按「儲存並測試連線」。 */
+    suspend fun bind(): Boolean = withContext(Dispatchers.IO) {
+        val base = baseUrl() ?: return@withContext false
+        ensureToken(base) != null
     }
 
-    private fun loginBlocking(): Boolean = login()
-
-    private fun login(): Boolean {
-        val base = baseUrl() ?: return false
-        val pw = config.settings.value.syncPassword
-        val body = FormBody.Builder().add("password", pw).build()
-        val req = Request.Builder().url("$base/login").post(body).build()
-        return try {
-            client.newCall(req).execute().use { resp ->
-                // 成功:302 + Set-Cookie session=...;失敗:200(回登入頁)或鎖定
-                val cookie = resp.headers("Set-Cookie").firstOrNull { it.startsWith("session=") }
-                if (resp.code in 300..399 && cookie != null) {
-                    sessionCookie = cookie.substringBefore(';')
-                    true
-                } else {
-                    Logger.w("Sync login failed: code=${resp.code}")
-                    false
-                }
+    /** 解除綁定:通知伺服器作廢這台的 token,並取消待推送(設定清空由 AppContainer 處理)。 */
+    suspend fun unbind() = withContext(Dispatchers.IO) {
+        val base = baseUrl(); val t = token()
+        if (base != null && t != null) {
+            runCatching {
+                client.newCall(
+                    Request.Builder().url("$base/api/sync/token").header("X-Sync-Token", t).delete().build()
+                ).execute().close()
             }
-        } catch (e: Exception) {
-            Logger.w("Sync login error: ${e.message}")
-            false
         }
+        pushJob?.cancel()
     }
 
-    private fun authedGet(url: String): String? {
-        val cookie = sessionCookie ?: return null
-        val req = Request.Builder().url(url).header("Cookie", cookie).get().build()
+    private fun authedGet(url: String, token: String): String? {
+        val req = Request.Builder().url(url).header("X-Sync-Token", token).get().build()
         return try {
-            client.newCall(req).execute().use { resp ->
-                if (resp.isSuccessful) resp.body?.string()
-                else { if (resp.code == 401) sessionCookie = null; null }
-            }
+            client.newCall(req).execute().use { resp -> if (resp.isSuccessful) resp.body?.string() else null }
         } catch (e: Exception) { Logger.w("Sync GET $url: ${e.message}"); null }
     }
 
-    private fun authedPost(url: String, json: String): Boolean {
-        val cookie = sessionCookie ?: return false
-        val req = Request.Builder().url(url)
-            .header("Cookie", cookie)
+    private fun authedPost(url: String, json: String, token: String): Boolean {
+        val req = Request.Builder().url(url).header("X-Sync-Token", token)
             .post(json.toRequestBody(JSON_MEDIA)).build()
         return try {
-            client.newCall(req).execute().use { resp ->
-                if (resp.code == 401) sessionCookie = null
-                resp.isSuccessful
-            }
+            client.newCall(req).execute().use { resp -> resp.isSuccessful }
         } catch (e: Exception) { Logger.w("Sync POST $url: ${e.message}"); false }
     }
 

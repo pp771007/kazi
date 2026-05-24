@@ -153,15 +153,15 @@ class AppContainer(private val context: Context) {
     /** 設定頁 / 遠端遙控用:存同步伺服器設定並測試登入;成功就立刻開始同步。回傳是否登入成功。 */
     suspend fun saveAndTestSync(url: String, password: String): Boolean {
         configRepository.updateSyncServer(url, password)
-        val ok = syncManager.testLogin()
+        val ok = syncManager.bind()  // 用密碼換 token(只存 token、不長存密碼)
         if (ok) syncManager.start()
         return ok
     }
 
-    /** 解除綁定:清掉同步設定(網址/密碼/暱稱/時間)並停止同步;本機歷史/收藏保留不動。 */
+    /** 解除綁定:通知伺服器作廢 token,清掉同步設定;本機歷史/收藏保留不動。 */
     suspend fun unbindSync() {
-        configRepository.updateSyncServer("", "")
-        syncManager.clear()
+        syncManager.unbind()         // 先用現有 token 通知伺服器作廢
+        configRepository.clearSync() // 再清掉本機設定(網址/密碼/token/暱稱/時間)
     }
 
     fun startLan(): Boolean {

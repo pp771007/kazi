@@ -125,6 +125,7 @@ object ConfigKeys {
     const val SEARCH_HISTORY = "search_history"
     const val SYNC_SERVER_URL = "sync_server_url"
     const val SYNC_PASSWORD = "sync_password"
+    const val SYNC_TOKEN = "sync_token"
     const val SYNC_LAST_SYNC_AT = "sync_last_sync_at"
     const val SYNC_NICKNAME = "sync_nickname"
 }

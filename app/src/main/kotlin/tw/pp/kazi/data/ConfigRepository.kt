@@ -29,11 +29,13 @@ data class AppSettings(
     val searchHistory: List<String> = emptyList(),
     // 帳號同步:連到 maccms-parser 伺服器,歷史/收藏跨裝置共用。空字串=未設定。
     val syncServerUrl: String = "",
-    val syncPassword: String = "",
+    val syncPassword: String = "",  // 只在「綁定當下」用一次去換 token;換到後即清空、不長存
+    val syncToken: String = "",     // 裝置 token(換到後只帶這個,不再傳密碼)
     val syncLastSyncAt: Long = 0,   // 最後一次成功同步的時間(0=從未)
-    val syncNickname: String = "",  // 同步帳號的暱稱(伺服器 /api/account 回傳,確認綁哪個帳號)
+    val syncNickname: String = "",  // 同步帳號的暱稱(伺服器回傳,確認綁哪個帳號)
 ) {
-    val syncEnabled: Boolean get() = syncServerUrl.isNotBlank() && syncPassword.isNotBlank()
+    // 有網址 + (token 或還沒換的密碼)就算已設定
+    val syncEnabled: Boolean get() = syncServerUrl.isNotBlank() && (syncToken.isNotBlank() || syncPassword.isNotBlank())
 
     companion object {
         const val DEFAULT_SITE_TITLE = "咔滋影院"
@@ -72,6 +74,7 @@ class ConfigRepository(context: Context) {
                 searchHistory = history,
                 syncServerUrl = (obj[ConfigKeys.SYNC_SERVER_URL] as? JsonPrimitive)?.content ?: "",
                 syncPassword = (obj[ConfigKeys.SYNC_PASSWORD] as? JsonPrimitive)?.content ?: "",
+                syncToken = (obj[ConfigKeys.SYNC_TOKEN] as? JsonPrimitive)?.content ?: "",
                 syncLastSyncAt = (obj[ConfigKeys.SYNC_LAST_SYNC_AT] as? JsonPrimitive)?.longOrNull ?: 0,
                 syncNickname = (obj[ConfigKeys.SYNC_NICKNAME] as? JsonPrimitive)?.content ?: "",
             )
@@ -89,11 +92,21 @@ class ConfigRepository(context: Context) {
     }
 
     suspend fun updateSyncServer(url: String, password: String) = update {
-        // 換伺服器/密碼 = 可能換帳號,清掉舊的暱稱與同步時間,等下次同步重抓
-        it.copy(syncServerUrl = url.trim(), syncPassword = password, syncNickname = "", syncLastSyncAt = 0)
+        // 換伺服器/密碼 = 可能換帳號,清掉舊 token/暱稱/時間,等重新綁定
+        it.copy(syncServerUrl = url.trim(), syncPassword = password, syncToken = "", syncNickname = "", syncLastSyncAt = 0)
     }
 
-    /** 同步成功後記下時間;nickname 非 null 時一併更新(從 /api/account 拿到的帳號暱稱)。 */
+    /** 用密碼換到 token 後:存 token、清掉不再需要的密碼。 */
+    suspend fun setSyncToken(token: String) = update {
+        it.copy(syncToken = token, syncPassword = "")
+    }
+
+    /** 解除綁定:全部清空。 */
+    suspend fun clearSync() = update {
+        it.copy(syncServerUrl = "", syncPassword = "", syncToken = "", syncNickname = "", syncLastSyncAt = 0)
+    }
+
+    /** 同步成功後記下時間;nickname 非 null 時一併更新(從伺服器拿到的帳號暱稱)。 */
     suspend fun updateSyncStatus(lastSyncAt: Long, nickname: String?) = update {
         it.copy(syncLastSyncAt = lastSyncAt, syncNickname = nickname ?: it.syncNickname)
     }
@@ -134,6 +147,7 @@ class ConfigRepository(context: Context) {
                 ),
                 ConfigKeys.SYNC_SERVER_URL to JsonPrimitive(settings.syncServerUrl),
                 ConfigKeys.SYNC_PASSWORD to JsonPrimitive(settings.syncPassword),
+                ConfigKeys.SYNC_TOKEN to JsonPrimitive(settings.syncToken),
                 ConfigKeys.SYNC_LAST_SYNC_AT to JsonPrimitive(settings.syncLastSyncAt),
                 ConfigKeys.SYNC_NICKNAME to JsonPrimitive(settings.syncNickname),
             )
