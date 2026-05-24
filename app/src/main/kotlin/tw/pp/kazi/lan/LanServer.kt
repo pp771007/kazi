@@ -314,10 +314,11 @@ class LanServer(
   .card { background:#1E1E2E; border-radius:14px; padding:18px; margin-bottom:14px;
           border:1px solid #2a2a3e;}
   label { display:block; margin:8px 0 4px; font-size:13px; color:#94A3B8;}
-  input[type=text], textarea {
+  input[type=text], input[type=password], textarea {
     width:100%; padding:12px 14px; background:#0D0D15; color:#fff;
-    border:2px solid #2a2a3e; border-radius:10px; font-size:15px; font-family:inherit;}
-  input[type=text]:focus, textarea:focus { outline:none; border-color:#3B82F6;}
+    border:2px solid #2a2a3e; border-radius:10px; font-size:15px; font-family:inherit;
+    box-sizing:border-box;}
+  input[type=text]:focus, input[type=password]:focus, textarea:focus { outline:none; border-color:#3B82F6;}
   textarea { resize:vertical; min-height:60px;}
   button { background:#3B82F6; color:#fff; border:none; padding:12px 18px;
            border-radius:10px; font-size:15px; font-weight:500; cursor:pointer;

@@ -3,9 +3,14 @@ package tw.pp.kazi.ui.settings
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -17,9 +22,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import tw.pp.kazi.ui.LocalAppContainer
 import tw.pp.kazi.ui.LocalNavController
 import tw.pp.kazi.ui.LocalWindowSize
@@ -91,12 +104,55 @@ fun SettingsScreen() {
 
             Card {
                 SectionHeader(title = "帳號同步")
+                Text(
+                    "填網頁版網址 + 密碼,觀看歷史與收藏就會跟網頁、其他裝置同步。",
+                    color = AppColors.OnBgMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+
+                var url by remember(settings.syncServerUrl) { mutableStateOf(settings.syncServerUrl) }
+                var pw by remember(settings.syncPassword) { mutableStateOf(settings.syncPassword) }
+                var saveMsg by remember { mutableStateOf<String?>(null) }
+
+                SyncField(
+                    label = "伺服器網址",
+                    placeholder = "https://你的網址.vercel.app",
+                    value = url,
+                    onValueChange = { url = it; saveMsg = null },
+                )
+                SyncField(
+                    label = "密碼",
+                    placeholder = "網頁登入密碼",
+                    value = pw,
+                    onValueChange = { pw = it; saveMsg = null },
+                    isPassword = true,
+                )
+                AppButton(
+                    text = saveMsg ?: "儲存並測試連線",
+                    icon = Icons.Filled.Save,
+                    onClick = {
+                        saveMsg = "連線中…"
+                        container.appScope.launch {
+                            val ok = container.saveAndTestSync(url.trim(), pw)
+                            saveMsg = if (ok) "已連線,開始同步" else "連線失敗,請檢查網址與密碼"
+                        }
+                    },
+                )
+
                 if (settings.syncEnabled) {
+                    Spacer(Modifier.height(4.dp))
                     Text(
-                        "已連線:${settings.syncServerUrl}",
+                        "已綁定:${settings.syncNickname.ifBlank { "(同步中…)" }}",
+                        color = AppColors.OnBg,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        "最後同步:${tw.pp.kazi.ui.components.formatSyncTime(settings.syncLastSyncAt)}",
                         color = AppColors.OnBgMuted,
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(bottom = 8.dp),
+                        modifier = Modifier.padding(bottom = 4.dp),
                     )
                     AppButton(
                         text = syncMsg ?: "立即同步",
@@ -109,12 +165,6 @@ fun SettingsScreen() {
                                 syncMsg = if (ok) "已同步" else "同步失敗,請檢查設定"
                             }
                         },
-                    )
-                } else {
-                    Text(
-                        "尚未設定。開啟「區網分享」後,用手機瀏覽器進控制台的「🔄 同步」分頁,輸入網頁版網址 + 密碼即可。歷史與收藏會跨裝置同步。",
-                        color = AppColors.OnBgMuted,
-                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
@@ -185,6 +235,55 @@ fun SettingsScreen() {
                     primary = false,
                 )
             }
+        }
+    }
+}
+
+// 同步設定的輸入框(對齊站點設定的 FormField 樣式;密碼欄可遮蔽)
+@Composable
+private fun SyncField(
+    label: String,
+    placeholder: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    isPassword: Boolean = false,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, color = AppColors.OnBgMuted, style = MaterialTheme.typography.labelMedium)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF0D0D15))
+                .border(
+                    2.dp,
+                    if (focused) AppColors.FocusRing else Color(0x22FFFFFF),
+                    RoundedCornerShape(10.dp),
+                )
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = TextStyle(color = AppColors.OnBg, fontSize = 15.sp),
+                cursorBrush = SolidColor(AppColors.Primary),
+                visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = if (isPassword) KeyboardType.Password else KeyboardType.Uri,
+                    imeAction = ImeAction.Done,
+                ),
+                interactionSource = interaction,
+                modifier = Modifier.fillMaxWidth(),
+                decorationBox = { inner ->
+                    if (value.isEmpty()) {
+                        Text(placeholder, color = AppColors.OnBgDim, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    inner()
+                },
+            )
         }
     }
 }

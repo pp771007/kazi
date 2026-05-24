@@ -67,6 +67,19 @@ import tw.pp.kazi.ui.theme.AppColors
 import tw.pp.kazi.ui.topBarHorizontal
 import tw.pp.kazi.ui.topBarVertical
 
+// 把同步時間戳格式化成「剛剛 / X 分鐘前 / X 小時前 / MM/dd HH:mm」(設定頁、歷史頁共用)
+fun formatSyncTime(ts: Long): String {
+    if (ts <= 0) return "從未"
+    val diff = System.currentTimeMillis() - ts
+    return when {
+        diff < 10_000 -> "剛剛"
+        diff < 3_600_000 -> "${diff / 60_000} 分鐘前"
+        diff < 86_400_000 -> "${diff / 3_600_000} 小時前"
+        else -> java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date(ts))
+    }
+}
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun AppButton(

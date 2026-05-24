@@ -51,6 +51,7 @@ fun HistoryScreen() {
     val compact = windowSize.isCompact
     val items by container.historyRepository.items.collectAsState()
     val incognito by container.incognito.collectAsState()
+    val settings by container.configRepository.settings.collectAsState()
     val scope = rememberCoroutineScope()
     var checking by remember { mutableStateOf(false) }
     var checkProgress by remember { mutableStateOf<String?>(null) }
@@ -79,7 +80,12 @@ fun HistoryScreen() {
 
     ScreenScaffold(
         title = "觀看歷史",
-        subtitle = "${items.size} 筆紀錄",
+        subtitle = buildString {
+            append("${items.size} 筆紀錄")
+            if (settings.syncEnabled && settings.syncLastSyncAt > 0) {
+                append(" · 最後同步 ${tw.pp.kazi.ui.components.formatSyncTime(settings.syncLastSyncAt)}")
+            }
+        },
         titleBadges = if (incognito) {
             {
                 tw.pp.kazi.ui.components.StatusPill(

@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import tw.pp.kazi.util.atomicWriteText
 import tw.pp.kazi.util.readJsonOrBackup
@@ -29,6 +30,8 @@ data class AppSettings(
     // 帳號同步:連到 maccms-parser 伺服器,歷史/收藏跨裝置共用。空字串=未設定。
     val syncServerUrl: String = "",
     val syncPassword: String = "",
+    val syncLastSyncAt: Long = 0,   // 最後一次成功同步的時間(0=從未)
+    val syncNickname: String = "",  // 同步帳號的暱稱(伺服器 /api/account 回傳,確認綁哪個帳號)
 ) {
     val syncEnabled: Boolean get() = syncServerUrl.isNotBlank() && syncPassword.isNotBlank()
 
@@ -69,6 +72,8 @@ class ConfigRepository(context: Context) {
                 searchHistory = history,
                 syncServerUrl = (obj[ConfigKeys.SYNC_SERVER_URL] as? JsonPrimitive)?.content ?: "",
                 syncPassword = (obj[ConfigKeys.SYNC_PASSWORD] as? JsonPrimitive)?.content ?: "",
+                syncLastSyncAt = (obj[ConfigKeys.SYNC_LAST_SYNC_AT] as? JsonPrimitive)?.longOrNull ?: 0,
+                syncNickname = (obj[ConfigKeys.SYNC_NICKNAME] as? JsonPrimitive)?.content ?: "",
             )
         }
     }
@@ -84,7 +89,13 @@ class ConfigRepository(context: Context) {
     }
 
     suspend fun updateSyncServer(url: String, password: String) = update {
-        it.copy(syncServerUrl = url.trim(), syncPassword = password)
+        // 換伺服器/密碼 = 可能換帳號,清掉舊的暱稱與同步時間,等下次同步重抓
+        it.copy(syncServerUrl = url.trim(), syncPassword = password, syncNickname = "", syncLastSyncAt = 0)
+    }
+
+    /** 同步成功後記下時間;nickname 非 null 時一併更新(從 /api/account 拿到的帳號暱稱)。 */
+    suspend fun updateSyncStatus(lastSyncAt: Long, nickname: String?) = update {
+        it.copy(syncLastSyncAt = lastSyncAt, syncNickname = nickname ?: it.syncNickname)
     }
 
     suspend fun addSearchKeyword(keyword: String) {
@@ -123,6 +134,8 @@ class ConfigRepository(context: Context) {
                 ),
                 ConfigKeys.SYNC_SERVER_URL to JsonPrimitive(settings.syncServerUrl),
                 ConfigKeys.SYNC_PASSWORD to JsonPrimitive(settings.syncPassword),
+                ConfigKeys.SYNC_LAST_SYNC_AT to JsonPrimitive(settings.syncLastSyncAt),
+                ConfigKeys.SYNC_NICKNAME to JsonPrimitive(settings.syncNickname),
             )
         )
         configFile.atomicWriteText(AppJson.encodeToString(JsonObject.serializer(), obj))

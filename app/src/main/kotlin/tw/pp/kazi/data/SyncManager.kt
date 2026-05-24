@@ -91,16 +91,30 @@ class SyncManager(
                 favorites.replaceAll(merged)
                 authedPost("$base/api/favorites", encodeFavorites(merged))
             }
+
+            // 記下最後同步時間 + 抓帳號暱稱(讓設定/歷史頁顯示「已綁定:XXX」,跟網頁對照是否同一帳號)
+            val nickname = authedGet("$base/api/account")?.let { parseNickname(it) }
+            markSynced(nickname)
             true
         }
+    }
+
+    private fun parseNickname(raw: String): String? = runCatching {
+        (AppJson.parseToJsonElement(raw) as JsonObject)["nickname"]?.jsonPrimitive?.contentOrNull
+    }.getOrNull()
+
+    /** 記下最後同步時間(+暱稱)。fire-and-forget 寫進 config,UI 觀察 settings flow 自動更新。 */
+    private fun markSynced(nickname: String?) {
+        scope.launch { config.updateSyncStatus(System.currentTimeMillis(), nickname) }
     }
 
     /** 只推送本機現況(本機變動後用;不拉取、不合併,避免迴圈)。 */
     private fun pushAll() {
         val base = baseUrl() ?: return
         if (sessionCookie == null && !loginBlocking()) return
-        authedPost("$base/api/history", encodeHistory(history.items.value))
-        authedPost("$base/api/favorites", encodeFavorites(favorites.items.value))
+        val okH = authedPost("$base/api/history", encodeHistory(history.items.value))
+        val okF = authedPost("$base/api/favorites", encodeFavorites(favorites.items.value))
+        if (okH || okF) markSynced(null)
     }
 
     /** 測試連線用:嘗試登入。給設定頁 / 遠端遙控按「測試」。 */
