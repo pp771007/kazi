@@ -120,6 +120,12 @@ class SyncManager(
     /** 測試連線用:嘗試登入。給設定頁 / 遠端遙控按「測試」。 */
     suspend fun testLogin(): Boolean = withContext(Dispatchers.IO) { login() }
 
+    /** 解除綁定:丟掉 session、取消待推送。設定清空(config)後 baseUrl() 即回 null,後續變動不再推。 */
+    fun clear() {
+        pushJob?.cancel()
+        sessionCookie = null
+    }
+
     private fun loginBlocking(): Boolean = login()
 
     private fun login(): Boolean {
@@ -259,7 +265,11 @@ class SyncManager(
     }
 
     companion object {
-        private const val PUSH_DEBOUNCE_MS = 3000L
+        // 推送節流:必須「大於」播放中每 15 秒一次的歷史存檔間隔(HistoryConfig.SAVE_INTERVAL_MS),
+        // 否則每次進度存檔都會觸發一次伺服器推送 → 連續播放時狂打 Vercel/KV。設 30s 讓播放中
+        // 的多次進度更新被合併:每次存檔都重設計時器,推送只在「停止觀看後」發一次,一個觀看
+        // session ≈ 1 次推送(而非每 15 秒一次)。代價:變動最多延遲 30 秒才同步上去,跨裝置足夠。
+        private const val PUSH_DEBOUNCE_MS = 30_000L
         private val JSON_MEDIA = "application/json".toMediaType()
     }
 }

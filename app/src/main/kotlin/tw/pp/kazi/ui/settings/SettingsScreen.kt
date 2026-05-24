@@ -154,18 +154,32 @@ fun SettingsScreen() {
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
-                    AppButton(
-                        text = syncMsg ?: "立即同步",
-                        icon = Icons.Filled.Sync,
-                        primary = false,
-                        onClick = {
-                            syncMsg = "同步中…"
-                            container.appScope.launch {
-                                val ok = container.syncManager.sync()
-                                syncMsg = if (ok) "已同步" else "同步失敗,請檢查設定"
-                            }
-                        },
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AppButton(
+                            text = syncMsg ?: "立即同步",
+                            icon = Icons.Filled.Sync,
+                            primary = false,
+                            onClick = {
+                                syncMsg = "同步中…"
+                                container.appScope.launch {
+                                    val ok = container.syncManager.sync()
+                                    syncMsg = if (ok) "已同步" else "同步失敗,請檢查設定"
+                                }
+                            },
+                        )
+                        AppButton(
+                            text = "解除綁定",
+                            icon = Icons.Filled.LinkOff,
+                            primary = false,
+                            onClick = {
+                                container.appScope.launch {
+                                    container.unbindSync()
+                                    saveMsg = null
+                                    syncMsg = null
+                                }
+                            },
+                        )
+                    }
                 }
             }
 

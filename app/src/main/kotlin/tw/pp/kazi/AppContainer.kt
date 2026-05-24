@@ -158,6 +158,12 @@ class AppContainer(private val context: Context) {
         return ok
     }
 
+    /** 解除綁定:清掉同步設定(網址/密碼/暱稱/時間)並停止同步;本機歷史/收藏保留不動。 */
+    suspend fun unbindSync() {
+        configRepository.updateSyncServer("", "")
+        syncManager.clear()
+    }
+
     fun startLan(): Boolean {
         if (lanServer != null) return true
         // 先試 DEFAULT_PORT 跟它附近 3 個（多數情況下都成功），
