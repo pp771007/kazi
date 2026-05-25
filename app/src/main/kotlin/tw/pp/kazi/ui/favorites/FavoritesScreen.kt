@@ -180,12 +180,7 @@ private fun FavoritePosterCard(
         onRatio = onRatio,
         progress = progress,
         focusRequester = focusRequester,
-        onClick = {
-            if (hist != null) {
-                nav.navigate(Routes.player(fav.siteId, fav.videoId, hist.sourceIndex, hist.episodeIndex, hist.positionMs, fav.siteUrl))
-            } else {
-                nav.navigate(Routes.detail(fav.siteId, fav.videoId))
-            }
-        },
+        // 收藏卡一律進詳情頁(在那邊可挑集數或按繼續觀看);卡片上的集數/進度只當資訊顯示
+        onClick = { nav.navigate(Routes.detail(fav.siteId, fav.videoId)) },
     )
 }
