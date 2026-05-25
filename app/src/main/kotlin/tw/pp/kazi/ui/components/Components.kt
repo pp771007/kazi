@@ -269,6 +269,8 @@ fun PosterCard(
     onRatio: ((Float) -> Unit)? = null,
     // 收藏卡用：有觀看進度時(0..1)在海報底部畫一條進度條,表示「看到一半」
     progress: Float? = null,
+    // 標題下方的副標一行(收藏卡用來顯示「看到 X/Y 集」),null 不顯示
+    subtitle: String? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -389,20 +391,34 @@ fun PosterCard(
                 }
             }
         }
-        // 電視盒上字太小看不清楚 → wide 用 bodyMedium、compact 維持 bodySmall
-        Text(
-            text = title,
-            color = AppColors.OnBg,
-            style = if (windowSize.isCompact) MaterialTheme.typography.bodySmall
-                else MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 8.dp)
                 .heightIn(min = if (windowSize.isCompact) 36.dp else 48.dp),
-        )
+        ) {
+            // 電視盒上字太小看不清楚 → wide 用 bodyMedium、compact 維持 bodySmall
+            Text(
+                text = title,
+                color = AppColors.OnBg,
+                style = if (windowSize.isCompact) MaterialTheme.typography.bodySmall
+                    else MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    color = AppColors.OnBgMuted,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                )
+            }
+        }
     }
 }
 

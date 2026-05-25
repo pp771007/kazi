@@ -165,20 +165,25 @@ private fun FavoritePosterCard(
     }
     val progress = if (hist != null && hist.durationMs > 0)
         (hist.positionMs.toFloat() / hist.durationMs) else null
-    val remarks = if (hist != null) {
-        val ep = if (hist.episodeName.isNotBlank() && hist.episodeName != "${hist.episodeIndex + 1}")
-            hist.episodeName else "第 ${hist.episodeIndex + 1} 集"
-        "▶ $ep"
-    } else fav.vodRemarks
+    // 看過的話標題下方顯示「看到 X/Y 集」(沒總集數就退回集名 / 集號);右下角徽章固定放片源備註
+    val watchedLabel = hist?.let {
+        if (it.totalEpisodes > 0) "▶ 看到 ${it.episodeIndex + 1}/${it.totalEpisodes} 集"
+        else {
+            val ep = if (it.episodeName.isNotBlank() && it.episodeName != "${it.episodeIndex + 1}")
+                it.episodeName else "第 ${it.episodeIndex + 1} 集"
+            "▶ 看到 $ep"
+        }
+    }
     PosterCard(
         title = fav.videoName,
-        remarks = remarks,
+        remarks = fav.vodRemarks,
         imageUrl = fav.videoPic,
         fromSite = fav.siteName,
         aspectRatio = aspectRatio,
         fill = fill,
         onRatio = onRatio,
         progress = progress,
+        subtitle = watchedLabel,
         focusRequester = focusRequester,
         // 收藏卡一律進詳情頁(在那邊可挑集數或按繼續觀看);卡片上的集數/進度只當資訊顯示
         onClick = { nav.navigate(Routes.detail(fav.siteId, fav.videoId)) },
