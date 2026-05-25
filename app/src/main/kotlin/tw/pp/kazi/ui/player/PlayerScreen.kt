@@ -88,11 +88,17 @@ fun PlayerScreen(
     sourceIdx: Int,
     episodeIdx: Int,
     resumePositionMs: Long = 0L,
+    siteUrl: String = "",
 ) {
     val container = LocalAppContainer.current
     val nav = LocalNavController.current
     val sites by container.siteRepository.sites.collectAsState()
-    val site = remember(sites, siteId) { sites.firstOrNull { it.id == siteId } }
+    // 先用本地 siteId 找;跨裝置同步來的歷史其 siteId 對不上(是 siteUrl 的 hashCode 假值)時,
+    // 退而用 siteUrl 找同一個站台 —— 只要本地有加這個站台就能續看,不再卡在「找不到對應站點」。
+    val site = remember(sites, siteId, siteUrl) {
+        sites.firstOrNull { it.id == siteId }
+            ?: if (siteUrl.isNotEmpty()) sites.firstOrNull { it.url == siteUrl } else null
+    }
     val context = LocalContext.current
     val activity = context as? android.app.Activity
     val scope = rememberCoroutineScope()

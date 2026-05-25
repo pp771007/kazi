@@ -14,7 +14,7 @@ object Routes {
 
     private const val SEARCH_ROUTE_TEMPLATE = "search?keyword={keyword}&sites={sites}"
     private const val DETAIL_ROUTE_TEMPLATE = "detail/{siteId}/{vodId}"
-    private const val PLAYER_ROUTE_TEMPLATE = "player/{siteId}/{vodId}/{sourceIdx}/{episodeIdx}/{positionMs}"
+    private const val PLAYER_ROUTE_TEMPLATE = "player/{siteId}/{vodId}/{sourceIdx}/{episodeIdx}/{positionMs}?siteUrl={siteUrl}"
 
     const val SearchPattern = SEARCH_ROUTE_TEMPLATE
     const val DetailPattern = DETAIL_ROUTE_TEMPLATE
@@ -27,6 +27,7 @@ object Routes {
     const val ArgSourceIdx = "sourceIdx"
     const val ArgEpisodeIdx = "episodeIdx"
     const val ArgPositionMs = "positionMs"
+    const val ArgSiteUrl = "siteUrl"
 
     fun search(keyword: String = "", siteIds: List<Long> = emptyList()): String {
         val k = URLEncoder.encode(keyword, Charsets.UTF_8.name())
@@ -42,5 +43,11 @@ object Routes {
         sourceIdx: Int,
         episodeIdx: Int,
         positionMs: Long = 0L,
-    ) = "player/$siteId/$vodId/$sourceIdx/$episodeIdx/$positionMs"
+        siteUrl: String = "",
+    ): String {
+        // siteUrl 是「跨裝置續看」的退路:同步來的歷史本地 siteId 對不上時(siteId 是 hashCode
+        // 湊的假值),PlayerScreen 改用 siteUrl 找站台。從本地站台(詳情頁)播放可不帶,siteId 一定對得上。
+        val u = URLEncoder.encode(siteUrl, Charsets.UTF_8.name())
+        return "player/$siteId/$vodId/$sourceIdx/$episodeIdx/$positionMs?siteUrl=$u"
+    }
 }

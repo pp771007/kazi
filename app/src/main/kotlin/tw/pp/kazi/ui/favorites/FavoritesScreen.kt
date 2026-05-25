@@ -182,7 +182,7 @@ private fun FavoritePosterCard(
         focusRequester = focusRequester,
         onClick = {
             if (hist != null) {
-                nav.navigate(Routes.player(fav.siteId, fav.videoId, hist.sourceIndex, hist.episodeIndex, hist.positionMs))
+                nav.navigate(Routes.player(fav.siteId, fav.videoId, hist.sourceIndex, hist.episodeIndex, hist.positionMs, fav.siteUrl))
             } else {
                 nav.navigate(Routes.detail(fav.siteId, fav.videoId))
             }

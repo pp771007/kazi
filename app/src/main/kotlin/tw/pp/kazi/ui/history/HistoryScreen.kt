@@ -188,6 +188,7 @@ fun HistoryScreen() {
                                 sourceIdx = item.sourceIndex,
                                 episodeIdx = item.episodeIndex,
                                 positionMs = item.positionMs,
+                                siteUrl = item.siteUrl,
                             )
                         )
                     },
@@ -200,6 +201,7 @@ fun HistoryScreen() {
                                 sourceIdx = item.sourceIndex,
                                 episodeIdx = item.episodeIndex + 1,
                                 positionMs = 0L,
+                                siteUrl = item.siteUrl,
                             )
                         )
                     },

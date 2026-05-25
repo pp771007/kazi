@@ -140,14 +140,26 @@ fun KaziApp(container: AppContainer) {
                             vodId = args.getString(Routes.ArgVodId)?.toLongOrNull() ?: 0L,
                         )
                     }
-                    composable(Routes.PlayerPattern) { back ->
+                    composable(
+                        route = Routes.PlayerPattern,
+                        arguments = listOf(
+                            navArgument(Routes.ArgSiteUrl) {
+                                type = NavType.StringType; defaultValue = ""
+                            },
+                        ),
+                    ) { back ->
                         val args = back.arguments ?: return@composable
+                        val siteUrlRaw = args.getString(Routes.ArgSiteUrl).orEmpty()
+                        val siteUrl = runCatching {
+                            URLDecoder.decode(siteUrlRaw, Charsets.UTF_8.name())
+                        }.getOrDefault(siteUrlRaw)
                         PlayerScreen(
                             siteId = args.getString(Routes.ArgSiteId)?.toLongOrNull() ?: 0L,
                             vodId = args.getString(Routes.ArgVodId)?.toLongOrNull() ?: 0L,
                             sourceIdx = args.getString(Routes.ArgSourceIdx)?.toIntOrNull() ?: 0,
                             episodeIdx = args.getString(Routes.ArgEpisodeIdx)?.toIntOrNull() ?: 0,
                             resumePositionMs = args.getString(Routes.ArgPositionMs)?.toLongOrNull() ?: 0L,
+                            siteUrl = siteUrl,
                         )
                     }
                 }
