@@ -58,9 +58,13 @@ class SyncManager(
         scope.launch { sync() }
         if (started) return
         started = true
-        // 收 allItems(含墓碑)→ 軟刪也算變動、會觸發推送
+        // 收 allItems(含墓碑)→ 軟刪也算變動、會觸發推送。播放進度高頻更新走 30 秒 debounce。
         scope.launch { history.allItems.drop(1).collect { schedulePush() } }
         scope.launch { favorites.allItems.drop(1).collect { schedulePush() } }
+        // 使用者手動操作(刪除 / 清空 / 收藏)→ 立刻上傳,不等 debounce,
+        // 否則另一台按「立即同步」時這邊還沒傳上去、會看到舊資料(刪了還在)。
+        scope.launch { history.discreteChange.collect { pushNow() } }
+        scope.launch { favorites.discreteChange.collect { pushNow() } }
     }
 
     private fun schedulePush() {
@@ -70,6 +74,13 @@ class SyncManager(
             delay(PUSH_DEBOUNCE_MS)
             withContext(Dispatchers.IO) { pushAll() }
         }
+    }
+
+    /** 立刻上傳(取消待推送的 debounce job,直接推一次)。給刪除 / 清空這類手動操作用。 */
+    private fun pushNow() {
+        if (baseUrl() == null) return
+        pushJob?.cancel()
+        pushJob = scope.launch { withContext(Dispatchers.IO) { pushAll() } }
     }
 
     /** 確保有裝置 token:沒有但還存著密碼(剛綁定 / 舊版升級)就用密碼換一次 token、之後清掉密碼。回傳 token 或 null。 */

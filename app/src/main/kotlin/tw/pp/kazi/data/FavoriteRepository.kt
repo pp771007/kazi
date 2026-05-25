@@ -2,8 +2,11 @@ package tw.pp.kazi.data
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -25,6 +28,10 @@ class FavoriteRepository(context: Context) {
     val allItems: StateFlow<List<FavoriteItem>> = _all.asStateFlow()
     private val _items = MutableStateFlow<List<FavoriteItem>>(emptyList())
     val items: StateFlow<List<FavoriteItem>> = _items.asStateFlow()
+
+    // 使用者手動操作(收藏 / 取消 / 清空)→ 發訊號讓同步立刻上傳,不走播放進度那條 30 秒 debounce
+    private val _discreteChange = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val discreteChange: SharedFlow<Unit> = _discreteChange.asSharedFlow()
 
     suspend fun load() = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -65,7 +72,7 @@ class FavoriteRepository(context: Context) {
                 setAll(listOf(item.copy(deletedAt = 0)) + others)
             }
             nowFavorite
-        }
+        }.also { _discreteChange.tryEmit(Unit) }
     }
 
     suspend fun remove(videoId: Long, siteId: Long) = withContext(Dispatchers.IO) {
@@ -76,6 +83,7 @@ class FavoriteRepository(context: Context) {
             }
             setAll(updated)
         }
+        _discreteChange.tryEmit(Unit)
     }
 
     suspend fun clear() = withContext(Dispatchers.IO) {
@@ -84,6 +92,7 @@ class FavoriteRepository(context: Context) {
             val updated = _all.value.map { if (it.deletedAt == 0L) it.copy(deletedAt = now) else it }
             setAll(updated)
         }
+        _discreteChange.tryEmit(Unit)
     }
 
     // 同步合併後整批覆寫(含墓碑)

@@ -2,8 +2,11 @@ package tw.pp.kazi.data
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -25,6 +28,10 @@ class HistoryRepository(context: Context) {
     val allItems: StateFlow<List<HistoryItem>> = _all.asStateFlow()
     private val _items = MutableStateFlow<List<HistoryItem>>(emptyList())
     val items: StateFlow<List<HistoryItem>> = _items.asStateFlow()
+
+    // 使用者手動操作(刪除 / 清空)→ 發訊號讓同步立刻上傳,不走播放進度那條 30 秒 debounce
+    private val _discreteChange = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val discreteChange: SharedFlow<Unit> = _discreteChange.asSharedFlow()
 
     suspend fun load() = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -67,6 +74,7 @@ class HistoryRepository(context: Context) {
             }
             setAll(updated)
         }
+        _discreteChange.tryEmit(Unit)
     }
 
     // 清空 = 把目前所有未刪的標記成墓碑(這樣「清空」也會同步出去)
@@ -76,6 +84,7 @@ class HistoryRepository(context: Context) {
             val updated = _all.value.map { if (it.deletedAt == 0L) it.copy(deletedAt = now) else it }
             setAll(updated)
         }
+        _discreteChange.tryEmit(Unit)
     }
 
     // 同步合併後整批覆寫(含墓碑)
