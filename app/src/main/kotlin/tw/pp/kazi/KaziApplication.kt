@@ -20,6 +20,7 @@ class KaziApplication : Application() {
         super.onCreate()
         installUncaughtExceptionHandler()
         container = AppContainer(this)
+        container.observeForegroundSync()
         scope.launch { container.bootstrap() }
     }
 

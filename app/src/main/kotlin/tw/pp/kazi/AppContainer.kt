@@ -137,6 +137,23 @@ class AppContainer(private val context: Context) {
         _pendingRemoteSearch.value = null
     }
 
+    // app 從背景回到前景時自動拉一次同步(下載別台的變動)。冷啟動那次跳過,bootstrap 已經同步過了。
+    // 只在「回前景」拉、背景不拉 → 不耗電也不會狂打伺服器;沒綁定同步時 sync() 本身會直接 return。
+    private var foregroundSyncArmed = false
+    fun observeForegroundSync() {
+        androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.addObserver(
+            object : androidx.lifecycle.DefaultLifecycleObserver {
+                override fun onStart(owner: androidx.lifecycle.LifecycleOwner) {
+                    if (!foregroundSyncArmed) {
+                        foregroundSyncArmed = true
+                        return
+                    }
+                    appScope.launch { syncManager.sync() }
+                }
+            }
+        )
+    }
+
     suspend fun bootstrap() {
         configRepository.load()
         siteRepository.load()
