@@ -23,7 +23,9 @@ object HttpClients {
                     TimeUnit.MINUTES,
                 ),
             )
-            .retryOnConnectionFailure(false)
+            // 開著(OkHttp 預設):連線池重用到伺服器已關掉的 keep-alive 連線時,會內部換新連線重試,
+            // 不會把「unexpected end of stream」丟到 UI。POST 若 body 已送出 OkHttp 不會重試 → 不會重複送出。
+            .retryOnConnectionFailure(true)
             .build()
     }
 
