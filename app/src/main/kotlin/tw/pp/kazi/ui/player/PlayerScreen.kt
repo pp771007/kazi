@@ -23,6 +23,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -61,13 +63,17 @@ import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import tw.pp.kazi.data.ApiResult
+import tw.pp.kazi.data.Episode
 import tw.pp.kazi.data.HistoryConfig
 import tw.pp.kazi.data.HistoryItem
+import tw.pp.kazi.data.Video
+import tw.pp.kazi.data.VideoSource
 import tw.pp.kazi.data.MacCmsApiSpec
 import tw.pp.kazi.data.PlayerConfig
 import tw.pp.kazi.data.VideoDetails
 import tw.pp.kazi.ui.LocalAppContainer
 import tw.pp.kazi.ui.LocalNavController
+import tw.pp.kazi.ui.Routes
 import tw.pp.kazi.ui.LocalWindowSize
 import tw.pp.kazi.ui.isTv
 import tw.pp.kazi.ui.components.AppButton
@@ -119,7 +125,15 @@ fun PlayerScreen(
     var isPlaying by remember { mutableStateOf(true) }
     var playbackError by remember { mutableStateOf<String?>(null) }
     var speed by remember { mutableFloatStateOf(PlayerConfig.DEFAULT_SPEED) }
-    var showSpeedMenu by remember { mutableStateOf(false) }
+    // 控制面板狀態機(電視用手動按鍵高亮,不走 Compose 焦點 → 不踩 focusGroup 吃 OK / focusProperties 閃退的雷):
+    //  barFocused=焦點在底部控制條;openMenu!=None=正在展開某個清單;menuIndex/barIndex=高亮第幾個
+    var barFocused by remember { mutableStateOf(false) }
+    var barIndex by remember { mutableIntStateOf(0) }
+    var openMenu by remember { mutableStateOf(PlayerMenu.None) }
+    var menuIndex by remember { mutableIntStateOf(0) }
+    // 換站用:拿片名即時跨站搜同名片(第一次開「換站」才搜)
+    var peers by remember(siteId, vodId) { mutableStateOf<List<Video>?>(null) }
+    var peersLoading by remember(siteId, vodId) { mutableStateOf(false) }
     var pendingResumeMs by remember(siteId, vodId, sourceIdx, episodeIdx) {
         mutableLongStateOf(resumePositionMs)
     }
@@ -367,8 +381,9 @@ fun PlayerScreen(
         onDispose { /* 還原放在外層 onDispose */ }
     }
 
-    LaunchedEffect(controlsVisible, controlsActivityTick) {
-        if (controlsVisible) {
+    LaunchedEffect(controlsVisible, controlsActivityTick, barFocused, openMenu) {
+        // 操作控制條 / 開著清單時不自動隱藏,免得選到一半控制列消失
+        if (controlsVisible && !barFocused && openMenu == PlayerMenu.None) {
             delay(PlayerConfig.CONTROLS_AUTO_HIDE_MS)
             controlsVisible = false
         }
@@ -395,7 +410,12 @@ fun PlayerScreen(
     }
 
     BackHandler {
-        if (showSpeedMenu) showSpeedMenu = false else nav.popBackStack()
+        // 逐層返回:先關清單 → 再退出控制條 → 最後才離開播放器
+        when {
+            openMenu != PlayerMenu.None -> openMenu = PlayerMenu.None
+            barFocused -> barFocused = false
+            else -> nav.popBackStack()
+        }
     }
 
     val audioManager = remember(context) {
@@ -451,6 +471,97 @@ fun PlayerScreen(
         speed = speeds[nextIdx]
     }
 
+    // 底部控制條上有哪幾顆鈕(只有 >1 來源才出現「換源」)。順序固定,index 對應這個 list。
+    val barItems = buildList {
+        add(PlayerMenu.Episodes)
+        if ((details?.sources?.size ?: 0) > 1) add(PlayerMenu.Sources)
+        add(PlayerMenu.Sites)
+        add(PlayerMenu.Speed)
+    }
+    val episodes = details?.sources?.getOrNull(currentSourceIdx)?.episodes ?: emptyList()
+    val sourcesList = details?.sources ?: emptyList()
+
+    fun menuItemCount(menu: PlayerMenu): Int = when (menu) {
+        PlayerMenu.Episodes -> episodes.size
+        PlayerMenu.Sources -> sourcesList.size
+        PlayerMenu.Sites -> peers?.size ?: 0
+        PlayerMenu.Speed -> PlayerConfig.PLAYBACK_SPEEDS.size
+        PlayerMenu.None -> 0
+    }
+
+    // 切到別站台:抓該站詳情 → 用集名/集號智慧對齊集數 → 帶當前秒數開新的播放器(取代當前這層,返回回到詳情/上一頁)
+    fun applyPeerPick(peer: Video) {
+        val pos = player.currentPosition.coerceAtLeast(0)
+        val curName = currentEpisode?.name.orEmpty()
+        val curIdx = currentEpIdx
+        openMenu = PlayerMenu.None
+        barFocused = false
+        val pSite = sites.firstOrNull { it.id == peer.fromSiteId } ?: return
+        scope.launch {
+            when (val r = container.macCmsApi.fetchDetails(pSite, peer.vodId)) {
+                is ApiResult.Success -> {
+                    container.cacheDetails(pSite.id, peer.vodId, r.data)
+                    val tgt = r.data.sources.firstOrNull()?.episodes ?: emptyList()
+                    val epIdx = matchEpisodeIndex(curName, curIdx, tgt)
+                    nav.popBackStack()
+                    nav.navigate(Routes.player(pSite.id, peer.vodId, 0, epIdx, pos, pSite.url))
+                }
+                is ApiResult.Error -> playbackError = "換站失敗:${r.message}"
+            }
+        }
+    }
+
+    // 在清單裡按 OK 確認當前 menuIndex 的選擇
+    fun confirmMenu() {
+        val idx = menuIndex
+        when (openMenu) {
+            PlayerMenu.Episodes -> {
+                // 手動挑某一集 = 從頭播該集
+                if (idx in episodes.indices) { currentEpIdx = idx; pendingResumeMs = 0L }
+                openMenu = PlayerMenu.None
+            }
+            PlayerMenu.Sources -> {
+                val target = sourcesList.getOrNull(idx)?.episodes
+                if (target != null) {
+                    // 換來源保留進度:同一集的不同線,帶當前秒數續播
+                    pendingResumeMs = player.currentPosition.coerceAtLeast(0)
+                    currentEpIdx = matchEpisodeIndex(currentEpisode?.name.orEmpty(), currentEpIdx, target)
+                    currentSourceIdx = idx
+                }
+                openMenu = PlayerMenu.None
+            }
+            PlayerMenu.Sites -> peers?.getOrNull(idx)?.let { applyPeerPick(it) }
+            PlayerMenu.Speed -> {
+                PlayerConfig.PLAYBACK_SPEEDS.getOrNull(idx)?.let { speed = it }
+                openMenu = PlayerMenu.None
+            }
+            PlayerMenu.None -> Unit
+        }
+    }
+
+    // 從控制條按 OK 展開某顆鈕的清單;menuIndex 預設停在目前選中項。「換站」第一次開才跨站搜尋。
+    fun openBarItem(menu: PlayerMenu) {
+        openMenu = menu
+        menuIndex = when (menu) {
+            PlayerMenu.Episodes -> currentEpIdx.coerceIn(0, (episodes.size - 1).coerceAtLeast(0))
+            PlayerMenu.Sources -> currentSourceIdx.coerceIn(0, (sourcesList.size - 1).coerceAtLeast(0))
+            PlayerMenu.Speed -> PlayerConfig.PLAYBACK_SPEEDS.indexOfFirst { it == speed }.coerceAtLeast(0)
+            else -> 0
+        }
+        if (menu == PlayerMenu.Sites && peers == null && !peersLoading) {
+            peersLoading = true
+            scope.launch {
+                val name = details?.video?.vodName.orEmpty()
+                val enabled = sites.filter { it.enabled }
+                val found = if (name.isBlank()) emptyList() else
+                    container.macCmsApi.multiSiteSearch(enabled, name).videos
+                        .filter { it.vodName == name && it.fromSiteId != siteId }
+                peers = found
+                peersLoading = false
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -461,65 +572,98 @@ fun PlayerScreen(
                 if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 controlsVisible = true
                 controlsActivityTick++
-                when (keyEvent.nativeKeyEvent.keyCode) {
-                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
-                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> {
-                        if (player.isPlaying) player.pause() else player.play(); true
-                    }
-                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                        val step = computeSeekStep(
-                            forward = false,
-                            repeatCount = keyEvent.nativeKeyEvent.repeatCount,
-                        )
-                        if (step != null) {
-                            accumulateSeek(player, -step)
-                            seekCommitTrigger += 1
-                            gestureIndicator = GestureIndicator.Seek(
-                                targetMs = (pendingSeekStartPos + pendingSeekDeltaMs)
-                                    .coerceIn(0, player.duration.coerceAtLeast(0)),
-                                deltaMs = pendingSeekDeltaMs,
-                                durationMs = player.duration,
-                            )
+                val code = keyEvent.nativeKeyEvent.keyCode
+                when {
+                    // === 清單展開中:方向鍵移動高亮、OK 確認;其餘鍵(含 BACK / 音量)放行 ===
+                    // BACK 不在這吃,交給 BackHandler 逐層關(關清單→退控制條→離開)
+                    openMenu != PlayerMenu.None -> {
+                        val count = menuItemCount(openMenu)
+                        when (code) {
+                            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_UP -> {
+                                if (count > 0) menuIndex = (menuIndex - 1 + count) % count; true
+                            }
+                            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                if (count > 0) menuIndex = (menuIndex + 1) % count; true
+                            }
+                            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> { confirmMenu(); true }
+                            else -> false
                         }
-                        true
                     }
-                    KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                        val step = computeSeekStep(
-                            forward = true,
-                            repeatCount = keyEvent.nativeKeyEvent.repeatCount,
-                        )
-                        if (step != null) {
-                            accumulateSeek(player, step)
-                            seekCommitTrigger += 1
-                            gestureIndicator = GestureIndicator.Seek(
-                                targetMs = (pendingSeekStartPos + pendingSeekDeltaMs)
-                                    .coerceIn(0, player.duration.coerceAtLeast(0)),
-                                deltaMs = pendingSeekDeltaMs,
-                                durationMs = player.duration,
-                            )
+                    // === 焦點在底部控制條:←/→ 換鈕、OK 展開該鈕清單、↑ 回影片 ===
+                    barFocused -> when (code) {
+                        KeyEvent.KEYCODE_DPAD_LEFT -> {
+                            if (barItems.isNotEmpty()) barIndex = (barIndex - 1 + barItems.size) % barItems.size; true
                         }
-                        true
+                        KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                            if (barItems.isNotEmpty()) barIndex = (barIndex + 1) % barItems.size; true
+                        }
+                        KeyEvent.KEYCODE_DPAD_UP -> { barFocused = false; true }
+                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                            barItems.getOrNull(barIndex)?.let { openBarItem(it) }; true
+                        }
+                        KeyEvent.KEYCODE_DPAD_DOWN -> true   // 已在最底層,吃掉避免漏到別處
+                        else -> false
                     }
-                    KeyEvent.KEYCODE_DPAD_UP -> {
-                        cyclePlaybackSpeed(forward = true)
-                        gestureIndicator = GestureIndicator.Speed(speed)
-                        true
+                    // === 待機(影片區):OK 播放暫停、←/→ seek、↓ 進控制條 ===
+                    else -> when (code) {
+                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> {
+                            if (player.isPlaying) player.pause() else player.play(); true
+                        }
+                        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                            val step = computeSeekStep(
+                                forward = false,
+                                repeatCount = keyEvent.nativeKeyEvent.repeatCount,
+                            )
+                            if (step != null) {
+                                accumulateSeek(player, -step)
+                                seekCommitTrigger += 1
+                                gestureIndicator = GestureIndicator.Seek(
+                                    targetMs = (pendingSeekStartPos + pendingSeekDeltaMs)
+                                        .coerceIn(0, player.duration.coerceAtLeast(0)),
+                                    deltaMs = pendingSeekDeltaMs,
+                                    durationMs = player.duration,
+                                )
+                            }
+                            true
+                        }
+                        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                            val step = computeSeekStep(
+                                forward = true,
+                                repeatCount = keyEvent.nativeKeyEvent.repeatCount,
+                            )
+                            if (step != null) {
+                                accumulateSeek(player, step)
+                                seekCommitTrigger += 1
+                                gestureIndicator = GestureIndicator.Seek(
+                                    targetMs = (pendingSeekStartPos + pendingSeekDeltaMs)
+                                        .coerceIn(0, player.duration.coerceAtLeast(0)),
+                                    deltaMs = pendingSeekDeltaMs,
+                                    durationMs = player.duration,
+                                )
+                            }
+                            true
+                        }
+                        KeyEvent.KEYCODE_DPAD_DOWN -> {
+                            // ↓ 進底部控制條(取代原本「↓ 調倍速」;倍速改成控制條上一顆鈕)
+                            if (barItems.isNotEmpty()) {
+                                barFocused = true
+                                barIndex = barIndex.coerceIn(0, barItems.size - 1)
+                            }
+                            true
+                        }
+                        KeyEvent.KEYCODE_DPAD_UP -> true   // 只叫出控制列(上面已 set controlsVisible)
+                        KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_PAGE_DOWN -> {
+                            val src = details?.sources?.getOrNull(currentSourceIdx) ?: return@onPreviewKeyEvent false
+                            if (currentEpIdx < src.episodes.size - 1) currentEpIdx += 1
+                            true
+                        }
+                        KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_PAGE_UP -> {
+                            if (currentEpIdx > 0) currentEpIdx -= 1
+                            true
+                        }
+                        else -> false
                     }
-                    KeyEvent.KEYCODE_DPAD_DOWN -> {
-                        cyclePlaybackSpeed(forward = false)
-                        gestureIndicator = GestureIndicator.Speed(speed)
-                        true
-                    }
-                    KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_PAGE_DOWN -> {
-                        val src = details?.sources?.getOrNull(currentSourceIdx) ?: return@onPreviewKeyEvent false
-                        if (currentEpIdx < src.episodes.size - 1) currentEpIdx += 1
-                        true
-                    }
-                    KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_PAGE_UP -> {
-                        if (currentEpIdx > 0) currentEpIdx -= 1
-                        true
-                    }
-                    else -> false
                 }
             },
     ) {
@@ -733,13 +877,20 @@ fun PlayerScreen(
                 ControlsBar(
                     title = details?.video?.vodName.orEmpty(),
                     epName = currentEpisode?.name.orEmpty(),
-                    isPlaying = isPlaying,
                     positionMs = positionMs,
                     durationMs = durationMs,
                     speed = speed,
-                    showSpeedMenu = showSpeedMenu,
-                    onToggleSpeedMenu = { showSpeedMenu = !showSpeedMenu },
-                    onPickSpeed = { speed = it; showSpeedMenu = false },
+                    barItems = barItems,
+                    barFocused = barFocused,
+                    barIndex = barIndex,
+                    openMenu = openMenu,
+                    menuIndex = menuIndex,
+                    currentEpIdx = currentEpIdx,
+                    currentSourceIdx = currentSourceIdx,
+                    episodes = episodes,
+                    sources = sourcesList,
+                    peers = peers,
+                    peersLoading = peersLoading,
                     onSeekTo = { target ->
                         val dur = player.duration.coerceAtLeast(0)
                         val clamped = target.coerceIn(0, if (dur > 0) dur else target)
@@ -748,6 +899,9 @@ fun PlayerScreen(
                         controlsVisible = true
                         controlsActivityTick++
                     },
+                    // 觸控:點控制條的鈕 = 展開該清單;點清單項 = 確認
+                    onBarItemClick = { menu -> openBarItem(menu) },
+                    onMenuItemClick = { idx -> menuIndex = idx; confirmMenu() },
                 )
             }
         }
@@ -788,6 +942,23 @@ private fun friendlyPlaybackError(error: PlaybackException): String {
 }
 
 private enum class DragMode { BRIGHTNESS, VOLUME }
+
+// 播放器控制條上的清單種類(也當「目前展開哪個清單」用)
+private enum class PlayerMenu { None, Episodes, Sources, Sites, Speed }
+
+private val EPISODE_NUMBER_REGEX = Regex("\\d+")
+private fun episodeNumber(name: String): Int? =
+    EPISODE_NUMBER_REGEX.find(name)?.value?.toIntOrNull()
+
+// 換來源 / 換站時對齊集數:先用集名裡的數字對(「第14集」→ 14),對不到再退回同一個集號(clamp)。
+private fun matchEpisodeIndex(currentName: String, currentIdx: Int, target: List<Episode>): Int {
+    if (target.isEmpty()) return 0
+    episodeNumber(currentName)?.let { n ->
+        val byNum = target.indexOfFirst { episodeNumber(it.name) == n }
+        if (byNum >= 0) return byNum
+    }
+    return currentIdx.coerceIn(0, target.size - 1)
+}
 
 private sealed class GestureIndicator {
     data class Seek(val targetMs: Long, val deltaMs: Long, val durationMs: Long) : GestureIndicator()
@@ -946,14 +1117,23 @@ private fun CenterPlayPauseButton(isPlaying: Boolean, onClick: () -> Unit) {
 private fun ControlsBar(
     title: String,
     epName: String,
-    isPlaying: Boolean,
     positionMs: Long,
     durationMs: Long,
     speed: Float,
-    showSpeedMenu: Boolean,
-    onToggleSpeedMenu: () -> Unit,
-    onPickSpeed: (Float) -> Unit,
+    barItems: List<PlayerMenu>,
+    barFocused: Boolean,
+    barIndex: Int,
+    openMenu: PlayerMenu,
+    menuIndex: Int,
+    currentEpIdx: Int,
+    currentSourceIdx: Int,
+    episodes: List<Episode>,
+    sources: List<VideoSource>,
+    peers: List<Video>?,
+    peersLoading: Boolean,
     onSeekTo: (Long) -> Unit,
+    onBarItemClick: (PlayerMenu) -> Unit,
+    onMenuItemClick: (Int) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -976,9 +1156,21 @@ private fun ControlsBar(
             durationMs = durationMs,
             onSeek = onSeekTo,
         )
+        // 展開的清單(在按鈕列上方);電視用 menuIndex 高亮 + 自動捲到該項,手機點項目即確認
+        if (openMenu != PlayerMenu.None) {
+            MenuRow(
+                menu = openMenu,
+                menuIndex = menuIndex,
+                episodes = episodes,
+                sources = sources,
+                peers = peers,
+                peersLoading = peersLoading,
+                onItemClick = onMenuItemClick,
+            )
+        }
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
                 formatDuration(positionMs) + " / " + formatDuration(durationMs),
@@ -986,29 +1178,72 @@ private fun ControlsBar(
                 style = MaterialTheme.typography.labelMedium,
             )
             Spacer(Modifier.weight(1f))
-            // 之前這裡有一顆「▶/⏸」icon — 已經跟中央大圓鈕重複，拿掉。
-            AppButton(
-                text = "${speed}x",
-                icon = Icons.Filled.Speed,
-                onClick = onToggleSpeedMenu,
-                primary = false,
-            )
-        }
-        if (showSpeedMenu) {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.focusGroup(),
-            ) {
-                items(PlayerConfig.PLAYBACK_SPEEDS.toList()) { s ->
-                    FocusableTag(
-                        text = "${s}x",
-                        selected = s == speed,
-                        onClick = { onPickSpeed(s) },
-                    )
-                }
+            // 控制條按鈕(選集/換源/換站/倍速)。電視用 barFocused+barIndex 高亮、OK 展開;手機直接點。
+            barItems.forEachIndexed { i, item ->
+                FocusableTag(
+                    text = barItemLabel(item, speed),
+                    selected = barFocused && i == barIndex,
+                    onClick = { onBarItemClick(item) },
+                )
             }
         }
-        // 之前這裡塞一大段操作說明，太嘮叨。手勢／快捷鍵讓使用者自己摸索（YT/Netflix 也都不放）。
+    }
+}
+
+private fun barItemLabel(menu: PlayerMenu, speed: Float): String = when (menu) {
+    PlayerMenu.Episodes -> "選集"
+    PlayerMenu.Sources -> "換源"
+    PlayerMenu.Sites -> "換站"
+    PlayerMenu.Speed -> "${speed}x"
+    PlayerMenu.None -> ""
+}
+
+private fun episodeLabel(name: String, index: Int): String =
+    if (name.isNotBlank() && name != "${index + 1}") name else "第${index + 1}集"
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun MenuRow(
+    menu: PlayerMenu,
+    menuIndex: Int,
+    episodes: List<Episode>,
+    sources: List<VideoSource>,
+    peers: List<Video>?,
+    peersLoading: Boolean,
+    onItemClick: (Int) -> Unit,
+) {
+    if (menu == PlayerMenu.Sites) {
+        when {
+            peersLoading -> {
+                Text("搜尋其他站台中…", color = Color(0xFFBBBBBB), style = MaterialTheme.typography.labelMedium)
+                return
+            }
+            peers.isNullOrEmpty() -> {
+                Text("找不到其他站台有這部片", color = Color(0xFFBBBBBB), style = MaterialTheme.typography.labelMedium)
+                return
+            }
+        }
+    }
+    val labels: List<String> = when (menu) {
+        PlayerMenu.Episodes -> episodes.mapIndexed { i, e -> episodeLabel(e.name, i) }
+        PlayerMenu.Sources -> sources.mapIndexed { i, s -> s.flag.ifBlank { "來源${i + 1}" } }
+        PlayerMenu.Sites -> peers.orEmpty().map { it.fromSite ?: "站台" }
+        PlayerMenu.Speed -> PlayerConfig.PLAYBACK_SPEEDS.map { "${it}x" }
+        PlayerMenu.None -> emptyList()
+    }
+    val listState = rememberLazyListState()
+    // 用方向鍵移動 menuIndex 時自動把該項捲進畫面
+    LaunchedEffect(menu, menuIndex) {
+        if (menuIndex in labels.indices) runCatching { listState.animateScrollToItem(menuIndex) }
+    }
+    LazyRow(
+        state = listState,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        itemsIndexed(labels) { i, label ->
+            FocusableTag(text = label, selected = i == menuIndex, onClick = { onItemClick(i) })
+        }
     }
 }
 
