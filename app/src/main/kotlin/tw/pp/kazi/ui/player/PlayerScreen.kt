@@ -343,6 +343,10 @@ fun PlayerScreen(
             activity?.window?.let { w ->
                 val c = WindowCompat.getInsetsController(w, w.decorView)
                 c.show(WindowInsetsCompat.Type.systemBars())
+                // 還原手勢調過的螢幕亮度,不然返回後整個 app 都維持播放時調的亮度
+                val lp = w.attributes
+                lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                w.attributes = lp
             }
             // 用 appScope，避免 rememberCoroutineScope 在 dispose 時剛好被 cancel 導致歷史沒寫進去。
             // episodeName 不能用 currentEpisode：它是每次 recomposition 重算的 val，而這個 onDispose
@@ -468,12 +472,13 @@ fun PlayerScreen(
         return stepSec * 1000L
     }
 
-    fun cyclePlaybackSpeed(forward: Boolean) {
-        val speeds = PlayerConfig.PLAYBACK_SPEEDS
-        val curIdx = speeds.indexOfFirst { it == speed }.let { if (it < 0) speeds.size / 2 else it }
-        val nextIdx = if (forward) (curIdx + 1).coerceAtMost(speeds.size - 1)
-            else (curIdx - 1).coerceAtLeast(0)
-        speed = speeds[nextIdx]
+    // 播放/暫停切換。看完最後一集會停在 STATE_ENDED,此時 play() 不會重播,要先 seekTo(0) 才會從頭。
+    fun togglePlayPause() {
+        when {
+            player.playbackState == Player.STATE_ENDED -> { player.seekTo(0); player.play() }
+            player.isPlaying -> player.pause()
+            else -> player.play()
+        }
     }
 
     // 底部控制條上有哪幾顆鈕(只有 >1 來源才出現「換源」)。順序固定,index 對應這個 list。
@@ -615,7 +620,7 @@ fun PlayerScreen(
                     else -> when (code) {
                         KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
                         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> {
-                            if (player.isPlaying) player.pause() else player.play(); true
+                            togglePlayPause(); true
                         }
                         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
                             val step = computeSeekStep(
@@ -730,7 +735,7 @@ fun PlayerScreen(
                                 }
                                 if (delta == 0L) {
                                     // 中央雙擊 = play/pause
-                                    if (player.isPlaying) player.pause() else player.play()
+                                    togglePlayPause()
                                 } else {
                                     accumulateSeek(player, delta)
                                     val target = (pendingSeekStartPos + pendingSeekDeltaMs)
@@ -873,7 +878,7 @@ fun PlayerScreen(
                 CenterPlayPauseButton(
                     isPlaying = isPlaying,
                     onClick = {
-                        if (player.isPlaying) player.pause() else player.play()
+                        togglePlayPause()
                         controlsVisible = true
                         controlsActivityTick++
                     },
