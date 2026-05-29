@@ -355,6 +355,8 @@ class MacCmsApi {
         val pic = (detailPic ?: primaryPic).orEmpty()
         return when {
             pic.isBlank() -> ""
+            // 協議相對網址 //cdn.x.com/a.jpg → 補 http:,不然會掉進 else 被當相對路徑拼壞、整批破圖
+            pic.startsWith("//") -> "http:$pic"
             pic.startsWith("http", ignoreCase = true) -> pic
             else -> "$baseUrl/${pic.trimStart('/')}"
         }

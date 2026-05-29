@@ -234,9 +234,12 @@ class LanServer(
     // 直接從 inputStream 以 UTF-8 讀取，繞開這個行為。
     private class TruncatedBodyException(message: String) : Exception(message)
 
+    // LAN server 無認證、同網段誰都能打;body 上限擋掉「宣稱超大 Content-Length 一次配爆記憶體」的 OOM
+    private val maxBodyBytes = 4 * 1024 * 1024
     private fun readBody(session: IHTTPSession): String {
         val contentLength = session.headers["content-length"]?.toIntOrNull() ?: return ""
         if (contentLength <= 0) return ""
+        if (contentLength > maxBodyBytes) return ""
         val buf = ByteArray(contentLength)
         val input = session.inputStream
         var off = 0
