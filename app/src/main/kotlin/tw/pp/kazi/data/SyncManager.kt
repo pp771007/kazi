@@ -76,8 +76,8 @@ class SyncManager(
         }
     }
 
-    /** 立刻上傳(取消待推送的 debounce job,直接推一次)。給刪除 / 清空這類手動操作用。 */
-    private fun pushNow() {
+    /** 立刻上傳(取消待推送的 debounce job,直接推一次)。給刪除 / 清空、離開播放器 flush 這類「要馬上同步」的操作用。 */
+    fun pushNow() {
         if (baseUrl() == null) return
         pushJob?.cancel()
         pushJob = scope.launch { withContext(Dispatchers.IO) { pushAll() } }

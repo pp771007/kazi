@@ -326,7 +326,6 @@ fun PlayerScreen(
                 vodId = vodId, sourceIdx = currentSourceIdx, episodeIdx = currentEpIdx,
                 episodeName = currentEpisode?.name.orEmpty(),
                 positionMs = player.currentPosition, durationMs = player.duration,
-                scope = scope,
             )
         }
     }
@@ -351,13 +350,20 @@ fun PlayerScreen(
             // 自動連播跳下一集後，currentEpIdx 是 state 會讀到新值、但 currentEpisode?.name 還停在第一集，
             // 存進去就變成「集號=2、集名=第一集」，外面繼續觀看顯示成第一集。改成用 fresh state 現查集名。
             val endEpisode = details?.sources?.getOrNull(currentSourceIdx)?.episodes?.getOrNull(currentEpIdx)
-            saveHistoryIfReady(
-                container = container, site = site, details = details,
-                vodId = vodId, sourceIdx = currentSourceIdx, episodeIdx = currentEpIdx,
-                episodeName = endEpisode?.name.orEmpty(),
-                positionMs = player.currentPosition, durationMs = player.duration,
-                scope = container.appScope,
-            )
+            // player.release() 之後就讀不到正確進度,先把秒數抓下來再丟進背景協程
+            val exitPositionMs = player.currentPosition
+            val exitDurationMs = player.duration
+            // 離開播放器:先把進度寫進本機歷史,再「立刻」推一次同步(不等 30 秒 debounce),
+            // 避免使用者一返回就把 app 滑掉、那筆進度還沒上傳 → 另一台看不到。用 appScope 確保跑完。
+            container.appScope.launch {
+                saveHistoryIfReady(
+                    container = container, site = site, details = details,
+                    vodId = vodId, sourceIdx = currentSourceIdx, episodeIdx = currentEpIdx,
+                    episodeName = endEpisode?.name.orEmpty(),
+                    positionMs = exitPositionMs, durationMs = exitDurationMs,
+                )
+                container.syncManager.pushNow()
+            }
             player.release()
         }
     }
@@ -1423,7 +1429,7 @@ private fun formatDuration(ms: Long): String {
     else String.format("%02d:%02d", m, s)
 }
 
-private fun saveHistoryIfReady(
+private suspend fun saveHistoryIfReady(
     container: tw.pp.kazi.AppContainer,
     site: tw.pp.kazi.data.Site?,
     details: VideoDetails?,
@@ -1433,7 +1439,6 @@ private fun saveHistoryIfReady(
     episodeName: String,
     positionMs: Long,
     durationMs: Long,
-    scope: kotlinx.coroutines.CoroutineScope,
 ) {
     val s = site ?: return
     val d = details ?: return
@@ -1457,24 +1462,22 @@ private fun saveHistoryIfReady(
         if (!isFavorite && !isInHistory) return
     }
 
-    scope.launch {
-        container.historyRepository.record(
-            HistoryItem(
-                videoId = vodId,
-                videoName = d.video.vodName,
-                videoPic = d.video.vodPic,
-                siteId = s.id,
-                siteName = s.name,
-                siteUrl = s.url,
-                sourceIndex = sourceIdx,
-                episodeIndex = episodeIdx,
-                episodeName = episodeName,
-                positionMs = positionMs,
-                durationMs = durationMs,
-                totalEpisodes = totalAcrossSources,
-            )
+    container.historyRepository.record(
+        HistoryItem(
+            videoId = vodId,
+            videoName = d.video.vodName,
+            videoPic = d.video.vodPic,
+            siteId = s.id,
+            siteName = s.name,
+            siteUrl = s.url,
+            sourceIndex = sourceIdx,
+            episodeIndex = episodeIdx,
+            episodeName = episodeName,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            totalEpisodes = totalAcrossSources,
         )
-    }
+    )
 }
 
 // 螢幕寬度分半參數（左半亮度 / 右半音量），留 local 因為只影響手勢區分邏輯

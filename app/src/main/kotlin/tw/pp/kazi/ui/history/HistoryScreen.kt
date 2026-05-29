@@ -78,6 +78,12 @@ fun HistoryScreen() {
         }
     }
 
+    // 一進歷史頁就主動拉一次同步:把別台最新的觀看進度抓下來(平常只有冷啟動 / 回前景才拉)。
+    // 用 appScope 跑 → 即使馬上離開這頁也讓它跑完,不會半途被取消。
+    LaunchedEffect(Unit) {
+        container.appScope.launch { container.syncManager.sync() }
+    }
+
     ScreenScaffold(
         title = "觀看歷史",
         subtitle = buildString {
