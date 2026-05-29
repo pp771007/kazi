@@ -27,7 +27,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -570,6 +569,8 @@ fun PlayerScreen(
             .focusable()
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                // 記住按下「之前」控制列是否已顯示:待機區按↑要靠這個判斷「立刻收起」還是「叫出」
+                val controlsWereVisible = controlsVisible
                 controlsVisible = true
                 controlsActivityTick++
                 val code = keyEvent.nativeKeyEvent.keyCode
@@ -652,7 +653,12 @@ fun PlayerScreen(
                             }
                             true
                         }
-                        KeyEvent.KEYCODE_DPAD_UP -> true   // 只叫出控制列(上面已 set controlsVisible)
+                        KeyEvent.KEYCODE_DPAD_UP -> {
+                            // 控制列原本就開著(且停在影片區、沒有東西要選)→ ↑ 立刻收起,不用等自動隱藏;
+                            // 原本是隱藏的 → 維持「↑ 叫出控制列」(開頭已 set controlsVisible = true)
+                            if (controlsWereVisible) controlsVisible = false
+                            true
+                        }
                         KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_PAGE_DOWN -> {
                             val src = details?.sources?.getOrNull(currentSourceIdx) ?: return@onPreviewKeyEvent false
                             if (currentEpIdx < src.episodes.size - 1) currentEpIdx += 1
@@ -1082,8 +1088,8 @@ private fun BackOverlayButton(onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         androidx.tv.material3.Icon(
-            Icons.AutoMirrored.Filled.ArrowBack,
-            contentDescription = "返回",
+            Icons.Filled.Close,
+            contentDescription = "關閉",
             tint = Color.White,
             modifier = Modifier.size(24.dp),
         )
