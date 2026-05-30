@@ -519,13 +519,13 @@ private fun CompactLayout(
                         .clickable { titleExpanded = !titleExpanded },
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    CopyTextButton(text = v.vodName)
                     AppButton(
                         text = "搜尋",
                         icon = Icons.Filled.Search,
                         onClick = { onSearchByName(v.vodName) },
                         primary = false,
                     )
+                    CopyTextButton(text = v.vodName)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (v.vodRemarks.isNotBlank()) BadgeSmall(v.vodRemarks, AppColors.Accent)
