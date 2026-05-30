@@ -392,14 +392,12 @@ fun HomeScreen() {
             }
 
             val err = errorMsg
-            val videosShown = !loading && err == null && videos.isNotEmpty()
 
-            // 站點 / 分類列。有影片時放進列表當 header 一起捲(往上滑就跟著上去、捲到頂才回來);
-            // 載入 / 錯誤 / 空清單時釘在上方,讓使用者還能切站台或分類。只有頂列(時鐘)保留下滑回出來。
+            // 站點 / 分類列。永遠當影片格 LazyGrid 的 header 一起捲動,不再依 loading 切到別段排版 →
+            // header 全程不被 unmount → 點下去焦點留在 chip、focusRestorer 記得選的那顆、往上回得來。
             @Composable
             fun Strips() {
                 // 站點 / 分類列自己會水平捲動 → 標記為換頁手勢排除區,左右滑不從這兩列觸發換頁。
-                // 在無 swipe 包裹的分支(載入 / 空清單)裡這個 modifier 自動退化成 no-op。
                 Column(modifier = Modifier.fillMaxWidth().pageSwipeIgnore("home-strips")) {
                     SiteStrip(
                         sites = enabledSites,
@@ -433,51 +431,13 @@ fun HomeScreen() {
                 }
             }
 
-            if (videosShown) {
-                // 手機(非電視)左右滑換頁:左滑下一頁、右滑上一頁。電視盒不攔(用 D-pad + 分頁鈕)。
-                HorizontalPageSwipe(
-                    enabled = !windowSize.isTv && pageCount > 1,
-                    canPrev = page > 1,
-                    canNext = page < pageCount,
-                    onPrev = { if (page > 1) { page--; pendingContentFocus = true } },
-                    onNext = { if (page < pageCount) { page++; pendingContentFocus = true } },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    VideoGrid(
-                        header = { Strips() },
-                        videos = videos,
-                        windowSize = windowSize,
-                        firstItemFocus = firstVideoFocus,
-                        clickedVodId = restoreClickedVodId,
-                        clickedItemFocus = clickedVideoFocus,
-                        onClick = { v ->
-                            val site = selectedSite ?: return@VideoGrid
-                            // 記下這次點的 vodId，從 detail 返回時 focus 會自動回到這張卡
-                            lastClickedVodId = v.vodId
-                            nav.navigate(Routes.detail(site.id, v.vodId))
-                        },
-                        nextPageRequester = if (pageCount > 1 && page < pageCount) nextPageFocus else null,
-                        footerContent = if (pageCount > 1) {
-                            {
-                                Pager(
-                                    page = page,
-                                    pageCount = pageCount,
-                                    onPrev = { if (page > 1) { page--; pendingContentFocus = true } },
-                                    onNext = { if (page < pageCount) { page++; pendingContentFocus = true } },
-                                    onJump = { target -> page = target; pendingContentFocus = true },
-                                    windowSize = windowSize,
-                                    nextPageRequester = nextPageFocus,
-                                )
-                            }
-                        } else null,
-                    )
-                }
-            } else {
-                Strips()
-                Box(modifier = Modifier.weight(1f)) {
-                    when {
-                        loading -> LoadingState()
-                        err != null -> EmptyState(
+            // 載入 / 錯誤 / 空清單 → 畫進影片格內容區(statusContent);有片則 null,正常顯示影片卡。
+            // 三者都讓 Strips 留在同一個 grid header,不會被 unmount → 焦點/記憶不丟。
+            val statusContent: (@Composable () -> Unit)? = when {
+                loading -> { { LoadingState() } }
+                err != null -> {
+                    {
+                        EmptyState(
                             title = "載入失敗",
                             subtitle = err,
                             icon = Icons.Filled.ErrorOutline,
@@ -493,13 +453,59 @@ fun HomeScreen() {
                                 )
                             },
                         )
-                        else -> EmptyState(
+                    }
+                }
+                videos.isEmpty() -> {
+                    {
+                        EmptyState(
                             title = "這個分類下沒有內容",
                             subtitle = "試試切換其他分類或搜尋",
                             icon = Icons.Filled.MovieFilter,
                         )
                     }
                 }
+                else -> null
+            }
+            val videosShown = statusContent == null
+
+            // 手機(非電視)左右滑換頁;電視盒不攔(用 D-pad + 分頁鈕)。載入/空/錯誤時不換頁。
+            HorizontalPageSwipe(
+                enabled = !windowSize.isTv && videosShown && pageCount > 1,
+                canPrev = page > 1,
+                canNext = page < pageCount,
+                onPrev = { if (page > 1) { page--; pendingContentFocus = true } },
+                onNext = { if (page < pageCount) { page++; pendingContentFocus = true } },
+                modifier = Modifier.weight(1f),
+            ) {
+                VideoGrid(
+                    header = { Strips() },
+                    statusContent = statusContent,
+                    videos = videos,
+                    windowSize = windowSize,
+                    firstItemFocus = firstVideoFocus,
+                    clickedVodId = restoreClickedVodId,
+                    clickedItemFocus = clickedVideoFocus,
+                    onClick = { v ->
+                        val site = selectedSite ?: return@VideoGrid
+                        // 記下這次點的 vodId，從 detail 返回時 focus 會自動回到這張卡
+                        lastClickedVodId = v.vodId
+                        nav.navigate(Routes.detail(site.id, v.vodId))
+                    },
+                    nextPageRequester = if (videosShown && pageCount > 1 && page < pageCount) nextPageFocus else null,
+                    footerContent = if (videosShown && pageCount > 1) {
+                        {
+                            Pager(
+                                page = page,
+                                pageCount = pageCount,
+                                onPrev = { if (page > 1) { page--; pendingContentFocus = true } },
+                                onNext = { if (page < pageCount) { page++; pendingContentFocus = true } },
+                                onJump = { target -> page = target; pendingContentFocus = true },
+                                windowSize = windowSize,
+                                nextPageRequester = nextPageFocus,
+                            )
+                        }
+                    } else null,
+                )
             }
         }
         }
@@ -687,6 +693,9 @@ private fun CategoryStrip(
     }
 }
 
+// 載入/空/錯誤狀態畫在 grid 內容區時的最小高度,讓 spinner/空狀態有空間置中,不會擠在站點列正下方。
+private val STATUS_MIN_HEIGHT = 320.dp
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun VideoGrid(
@@ -698,6 +707,10 @@ private fun VideoGrid(
     onClick: (Video) -> Unit,
     // 列表最上面的 header(站點/分類列):當第一個 item 一起捲動。
     header: (@Composable () -> Unit)? = null,
+    // 載入 / 空清單 / 錯誤狀態:非 null 時取代影片格內容,畫在 header 底下同一個 grid 內。
+    // 關鍵:讓 header(站點/分類列)無論 loading 與否都待在「同一個 grid 的同一個 item」,
+    // 不會因為切換到別段排版被 unmount → 焦點留在剛選的 chip、focusRestorer 記憶不丟。
+    statusContent: (@Composable () -> Unit)? = null,
     // 整齊網格最後一列按↓時跳到的「下一頁」requester(掛在 footer 分頁上);可用時才傳
     nextPageRequester: FocusRequester? = null,
     footerContent: (@Composable () -> Unit)? = null,
@@ -728,26 +741,35 @@ private fun VideoGrid(
             modifier = Modifier.fillMaxSize(),
         ) {
             if (header != null) {
-                item(span = StaggeredGridItemSpan.FullLine) { header() }
+                item(span = StaggeredGridItemSpan.FullLine, key = "home-header") { header() }
             }
-            staggeredItemsIndexed(
-                videos,
-                key = { _, v -> v.vodId },
-            ) { idx, v ->
-                PosterCard(
-                    title = v.vodName,
-                    remarks = v.vodRemarks,
-                    imageUrl = v.vodPic,
-                    fromSite = v.fromSite,
-                    aspectRatio = ratios[v.vodPic] ?: PosterConfig.MASONRY_DEFAULT_RATIO,
-                    fill = PosterFill.Crop,
-                    onRatio = { ratios[v.vodPic] = it },
-                    onClick = { onClick(v) },
-                    focusRequester = focusFor(idx, v),
-                )
-            }
-            if (footerContent != null) {
-                item(span = StaggeredGridItemSpan.FullLine) { footerContent() }
+            if (statusContent != null) {
+                item(span = StaggeredGridItemSpan.FullLine, key = "home-status") {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = STATUS_MIN_HEIGHT),
+                        contentAlignment = Alignment.Center,
+                    ) { statusContent() }
+                }
+            } else {
+                staggeredItemsIndexed(
+                    videos,
+                    key = { _, v -> v.vodId },
+                ) { idx, v ->
+                    PosterCard(
+                        title = v.vodName,
+                        remarks = v.vodRemarks,
+                        imageUrl = v.vodPic,
+                        fromSite = v.fromSite,
+                        aspectRatio = ratios[v.vodPic] ?: PosterConfig.MASONRY_DEFAULT_RATIO,
+                        fill = PosterFill.Crop,
+                        onRatio = { ratios[v.vodPic] = it },
+                        onClick = { onClick(v) },
+                        focusRequester = focusFor(idx, v),
+                    )
+                }
+                if (footerContent != null) {
+                    item(span = StaggeredGridItemSpan.FullLine) { footerContent() }
+                }
             }
         }
         return
@@ -762,29 +784,38 @@ private fun VideoGrid(
         modifier = Modifier.fillMaxSize(),
     ) {
         if (header != null) {
-            item(span = { GridItemSpan(maxLineSpan) }) { header() }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "home-header") { header() }
         }
-        itemsIndexed(videos, key = { _, v -> v.vodId }) { idx, v ->
-            // 最後一列卡片按↓ → 先把分頁捲進畫面、再 focus「下一頁」(分頁在卡片下方、按↓當下還沒 compose,
-            // 直接 requestFocus 會落空 → 用 keyScrollFocus 先捲再 focus)。footer index = header + videos。
-            val isLastRow = idx >= videos.size - columns
-            val downKeyMod = if (isLastRow) {
-                Modifier.keyScrollFocus(scope, nextPageRequester) { gridState.animateScrollToItem(headerCount + videos.size) }
-            } else Modifier
-            PosterCard(
-                title = v.vodName,
-                remarks = v.vodRemarks,
-                imageUrl = v.vodPic,
-                fromSite = v.fromSite,
-                aspectRatio = layout.cellAspect,
-                fill = layout.fill,
-                onClick = { onClick(v) },
-                modifier = downKeyMod,
-                focusRequester = focusFor(idx, v),
-            )
-        }
-        if (footerContent != null) {
-            item(span = { GridItemSpan(maxLineSpan) }) { footerContent() }
+        if (statusContent != null) {
+            item(span = { GridItemSpan(maxLineSpan) }, key = "home-status") {
+                Box(
+                    modifier = Modifier.fillMaxWidth().heightIn(min = STATUS_MIN_HEIGHT),
+                    contentAlignment = Alignment.Center,
+                ) { statusContent() }
+            }
+        } else {
+            itemsIndexed(videos, key = { _, v -> v.vodId }) { idx, v ->
+                // 最後一列卡片按↓ → 先把分頁捲進畫面、再 focus「下一頁」(分頁在卡片下方、按↓當下還沒 compose,
+                // 直接 requestFocus 會落空 → 用 keyScrollFocus 先捲再 focus)。footer index = header + videos。
+                val isLastRow = idx >= videos.size - columns
+                val downKeyMod = if (isLastRow) {
+                    Modifier.keyScrollFocus(scope, nextPageRequester) { gridState.animateScrollToItem(headerCount + videos.size) }
+                } else Modifier
+                PosterCard(
+                    title = v.vodName,
+                    remarks = v.vodRemarks,
+                    imageUrl = v.vodPic,
+                    fromSite = v.fromSite,
+                    aspectRatio = layout.cellAspect,
+                    fill = layout.fill,
+                    onClick = { onClick(v) },
+                    modifier = downKeyMod,
+                    focusRequester = focusFor(idx, v),
+                )
+            }
+            if (footerContent != null) {
+                item(span = { GridItemSpan(maxLineSpan) }) { footerContent() }
+            }
         }
     }
 }
