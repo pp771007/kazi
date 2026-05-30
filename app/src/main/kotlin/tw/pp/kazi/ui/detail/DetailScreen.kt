@@ -359,14 +359,20 @@ fun DetailScreen(siteId: Long, vodId: Long) {
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun IncognitoBadge() {
-    // 點下去關掉無痕 — 跟 Home / Search / History / Favorites 的「🕶 無痕」pill 行為一致
+    // 點下去關掉無痕。注意:只用 clickable(它本身就讓元素可聚焦),不要再額外掛一個 .focusable()——
+    // 兩個 focus target 用同一個 interactionSource 會打架,害這顆「聚焦不到/點不到」(踩過的雷)。
+    // 加聚焦邊框 + 背景變化,讓 D-pad 焦點看得出來停在這。
     val container = LocalAppContainer.current
     val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(Color(0x33FFFFFF))
-            .focusable(interactionSource = interaction)
+            .background(if (focused) Color(0x55FFFFFF) else Color(0x33FFFFFF))
+            .border(
+                BorderStroke(2.dp, if (focused) AppColors.FocusRing else Color.Transparent),
+                RoundedCornerShape(999.dp),
+            )
             .clickable(interactionSource = interaction, indication = null) {
                 container.setIncognito(false)
             }
@@ -664,27 +670,8 @@ private fun WideLayout(
     val v = d.video
     val src = d.sources.getOrNull(selectedSource)
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // 全寬頂列:返回(左) + 無痕(可點掉) + 時鐘(右)。從窄左欄搬出來,返回不再被擠。
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AppButton(
-                text = "返回",
-                icon = Icons.AutoMirrored.Filled.ArrowBack,
-                onClick = onBack,
-                primary = false,
-            )
-            Spacer(Modifier.weight(1f))
-            if (incognito) IncognitoBadge()
-            // 詳情頁沒走 GradientTopBar，這裡自己補上時鐘；跟 GradientTopBar 一致只在電視盒顯示
-            if (LocalWindowSize.current.isTv) ClockPill()
-        }
-        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+    Row(modifier = Modifier.fillMaxSize()) {
+        // 左欄:整欄只放海報。返回/無痕/時鐘/收藏/片名/資訊/集數 全部移到右欄。
         Column(
             modifier = Modifier
                 .width(posterColWidth)
@@ -694,13 +681,6 @@ private fun WideLayout(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            AppButton(
-                text = if (isFavorited) "已收藏" else "收藏",
-                icon = if (isFavorited) Icons.Filled.Star else Icons.Filled.StarBorder,
-                onClick = onToggleFavorite,
-                primary = isFavorited,
-            )
-            PeerRow(peers = peers, currentSiteId = siteId, onPeerPick = onPeerPick)
             val posterInteraction = remember { MutableInteractionSource() }
             val posterFocused by posterInteraction.collectIsFocusedAsState()
             val posterScale by animateFloatAsState(
@@ -768,17 +748,6 @@ private fun WideLayout(
                     )
                 }
             }
-            if (v.vodRemarks.isNotBlank() || v.vodYear.isNotBlank() || v.vodArea.isNotBlank()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (v.vodRemarks.isNotBlank()) BadgeSmall(v.vodRemarks, AppColors.Accent)
-                    if (v.vodYear.isNotBlank()) BadgeSmall(v.vodYear, AppColors.Secondary)
-                    if (v.vodArea.isNotBlank()) BadgeSmall(v.vodArea, AppColors.Primary)
-                }
-            }
-            InfoLine(label = "類型", value = v.typeName)
-            InfoLine(label = "導演", value = v.vodDirector)
-            InfoLine(label = "演員", value = v.vodActor, maxLines = 3)
-            InfoLine(label = "站點", value = site?.name ?: "-")
         }
 
         Column(
@@ -789,8 +758,25 @@ private fun WideLayout(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            // 動作列(右欄最上方,進頁面 focus 落在繼續觀看/第一集):繼續觀看 / 下一集 / 搜尋 / 複製。
-            // 繼續觀看、下一集 視 history 而定(沒就不渲染);搜尋、複製 一律有。
+            // 頂列(右欄最上方,右對齊):無痕(可點掉) + 時鐘 + 返回。
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Spacer(Modifier.weight(1f))
+                if (incognito) IncognitoBadge()
+                // 詳情頁沒走 GradientTopBar，這裡自己補上時鐘；跟 GradientTopBar 一致只在電視盒顯示
+                if (LocalWindowSize.current.isTv) ClockPill()
+                AppButton(
+                    text = "返回",
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    onClick = onBack,
+                    primary = false,
+                )
+            }
+
+            // 動作列:繼續觀看 / 下一集 / 收藏 / 搜尋 / 複製。繼續觀看、下一集 視 history 而定。
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (historyItem != null && historyItem.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) {
                     AppButton(
@@ -809,6 +795,12 @@ private fun WideLayout(
                     }
                 }
                 AppButton(
+                    text = if (isFavorited) "已收藏" else "收藏",
+                    icon = if (isFavorited) Icons.Filled.Star else Icons.Filled.StarBorder,
+                    onClick = onToggleFavorite,
+                    primary = isFavorited,
+                )
+                AppButton(
                     text = "搜尋",
                     icon = Icons.Filled.Search,
                     onClick = { onSearchByName(v.vodName) },
@@ -825,6 +817,22 @@ private fun WideLayout(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            // 片名下方:badges + 類型/導演/演員/站點(原本在左下角)
+            if (v.vodRemarks.isNotBlank() || v.vodYear.isNotBlank() || v.vodArea.isNotBlank()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (v.vodRemarks.isNotBlank()) BadgeSmall(v.vodRemarks, AppColors.Accent)
+                    if (v.vodYear.isNotBlank()) BadgeSmall(v.vodYear, AppColors.Secondary)
+                    if (v.vodArea.isNotBlank()) BadgeSmall(v.vodArea, AppColors.Primary)
+                }
+            }
+            InfoLine(label = "類型", value = v.typeName)
+            InfoLine(label = "導演", value = v.vodDirector)
+            InfoLine(label = "演員", value = v.vodActor, maxLines = 3)
+            InfoLine(label = "站點", value = site?.name ?: "-")
+
+            // 同名站點(從左欄搬來)
+            PeerRow(peers = peers, currentSiteId = siteId, onPeerPick = onPeerPick)
 
             if (v.vodContent.isNotBlank()) {
                 var contentExpanded by rememberSaveable { mutableStateOf(false) }
@@ -893,7 +901,6 @@ private fun WideLayout(
                     reversed = episodesReversed,
                 )
             }
-        }
         }
     }
 }
