@@ -141,6 +141,10 @@ fun HomeScreen() {
     val retryFocus = remember { FocusRequester() }
     // 影片格最後一列按↓時,跳到分頁的「下一頁」(掛在這顆上)。用 key 事件 + runCatching 觸發,安全不 ANR。
     val nextPageFocus = remember { FocusRequester() }
+    // 站台列按↓的落點:requester 掛在分類列「容器」上,requestFocus 後交給該列的 focusRestorer
+    // 還原到「上次聚焦過的分類」(第一次沒記錄則 fallback 到「全部」)。站台在橫向偏右時純空間搜尋
+    // 會跳過分類列直接到影片卡,用 keyScrollFocus 導去這個 requester 修掉,且保留「記得上次位置」。
+    val categoryRowFocus = remember { FocusRequester() }
     // 切站、切分類、換頁後要把 focus 移到新內容（成功 → 第一張卡；失敗 → 重試按鈕），
     // 避免 focus 卡在剛剛點過的 strip tag 或「下一頁」按鈕上。
     var pendingContentFocus by remember { mutableStateOf(false) }
@@ -413,6 +417,9 @@ fun HomeScreen() {
                         },
                         windowSize = windowSize,
                         listState = siteStripState,
+                        // 有分類列才把↓導去分類列容器(再由 restorer 還原上次位置);沒分類(空)時維持 null →
+                        // 純空間搜尋自然落到影片格。
+                        downToCategory = if (categories.isNotEmpty()) categoryRowFocus else null,
                     )
                     if (categories.isNotEmpty()) {
                         CategoryStrip(
@@ -426,6 +433,7 @@ fun HomeScreen() {
                             },
                             windowSize = windowSize,
                             listState = categoryStripState,
+                            rowFocus = categoryRowFocus,
                         )
                     }
                 }
@@ -520,6 +528,8 @@ private fun SiteStrip(
     onPick: (Site) -> Unit,
     windowSize: WindowSize,
     listState: LazyListState,
+    // 站台列按↓的固定落點(分類列「全部」)。null = 沒分類列,讓純空間搜尋自然往下到影片格。
+    downToCategory: FocusRequester? = null,
 ) {
     val compact = windowSize.isCompact
     // TV：D-pad 第一次進這列(沒記錄)→ 停第一顆;之後 focusRestorer 自動記住上次位置、回上次。
@@ -555,11 +565,13 @@ private fun SiteStrip(
             state = listState,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 2.dp),
-            // focusGroup：讓 Compose 把整個 strip 當一個 focus 集合，按下時整組離開到下一組
-            // (category strip 或 video grid)，不會因 spatial 距離計算跳過 category 直接到 video card
+            // focusGroup 讓整個 strip 當一個 focus 集合;但 focusGroup 不改寫 2D 方向鍵的幾何搜尋,
+            // 站台在橫向偏右時↓仍會跳過分類列直接到影片卡 → 用 keyScrollFocus 把↓強制導去分類「全部」。
+            // 「全部」永遠在最左、必定 composed,scrollToTarget 給空 lambda 即可。
             modifier = Modifier
                 .focusGroup()
-                .focusRestorer { if (firstVisible) firstFocus else FocusRequester.Default },
+                .focusRestorer { if (firstVisible) firstFocus else FocusRequester.Default }
+                .keyScrollFocus(scope, downToCategory) {},
         ) {
             items(sites, key = { it.id }) { s ->
                 val isSelected = s.id == selectedId
@@ -611,6 +623,8 @@ private fun CategoryStrip(
     onPick: (Category?) -> Unit,
     windowSize: WindowSize,
     listState: LazyListState,
+    // 站台列↓的落點:requester 掛在這列「容器」上,requestFocus 後由 focusRestorer 還原到上次聚焦的分類。
+    rowFocus: FocusRequester,
 ) {
     val compact = windowSize.isCompact
     val firstFocus = remember { FocusRequester() }  // 「全部」永遠在 first 位置
@@ -643,8 +657,10 @@ private fun CategoryStrip(
             state = listState,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(vertical = 2.dp),
-            // focusGroup：見 SiteStrip 同款註解；focusRestorer 讓 D-pad 進這列時 focus 落在當前分類
+            // rowFocus 掛在容器:站台列↓ requestFocus 它 → focusRestorer 把 focus 還原到上次聚焦的分類
+            // (第一次沒記錄 → fallback「全部」)。focusGroup 讓整列當一個 focus 集合。
             modifier = Modifier
+                .focusRequester(rowFocus)
                 .focusGroup()
                 .focusRestorer { if (firstVisible) firstFocus else FocusRequester.Default },
         ) {
