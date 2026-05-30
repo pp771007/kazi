@@ -758,16 +758,16 @@ private fun WideLayout(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            // 頂列(右欄最上方,右對齊):無痕(可點掉) + 時鐘 + 返回。
+            // 頂列(右欄最上方):時鐘 + 無痕(可點掉) 靠左、返回 靠右。
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Spacer(Modifier.weight(1f))
-                if (incognito) IncognitoBadge()
                 // 詳情頁沒走 GradientTopBar，這裡自己補上時鐘；跟 GradientTopBar 一致只在電視盒顯示
                 if (LocalWindowSize.current.isTv) ClockPill()
+                if (incognito) IncognitoBadge()
+                Spacer(Modifier.weight(1f))
                 AppButton(
                     text = "返回",
                     icon = Icons.AutoMirrored.Filled.ArrowBack,
