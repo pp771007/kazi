@@ -391,7 +391,8 @@ fun SearchScreen(
         // (無結果時是釘頂、不在 HorizontalPageSwipe 內,modifier 自動退化成 no-op)
         val searchControls: @Composable () -> Unit = {
             Column(
-                modifier = Modifier.pageSwipeAnchored().padding(
+                // background:墊不透明底色(跟頁面同色),換頁拖曳時擋住後面滑過的深色 → 不會黑黑一條。
+                modifier = Modifier.fillMaxWidth().pageSwipeAnchored().background(AppColors.Bg).padding(
                     horizontal = windowSize.pagePadding(),
                     vertical = if (windowSize.isCompact) 6.dp else 8.dp,
                 ),

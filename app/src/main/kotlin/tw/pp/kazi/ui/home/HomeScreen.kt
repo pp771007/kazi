@@ -404,7 +404,11 @@ fun HomeScreen() {
             fun Strips() {
                 // 站點 / 分類列自己會水平捲動 → 標記為換頁手勢排除區,左右滑不從這兩列觸發換頁。
                 // pageSwipeAnchored:換頁拖曳時反向抵銷位移 → 這兩列留在原地,只有影片列表跟著滑。
-                Column(modifier = Modifier.fillMaxWidth().pageSwipeIgnore("home-strips").pageSwipeAnchored()) {
+                // background:墊不透明底色(跟頁面同色),換頁拖曳時擋住後面滑過的深色 → 不會黑黑一條。
+                Column(
+                    modifier = Modifier.fillMaxWidth().pageSwipeIgnore("home-strips")
+                        .pageSwipeAnchored().background(AppColors.Bg),
+                ) {
                     SiteStrip(
                         sites = enabledSites,
                         selected = selectedSite,
