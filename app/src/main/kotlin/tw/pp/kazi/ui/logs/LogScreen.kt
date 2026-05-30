@@ -79,6 +79,7 @@ fun LogScreen() {
                     Toast.makeText(context, "已複製 ${entries.size} 筆紀錄到剪貼簿", Toast.LENGTH_SHORT).show()
                 },
                 enabled = entries.isNotEmpty(),
+                keepFocusable = true,
             )
             tw.pp.kazi.ui.components.ConfirmDeleteButton(
                 text = "清空",
@@ -86,6 +87,7 @@ fun LogScreen() {
                 iconOnly = windowSize.isCompact,
                 onConfirm = { LogBuffer.clear() },
                 enabled = entries.isNotEmpty(),
+                keepFocusable = true,
             )
         },
     ) { innerPadding ->

@@ -135,6 +135,7 @@ fun HistoryScreen() {
                         }
                     },
                     enabled = !checking && items.isNotEmpty(),
+                    keepFocusable = true,
                     primary = false,
                 )
                 tw.pp.kazi.ui.components.ConfirmDeleteButton(
@@ -142,6 +143,7 @@ fun HistoryScreen() {
                     icon = Icons.Filled.DeleteSweep,
                     onConfirm = { scope.launch { container.historyRepository.clear() } },
                     enabled = items.isNotEmpty(),
+                    keepFocusable = true,
                     iconOnly = compact,
                 )
         },

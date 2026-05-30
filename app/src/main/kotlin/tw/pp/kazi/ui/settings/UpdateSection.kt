@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,8 +28,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -70,7 +67,6 @@ private data class ButtonSpec(
 @Composable
 fun UpdateSection() {
     val context = LocalContext.current
-    val windowSize = tw.pp.kazi.ui.LocalWindowSize.current
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
     // 沒授權時暫存使用者點的 asset + version，等他從系統設定回來後 ON_RESUME 自動開始下載
@@ -151,34 +147,17 @@ fun UpdateSection() {
         onDispose { lifecycle.removeObserver(observer) }
     }
 
-    // state 變動後 focus 會掉（按鈕 composable 被換掉，TV 上 focus 預設會跳走），
-    // 用 FocusRequester 抓回來，讓「檢查更新 → 檢查中 → 下載並安裝」連續按下去 focus 不會跳出 UpdateSection。
-    // 跳過初次 composition 那一發（state=Idle）— 不然進設定頁就會搶走 focus，蓋過外層想 focus 「站點管理」的需求。
-    // 只在 TV 跑：手機觸控不需要 keep focus within section
-    val mainButtonFocus = remember { FocusRequester() }
-    var skipFirstFocus by remember { mutableStateOf(true) }
-    LaunchedEffect(state) {
-        if (skipFirstFocus) {
-            skipFirstFocus = false
-            return@LaunchedEffect
-        }
-        if (!windowSize.isTv) return@LaunchedEffect
-        kotlinx.coroutines.delay(50)  // 等新按鈕 attach 到 layout
-        runCatching { mainButtonFocus.requestFocus() }
-    }
-
-    // 把按鈕 props 從 state 抽出來：之前每個 state 一個獨立的 AppButton call site，state
-    // 一變整顆 button composable 被 swap 掉、focus transient 跑去 layout 第一個 focusable
-    // (站點管理) 再 LaunchedEffect 才抓回來。改成單一 call site + 隨 state 改 props，Compose
-    // 就會 keep 同一個按鈕 instance，focus 不會掉。Downloading state 沒按鈕（下載中本來
-    // 就不互動），只有那一次 transition 會 focus loss
+    // 按鈕 props 隨 state 改,但永遠是「同一個 call site、永遠 render、永遠可聚焦」:
+    // Checking / Downloading 這種忙碌狀態以 enabled=false 變灰 + keepFocusable=true 留在原地,
+    // 焦點就不會因為按鈕 disable / 消失被迫跳去站點管理。因此也不再需要先前那段「state 變動後
+    // 用 FocusRequester 把焦點硬抓回來」的 OK 繃(已移除)。
     val s = state
-    val buttonSpec: ButtonSpec? = when (s) {
+    val buttonSpec: ButtonSpec = when (s) {
         UpdateUiState.Idle -> ButtonSpec("更新程式", Icons.Filled.SystemUpdate, ::startCheck, true, false)
         UpdateUiState.Checking -> ButtonSpec("檢查中⋯", null, {}, false, false)
         is UpdateUiState.UpToDate -> ButtonSpec("重新檢查", Icons.Filled.Refresh, ::startCheck, true, false)
         is UpdateUiState.HasUpdate -> ButtonSpec("下載並安裝", Icons.Filled.Download, { startDownloadAndInstall(s.asset, s.release.tagName) }, true, true)
-        is UpdateUiState.Downloading -> null
+        is UpdateUiState.Downloading -> ButtonSpec("下載中⋯", null, {}, false, false)
         is UpdateUiState.Error -> ButtonSpec("重試", Icons.Filled.Refresh, ::startCheck, true, false)
     }
 
@@ -222,17 +201,15 @@ fun UpdateSection() {
             else -> Unit
         }
 
-        // 主按鈕：永遠是同一個 AppButton call site（除非 state = Downloading）
-        if (buttonSpec != null) {
-            AppButton(
-                text = buttonSpec.label,
-                icon = buttonSpec.icon,
-                onClick = buttonSpec.action,
-                enabled = buttonSpec.enabled,
-                primary = buttonSpec.primary,
-                modifier = Modifier.focusRequester(mainButtonFocus),
-            )
-        }
+        // 主按鈕:永遠是同一個 AppButton call site、永遠 render。忙碌狀態 keepFocusable 讓焦點留在原地。
+        AppButton(
+            text = buttonSpec.label,
+            icon = buttonSpec.icon,
+            onClick = buttonSpec.action,
+            enabled = buttonSpec.enabled,
+            keepFocusable = true,
+            primary = buttonSpec.primary,
+        )
     }
 
     if (showPermissionDialog) {

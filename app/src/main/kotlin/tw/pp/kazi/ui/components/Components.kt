@@ -88,6 +88,10 @@ fun AppButton(
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
     enabled: Boolean = true,
+    // keepFocusable: enabled=false 時外觀照樣變灰、點擊照樣吞掉,但「仍可被 D-pad 聚焦」。
+    // 電視上若一顆正被聚焦的按鈕忽然 disable(常見於「按下去→非同步忙碌中」)就會不可聚焦,
+    // 焦點被迫跳到版面別處;開這個旗標讓它留在原地當「灰掉的停留點」,焦點不會亂跑。手機觸控無影響。
+    keepFocusable: Boolean = false,
     primary: Boolean = true,
     danger: Boolean = false,
     iconOnly: Boolean = false,
@@ -129,8 +133,13 @@ fun AppButton(
         .clip(RoundedCornerShape(10.dp))
         .background(bg)
         .border(BorderStroke(borderWidth, borderBrush), RoundedCornerShape(10.dp))
-        .focusable(enabled = enabled, interactionSource = interaction)
-        .clickable(enabled = enabled, interactionSource = interaction, indication = null) { onClick() }
+        .focusable(enabled = enabled || keepFocusable, interactionSource = interaction)
+        // keepFocusable 時 clickable 不能跟著 enabled 關掉:clickable 內建自己的 focus target,
+        // 關掉它會把焦點 target 拆除 → 焦點掉去做空間搜尋、跳到鄰近別的按鈕(就是這個 bug 的本體)。
+        // 改成 clickable 保持啟用維持焦點 target,實際動作用 enabled gate 掉 → 焦點留在原地、按下也不會誤觸發。
+        .clickable(enabled = enabled || keepFocusable, interactionSource = interaction, indication = null) {
+            if (enabled) onClick()
+        }
     val rowModifier = if (iconOnly) {
         baseModifier.size(BUTTON_ICON_ONLY_SIZE)
     } else {
@@ -665,6 +674,7 @@ fun ConfirmDeleteButton(
     confirmIcon: ImageVector = Icons.Filled.Check,
     iconOnly: Boolean = false,
     enabled: Boolean = true,
+    keepFocusable: Boolean = false,
     timeoutMs: Long = 3000L,
 ) {
     var armed by remember { mutableStateOf(false) }
@@ -690,6 +700,7 @@ fun ConfirmDeleteButton(
         danger = true,
         iconOnly = iconOnly,
         enabled = enabled,
+        keepFocusable = keepFocusable,
         modifier = modifier,
     )
 }

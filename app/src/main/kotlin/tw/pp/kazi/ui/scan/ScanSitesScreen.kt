@@ -230,6 +230,7 @@ fun ScanSitesScreen() {
                 icon = Icons.Filled.TravelExplore,
                 onClick = ::harvestPage,
                 enabled = !harvesting && webView != null,
+                keepFocusable = true,
             )
             AppButton(
                 text = "重載",
@@ -324,6 +325,7 @@ private fun CandidatePanel(
                 icon = Icons.Filled.Clear,
                 onClick = onClear,
                 enabled = candidates.isNotEmpty() && !addingBatch,
+                keepFocusable = true,
                 primary = false,
             )
             AppButton(
@@ -331,6 +333,7 @@ private fun CandidatePanel(
                 icon = Icons.Filled.Add,
                 onClick = onAddSelected,
                 enabled = selectedCount > 0 && !addingBatch,
+                keepFocusable = true,
             )
         }
 

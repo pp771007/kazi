@@ -90,6 +90,7 @@ fun FavoritesScreen() {
                 icon = Icons.Filled.DeleteSweep,
                 onConfirm = { scope.launch { container.favoriteRepository.clear() } },
                 enabled = favorites.isNotEmpty(),
+                keepFocusable = true,
                 iconOnly = windowSize.isCompact,
             )
         },

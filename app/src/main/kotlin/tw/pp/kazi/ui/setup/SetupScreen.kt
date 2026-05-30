@@ -353,6 +353,7 @@ private fun BatchOpsCard(
             icon = Icons.Filled.HealthAndSafety,
             onClick = onCheckAll,
             enabled = !batchChecking && sitesEnabled,
+            keepFocusable = true,
             primary = false,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -683,6 +684,7 @@ private fun SiteRow(
                         icon = if (busy) Icons.Filled.HourglassTop else Icons.Filled.HealthAndSafety,
                         onClick = onCheck,
                         enabled = !busy,
+                        keepFocusable = true,
                         primary = false,
                         iconOnly = true,
                     )
@@ -752,6 +754,7 @@ private fun SiteRow(
                 icon = if (busy) Icons.Filled.HourglassTop else Icons.Filled.HealthAndSafety,
                 onClick = onCheck,
                 enabled = !busy,
+                keepFocusable = true,
                 primary = false,
                 iconOnly = true,
             )
