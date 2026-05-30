@@ -62,7 +62,6 @@ fun SettingsScreen() {
     val context = LocalContext.current
     val sites by container.siteRepository.sites.collectAsState()
     val settings by container.configRepository.settings.collectAsState()
-    var syncMsg by remember { mutableStateOf<String?>(null) }
 
     // 進設定頁預設 focus 到「站點管理」(主要操作)；不要讓 UpdateSection 預設搶走 focus。
     // 只在 TV 跑：手機觸控不需要 visible focus 起點
@@ -102,6 +101,12 @@ fun SettingsScreen() {
                 )
             }
 
+            // 更新放在較上面(常用),且 UpdateSection 的焦點亂跳問題已修(keepFocusable),不必再塞底部。
+            Card {
+                SectionHeader(title = "更新")
+                UpdateSection()
+            }
+
             Card {
                 SectionHeader(title = "帳號同步")
                 if (settings.syncEnabled) {
@@ -116,36 +121,17 @@ fun SettingsScreen() {
                         "伺服器:${settings.syncServerUrl}",
                         color = AppColors.OnBgMuted,
                         style = MaterialTheme.typography.bodySmall,
-                    )
-                    Text(
-                        "最後同步:${tw.pp.kazi.ui.components.formatSyncTime(settings.syncLastSyncAt)}",
-                        color = AppColors.OnBgMuted,
-                        style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AppButton(
-                            text = syncMsg ?: "立即同步",
-                            icon = Icons.Filled.Sync,
-                            primary = false,
-                            onClick = {
-                                syncMsg = "同步中…"
-                                container.appScope.launch {
-                                    val ok = container.syncManager.sync()
-                                    syncMsg = if (ok) "已同步" else "同步失敗,請檢查設定"
-                                }
-                            },
-                        )
-                        AppButton(
-                            text = "解除綁定",
-                            icon = Icons.Filled.LinkOff,
-                            primary = false,
-                            onClick = {
-                                syncMsg = null
-                                container.appScope.launch { container.unbindSync() }
-                            },
-                        )
-                    }
+                    // 不再放「立即同步」:進歷史/收藏頁已自動同步,失敗才提示(見 SyncOnEnter)。
+                    AppButton(
+                        text = "解除綁定",
+                        icon = Icons.Filled.LinkOff,
+                        primary = false,
+                        onClick = {
+                            container.appScope.launch { container.unbindSync() }
+                        },
+                    )
                 } else {
                     // 未綁定:填網址+密碼換 token(密碼只用一次,不長存)
                     Text(
@@ -185,10 +171,6 @@ fun SettingsScreen() {
                 }
             }
 
-            // 「關於」放在「疑難排解」前面：原本 UpdateSection（檢查更新）放在最底下，按下檢查
-            // 更新時 button composable 被 swap 那一瞬間 focus 會掉到 layout 第一個 focusable
-            // (站點管理)，再 LaunchedEffect 重抓回 UpdateSection 的按鈕。視覺上焦點從頂部彈
-            // 到底部，scroll 跟著上下跳。把「關於」上提一格、距離站點管理較近，視覺跳幅縮短
             Card {
                 SectionHeader(title = "關於")
                 Row(
@@ -222,7 +204,6 @@ fun SettingsScreen() {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(8.dp))
-                UpdateSection()
                 AppButton(
                     text = "GitHub 專案",
                     icon = Icons.AutoMirrored.Filled.OpenInNew,

@@ -117,25 +117,30 @@ class SyncManager(
         syncMutex.withLock {
             val t = ensureToken(base) ?: return@withLock false
 
+            // allOk 反映「真的有跟伺服器完成資料同步」:任一 GET 失敗(連不上 / 非 2xx)就視為失敗。
+            // 這個回傳值是進歷史/收藏頁失敗提示的依據 → 不能像以前「拿到 token 就回 true」,否則伺服器
+            // 掛掉時(token 有快取、GET 全失敗)還是回 true,提示永遠不跳。
+            var allOk = true
+
             val remoteHist = authedGet("$base/api/history", t)?.let { parseHistory(it) }
             if (remoteHist != null) {
                 // 用 allItems(含墓碑)合併;有效時間取 max(updatedAt, deletedAt) → 刪除若較新就壓過 active
                 val merged = mergeByKey(history.allItems.value, remoteHist, { "${it.videoId}|${it.siteUrl}" }, { maxOf(it.updatedAt, it.deletedAt) })
                 history.replaceAll(merged)
-                authedPost("$base/api/history", encodeHistory(merged), t)
-            }
+                if (!authedPost("$base/api/history", encodeHistory(merged), t)) allOk = false
+            } else allOk = false
 
             val remoteFav = authedGet("$base/api/favorites", t)?.let { parseFavorites(it) }
             if (remoteFav != null) {
                 val merged = mergeByKey(favorites.allItems.value, remoteFav, { "${it.videoId}|${it.siteUrl}" }, { maxOf(it.addedAt, it.deletedAt) })
                 favorites.replaceAll(merged)
-                authedPost("$base/api/favorites", encodeFavorites(merged), t)
-            }
+                if (!authedPost("$base/api/favorites", encodeFavorites(merged), t)) allOk = false
+            } else allOk = false
 
             // 記下最後同步時間 + 抓帳號暱稱(讓設定/歷史頁顯示「已綁定:XXX」,跟網頁對照是否同一帳號)
             val nickname = authedGet("$base/api/account", t)?.let { parseNickname(it) }
             markSynced(nickname)
-            true
+            allOk
         }
     }
 

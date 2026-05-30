@@ -51,7 +51,6 @@ fun HistoryScreen() {
     val compact = windowSize.isCompact
     val items by container.historyRepository.items.collectAsState()
     val incognito by container.incognito.collectAsState()
-    val settings by container.configRepository.settings.collectAsState()
     val scope = rememberCoroutineScope()
     var checking by remember { mutableStateOf(false) }
     var checkProgress by remember { mutableStateOf<String?>(null) }
@@ -78,20 +77,12 @@ fun HistoryScreen() {
         }
     }
 
-    // 一進歷史頁就主動拉一次同步:把別台最新的觀看進度抓下來(平常只有冷啟動 / 回前景才拉)。
-    // 用 appScope 跑 → 即使馬上離開這頁也讓它跑完,不會半途被取消。
-    LaunchedEffect(Unit) {
-        container.appScope.launch { container.syncManager.sync() }
-    }
+    // 進頁主動同步(別台最新進度);失敗才提示,成功安靜。詳見 SyncOnEnter。
+    tw.pp.kazi.ui.SyncOnEnter()
 
     ScreenScaffold(
         title = "觀看歷史",
-        subtitle = buildString {
-            append("${items.size} 筆紀錄")
-            if (settings.syncEnabled && settings.syncLastSyncAt > 0) {
-                append(" · 最後同步 ${tw.pp.kazi.ui.components.formatSyncTime(settings.syncLastSyncAt)}")
-            }
-        },
+        subtitle = "${items.size} 筆紀錄",
         titleBadges = if (incognito) {
             {
                 tw.pp.kazi.ui.components.StatusPill(

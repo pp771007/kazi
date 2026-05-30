@@ -54,12 +54,8 @@ fun FavoritesScreen() {
     val incognito by container.incognito.collectAsState()
     val scope = rememberCoroutineScope()
 
-    // 一進收藏頁就主動拉一次同步:把別台最新的收藏抓下來(平常只有冷啟動 / 回前景才拉)。
-    // 跟歷史頁對稱;sync() 本來就歷史+收藏一起同步,有 mutex 不會跟別處打架。
-    // 用 appScope 跑 → 即使馬上離開這頁也讓它跑完,不會半途被取消。
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        container.appScope.launch { container.syncManager.sync() }
-    }
+    // 進頁主動同步(別台最新收藏);失敗才提示,成功安靜。跟歷史頁共用 SyncOnEnter。
+    tw.pp.kazi.ui.SyncOnEnter()
 
     // TV 進頁面 focus 第一張卡，給 D-pad 一個起點；手機觸控完全不搶焦
     val firstCardFocus = remember { androidx.compose.ui.focus.FocusRequester() }
