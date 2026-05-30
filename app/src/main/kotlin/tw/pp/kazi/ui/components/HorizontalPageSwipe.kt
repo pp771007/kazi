@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -65,6 +66,9 @@ internal class PageSwipeExclusions {
 
 internal val LocalPageSwipeExclusions = compositionLocalOf<PageSwipeExclusions?> { null }
 
+// 換頁拖曳的當前位移量(px),給 pageSwipeAnchored 反向抵銷用。
+internal val LocalPageSwipeOffset = compositionLocalOf<State<Float>?> { null }
+
 /**
  * 標記這個子元件為「換頁手勢排除區」:在 [HorizontalPageSwipe] 內、自己會水平捲動的列(LazyRow chip 列)
  * 掛上它,左右滑就不會從這列觸發換頁,而是讓它正常水平捲動。[key] 在同一個 swipe 內需唯一。
@@ -76,6 +80,16 @@ fun Modifier.pageSwipeIgnore(key: Any): Modifier = composed {
     }
     if (exclusions == null) this
     else onGloballyPositioned { coords -> exclusions.regions[key] = coords.boundsInWindow() }
+}
+
+/**
+ * 掛在 [HorizontalPageSwipe] 內、換頁拖曳時「不想跟著左右位移」的元素(站點 / 分類列):
+ * 反向抵銷換頁位移 → 拖曳換頁時它留在原地,只有影片列表跟著手指滑動。垂直捲動不受影響。
+ */
+fun Modifier.pageSwipeAnchored(): Modifier = composed {
+    val offset = LocalPageSwipeOffset.current
+    if (offset == null) this
+    else graphicsLayer { translationX = -offset.value }
 }
 
 /**
@@ -100,7 +114,8 @@ fun HorizontalPageSwipe(
     }
     val scope = rememberCoroutineScope()
     val commitPx = with(androidx.compose.ui.platform.LocalDensity.current) { COMMIT_DISTANCE.toPx() }
-    var offsetX by remember { mutableFloatStateOf(0f) }
+    val offsetState = remember { mutableFloatStateOf(0f) }
+    var offsetX by offsetState
     var widthPx by remember { mutableIntStateOf(1) }
     // 上膛方向:-1=下一頁(左滑) +1=上一頁(右滑) 0=未上膛。滑過門檻就上膛、變藍鎖定,
     // 往回拉超過門檻一半(DISARM_RATIO)才解除 → 結尾往回一點點不會被取消。
@@ -179,7 +194,10 @@ fun HorizontalPageSwipe(
             },
     ) {
         Box(Modifier.graphicsLayer { translationX = offsetX }) {
-            CompositionLocalProvider(LocalPageSwipeExclusions provides exclusions) { content() }
+            CompositionLocalProvider(
+                LocalPageSwipeExclusions provides exclusions,
+                LocalPageSwipeOffset provides offsetState,
+            ) { content() }
         }
 
         if (offsetX < -1f && canNext) {

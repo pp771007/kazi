@@ -78,6 +78,7 @@ import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.HorizontalPageSwipe
 import tw.pp.kazi.ui.components.pageSwipeIgnore
+import tw.pp.kazi.ui.components.pageSwipeAnchored
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
@@ -386,9 +387,11 @@ fun SearchScreen(
         Column(modifier = Modifier.fillMaxSize()) {
 
         // 搜尋輸入 + 站點選擇 + 排除提示 + 搜尋紀錄。出現在 grid header（有結果）或頂部 sticky（無結果/載入/錯誤）
+        // pageSwipeAnchored:有結果時這區是 grid header,換頁拖曳時反向抵銷位移留在原地,只有結果卡片跟著滑。
+        // (無結果時是釘頂、不在 HorizontalPageSwipe 內,modifier 自動退化成 no-op)
         val searchControls: @Composable () -> Unit = {
             Column(
-                modifier = Modifier.padding(
+                modifier = Modifier.pageSwipeAnchored().padding(
                     horizontal = windowSize.pagePadding(),
                     vertical = if (windowSize.isCompact) 6.dp else 8.dp,
                 ),

@@ -59,6 +59,7 @@ import tw.pp.kazi.ui.components.EmptyState
 import tw.pp.kazi.ui.components.FocusableTag
 import tw.pp.kazi.ui.components.HorizontalPageSwipe
 import tw.pp.kazi.ui.components.pageSwipeIgnore
+import tw.pp.kazi.ui.components.pageSwipeAnchored
 import tw.pp.kazi.ui.components.LoadingState
 import tw.pp.kazi.ui.components.Pager
 import tw.pp.kazi.ui.components.PosterCard
@@ -402,7 +403,8 @@ fun HomeScreen() {
             @Composable
             fun Strips() {
                 // 站點 / 分類列自己會水平捲動 → 標記為換頁手勢排除區,左右滑不從這兩列觸發換頁。
-                Column(modifier = Modifier.fillMaxWidth().pageSwipeIgnore("home-strips")) {
+                // pageSwipeAnchored:換頁拖曳時反向抵銷位移 → 這兩列留在原地,只有影片列表跟著滑。
+                Column(modifier = Modifier.fillMaxWidth().pageSwipeIgnore("home-strips").pageSwipeAnchored()) {
                     SiteStrip(
                         sites = enabledSites,
                         selected = selectedSite,
