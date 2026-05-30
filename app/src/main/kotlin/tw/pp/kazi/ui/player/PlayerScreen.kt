@@ -586,17 +586,20 @@ fun PlayerScreen(
                 controlsActivityTick++
                 val code = keyEvent.nativeKeyEvent.keyCode
                 when {
-                    // === 清單展開中:方向鍵移動高亮、OK 確認;其餘鍵(含 BACK / 音量)放行 ===
+                    // === 清單展開中:清單是橫向 LazyRow,←/→ 移動高亮、↑ 關清單、OK 確認;其餘鍵(含 BACK / 音量)放行 ===
+                    // ↑ 退一層跟其它層一致(影片區↑收控制列、控制條↑回影片);↓ 吃掉不做事(橫向列沒有上下移動)。
                     // BACK 不在這吃,交給 BackHandler 逐層關(關清單→退控制條→離開)
                     openMenu != PlayerMenu.None -> {
                         val count = menuItemCount(openMenu)
                         when (code) {
-                            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_UP -> {
+                            KeyEvent.KEYCODE_DPAD_LEFT -> {
                                 if (count > 0) menuIndex = (menuIndex - 1 + count) % count; true
                             }
-                            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                            KeyEvent.KEYCODE_DPAD_RIGHT -> {
                                 if (count > 0) menuIndex = (menuIndex + 1) % count; true
                             }
+                            KeyEvent.KEYCODE_DPAD_UP -> { openMenu = PlayerMenu.None; true }
+                            KeyEvent.KEYCODE_DPAD_DOWN -> true
                             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> { confirmMenu(); true }
                             else -> false
                         }
