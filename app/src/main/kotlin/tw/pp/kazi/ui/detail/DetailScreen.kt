@@ -267,7 +267,8 @@ fun DetailScreen(siteId: Long, vodId: Long) {
     }
 
     val onSearchByName: (String) -> Unit = { name ->
-        nav.navigate(Routes.search(name))
+        // 帶片名進搜尋頁、聚焦輸入框(游標在最後)、不自動搜 → 讓使用者自己改字或按搜尋
+        nav.navigate(Routes.search(name, autoSearch = false))
     }
 
     // 點集數播放：剛好點到「上次看的那一集」（同 source、同 episode）且 history 有效（> threshold）
@@ -663,7 +664,27 @@ private fun WideLayout(
     val v = d.video
     val src = d.sources.getOrNull(selectedSource)
 
-    Row(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // 全寬頂列:返回(左) + 無痕(可點掉) + 時鐘(右)。從窄左欄搬出來,返回不再被擠。
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AppButton(
+                text = "返回",
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                onClick = onBack,
+                primary = false,
+            )
+            Spacer(Modifier.weight(1f))
+            if (incognito) IncognitoBadge()
+            // 詳情頁沒走 GradientTopBar，這裡自己補上時鐘；跟 GradientTopBar 一致只在電視盒顯示
+            if (LocalWindowSize.current.isTv) ClockPill()
+        }
+        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
         Column(
             modifier = Modifier
                 .width(posterColWidth)
@@ -673,28 +694,12 @@ private fun WideLayout(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                AppButton(
-                    text = if (isFavorited) "已收藏" else "收藏",
-                    icon = if (isFavorited) Icons.Filled.Star else Icons.Filled.StarBorder,
-                    onClick = onToggleFavorite,
-                    primary = isFavorited,
-                )
-                if (incognito) IncognitoBadge()
-                Spacer(Modifier.weight(1f))
-                // 詳情頁沒走 GradientTopBar，這裡自己補上時鐘；跟 GradientTopBar 一致只在電視盒顯示
-                if (LocalWindowSize.current.isTv) ClockPill()
-                AppButton(
-                    text = "返回",
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    onClick = onBack,
-                    primary = false,
-                )
-            }
+            AppButton(
+                text = if (isFavorited) "已收藏" else "收藏",
+                icon = if (isFavorited) Icons.Filled.Star else Icons.Filled.StarBorder,
+                onClick = onToggleFavorite,
+                primary = isFavorited,
+            )
             PeerRow(peers = peers, currentSiteId = siteId, onPeerPick = onPeerPick)
             val posterInteraction = remember { MutableInteractionSource() }
             val posterFocused by posterInteraction.collectIsFocusedAsState()
@@ -763,22 +768,6 @@ private fun WideLayout(
                     )
                 }
             }
-            Text(
-                v.vodName,
-                color = AppColors.OnBg,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                CopyTextButton(text = v.vodName)
-                AppButton(
-                    text = "搜尋",
-                    icon = Icons.Filled.Search,
-                    onClick = { onSearchByName(v.vodName) },
-                    primary = false,
-                )
-            }
             if (v.vodRemarks.isNotBlank() || v.vodYear.isNotBlank() || v.vodArea.isNotBlank()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (v.vodRemarks.isNotBlank()) BadgeSmall(v.vodRemarks, AppColors.Accent)
@@ -800,9 +789,10 @@ private fun WideLayout(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            // 繼續觀看放在右欄最上方，進頁面就 focus 在這；下一集視 history 而定（沒就不渲染）
-            if (historyItem != null && historyItem.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 動作列(右欄最上方,進頁面 focus 落在繼續觀看/第一集):繼續觀看 / 下一集 / 搜尋 / 複製。
+            // 繼續觀看、下一集 視 history 而定(沒就不渲染);搜尋、複製 一律有。
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (historyItem != null && historyItem.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) {
                     AppButton(
                         text = "繼續觀看：${historyItem.episodeName.ifBlank { "第 ${historyItem.episodeIndex + 1} 集" }}",
                         icon = Icons.Filled.PlayArrow,
@@ -818,7 +808,23 @@ private fun WideLayout(
                         )
                     }
                 }
+                AppButton(
+                    text = "搜尋",
+                    icon = Icons.Filled.Search,
+                    onClick = { onSearchByName(v.vodName) },
+                    primary = false,
+                )
+                CopyTextButton(text = v.vodName)
             }
+
+            // 片名
+            Text(
+                v.vodName,
+                color = AppColors.OnBg,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.fillMaxWidth(),
+            )
 
             if (v.vodContent.isNotBlank()) {
                 var contentExpanded by rememberSaveable { mutableStateOf(false) }
@@ -887,6 +893,7 @@ private fun WideLayout(
                     reversed = episodesReversed,
                 )
             }
+        }
         }
     }
 }

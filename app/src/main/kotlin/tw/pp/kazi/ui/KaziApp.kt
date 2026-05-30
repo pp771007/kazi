@@ -123,6 +123,9 @@ fun KaziApp(container: AppContainer) {
                             navArgument(Routes.ArgSites) {
                                 type = NavType.StringType; defaultValue = ""
                             },
+                            navArgument(Routes.ArgAuto) {
+                                type = NavType.BoolType; defaultValue = true
+                            },
                         ),
                     ) { back ->
                         val kwRaw = back.arguments?.getString(Routes.ArgKeyword).orEmpty()
@@ -131,7 +134,8 @@ fun KaziApp(container: AppContainer) {
                             URLDecoder.decode(kwRaw, Charsets.UTF_8.name())
                         }.getOrDefault(kwRaw)
                         val siteIds = sitesRaw.split(",").mapNotNull { it.toLongOrNull() }.toSet()
-                        SearchScreen(initialKeyword = keyword, initialSiteIds = siteIds)
+                        val auto = back.arguments?.getBoolean(Routes.ArgAuto) ?: true
+                        SearchScreen(initialKeyword = keyword, initialSiteIds = siteIds, allowAutoSearch = auto)
                     }
                     composable(Routes.DetailPattern) { back ->
                         val args = back.arguments ?: return@composable

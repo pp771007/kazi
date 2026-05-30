@@ -108,6 +108,8 @@ private const val FIRST_CARD_INDEX = 3
 fun SearchScreen(
     initialKeyword: String = "",
     initialSiteIds: Set<Long> = emptySet(),
+    // false = 只帶字進來、聚焦輸入框,不自動搜(詳情頁「搜尋」用)。預設 true 維持原行為。
+    allowAutoSearch: Boolean = true,
 ) {
     val container = LocalAppContainer.current
     val nav = LocalNavController.current
@@ -235,7 +237,8 @@ fun SearchScreen(
         //  · 從 detail 返回要回到剛點的那張卡（pendingClickedFocus）→ 交給下面的 effect 處理
         //  · 遠端推進來自動搜尋（帶 keyword 且非 snapshot 還原）→ 別搶 focus，不然 IME 蓋住載入動畫
         // 只在 TV 搶 focus；手機進搜尋頁搶 focus 會害 IME 自動彈出來
-        val autoSearch = initialKeyword.isNotBlank() && !hadValidSnapshot
+        // allowAutoSearch=false(詳情頁「搜尋」帶字進來):不自動搜,改成聚焦輸入框讓使用者自己改/送出。
+        val autoSearch = initialKeyword.isNotBlank() && !hadValidSnapshot && allowAutoSearch
         if (windowSize.isTv && !pendingClickedFocus && !autoSearch) {
             // 等 SearchField 真的 compose、focusRequester 掛上節點再搶；少了這個 delay，requestFocus
             // 會在元素還沒 attach 時被丟掉，focus 就 fallback 到 top bar 第一顆鈕（無痕鍵）

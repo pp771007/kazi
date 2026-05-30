@@ -12,7 +12,7 @@ object Routes {
     const val Logs = "logs"
     const val ScanSites = "scan_sites"
 
-    private const val SEARCH_ROUTE_TEMPLATE = "search?keyword={keyword}&sites={sites}"
+    private const val SEARCH_ROUTE_TEMPLATE = "search?keyword={keyword}&sites={sites}&auto={auto}"
     private const val DETAIL_ROUTE_TEMPLATE = "detail/{siteId}/{vodId}"
     private const val PLAYER_ROUTE_TEMPLATE = "player/{siteId}/{vodId}/{sourceIdx}/{episodeIdx}/{positionMs}?siteUrl={siteUrl}"
 
@@ -22,6 +22,7 @@ object Routes {
 
     const val ArgKeyword = "keyword"
     const val ArgSites = "sites"
+    const val ArgAuto = "auto"
     const val ArgSiteId = "siteId"
     const val ArgVodId = "vodId"
     const val ArgSourceIdx = "sourceIdx"
@@ -29,10 +30,11 @@ object Routes {
     const val ArgPositionMs = "positionMs"
     const val ArgSiteUrl = "siteUrl"
 
-    fun search(keyword: String = "", siteIds: List<Long> = emptyList()): String {
+    // autoSearch=false:只帶關鍵字進搜尋頁、聚焦輸入框(游標在最後)、不自動搜(詳情頁的「搜尋」用)。
+    fun search(keyword: String = "", siteIds: List<Long> = emptyList(), autoSearch: Boolean = true): String {
         val k = URLEncoder.encode(keyword, Charsets.UTF_8.name())
         val s = siteIds.joinToString(",")
-        return "search?keyword=$k&sites=$s"
+        return "search?keyword=$k&sites=$s&auto=$autoSearch"
     }
 
     fun detail(siteId: Long, vodId: Long) = "detail/$siteId/$vodId"
