@@ -7,7 +7,7 @@
 原生 Android 影片聚合播放器 — **一次搜多站、聚合同名來源**<br>
 手機 / 平板 / 電視盒（Android TV）通吃
 
-<img src="https://img.shields.io/github/v/release/pp771007/kazi?label=最新版本&color=4c8bf5"> <img src="https://img.shields.io/badge/Android-5.0%2B-3DDC84?logo=android&logoColor=white"> <img src="https://img.shields.io/github/downloads/pp771007/kazi/total?label=下載次數&color=44cc11"> <img src="https://img.shields.io/badge/Jetpack%20Compose-Kotlin-7F52FF?logo=kotlin&logoColor=white">
+<img src="https://img.shields.io/github/v/release/pp771007/kazi?label=release&color=4c8bf5"> <img src="https://img.shields.io/badge/Android-5.0%2B-3DDC84?logo=android&logoColor=white"> <img src="https://img.shields.io/github/downloads/pp771007/kazi/total?label=downloads&color=44cc11"> <img src="https://img.shields.io/badge/Jetpack%20Compose-Kotlin-7F52FF?logo=kotlin&logoColor=white">
 
 ### [⬇️ 下載最新版 APK](https://github.com/pp771007/kazi/releases/latest)
 
@@ -52,7 +52,7 @@
 ## 🎬 播放操作
 
 <details open>
-<summary><b>📱 手機（YouTube 式手勢）</b></summary>
+<summary><b>📱 手機（觸控手勢）</b></summary>
 
 <br>
 
