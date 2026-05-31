@@ -758,7 +758,7 @@ private fun WideLayout(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            // 頂列(右欄最上方):時鐘 + 無痕(可點掉) 靠左、返回 靠右。
+            // 頂列(右欄最上方):時鐘 + 無痕(可點掉) 靠左、收藏 + 返回 靠右。
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -769,6 +769,12 @@ private fun WideLayout(
                 if (incognito) IncognitoBadge()
                 Spacer(Modifier.weight(1f))
                 AppButton(
+                    text = if (isFavorited) "已收藏" else "收藏",
+                    icon = if (isFavorited) Icons.Filled.Star else Icons.Filled.StarBorder,
+                    onClick = onToggleFavorite,
+                    primary = isFavorited,
+                )
+                AppButton(
                     text = "返回",
                     icon = Icons.AutoMirrored.Filled.ArrowBack,
                     onClick = onBack,
@@ -776,7 +782,7 @@ private fun WideLayout(
                 )
             }
 
-            // 動作列:繼續觀看 / 下一集 / 收藏 / 搜尋 / 複製。繼續觀看、下一集 視 history 而定。
+            // 動作列:繼續觀看 / 下一集 / 搜尋 / 複製。繼續觀看、下一集 視 history 而定。收藏移到上面頂列。
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (historyItem != null && historyItem.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) {
                     AppButton(
@@ -795,12 +801,6 @@ private fun WideLayout(
                     }
                 }
                 AppButton(
-                    text = if (isFavorited) "已收藏" else "收藏",
-                    icon = if (isFavorited) Icons.Filled.Star else Icons.Filled.StarBorder,
-                    onClick = onToggleFavorite,
-                    primary = isFavorited,
-                )
-                AppButton(
                     text = "搜尋",
                     icon = Icons.Filled.Search,
                     onClick = { onSearchByName(v.vodName) },
@@ -818,7 +818,7 @@ private fun WideLayout(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            // 片名下方:badges + 類型/導演/演員/站點(原本在左下角)
+            // 片名下方:badges + 類型/站點/演員/導演(原本在左下角)
             if (v.vodRemarks.isNotBlank() || v.vodYear.isNotBlank() || v.vodArea.isNotBlank()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (v.vodRemarks.isNotBlank()) BadgeSmall(v.vodRemarks, AppColors.Accent)
@@ -827,9 +827,9 @@ private fun WideLayout(
                 }
             }
             InfoLine(label = "類型", value = v.typeName)
-            InfoLine(label = "導演", value = v.vodDirector)
-            InfoLine(label = "演員", value = v.vodActor, maxLines = 3)
             InfoLine(label = "站點", value = site?.name ?: "-")
+            InfoLine(label = "演員", value = v.vodActor, maxLines = 3)
+            InfoLine(label = "導演", value = v.vodDirector)
 
             // 同名站點(從左欄搬來)
             PeerRow(peers = peers, currentSiteId = siteId, onPeerPick = onPeerPick)
