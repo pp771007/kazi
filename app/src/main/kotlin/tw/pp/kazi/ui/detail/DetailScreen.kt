@@ -15,9 +15,6 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,6 +35,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -570,18 +568,7 @@ private fun CompactLayout(
         if (v.vodDirector.isNotBlank()) InfoLine("導演", v.vodDirector)
 
         if (v.vodContent.isNotBlank()) {
-            var contentExpanded by rememberSaveable { mutableStateOf(false) }
-            SectionHeader(title = "劇情簡介")
-            Text(
-                v.vodContent.htmlDecode().trim(),
-                color = AppColors.OnBgMuted,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = if (contentExpanded) Int.MAX_VALUE else CONTENT_MAX_LINES,
-                overflow = if (contentExpanded) TextOverflow.Visible else TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { contentExpanded = !contentExpanded },
-            )
+            PlotSummary(content = v.vodContent, style = MaterialTheme.typography.bodySmall)
         }
 
         if (d.sources.size > 1) {
@@ -835,18 +822,7 @@ private fun WideLayout(
             PeerRow(peers = peers, currentSiteId = siteId, onPeerPick = onPeerPick)
 
             if (v.vodContent.isNotBlank()) {
-                var contentExpanded by rememberSaveable { mutableStateOf(false) }
-                SectionHeader(title = "劇情簡介")
-                Text(
-                    v.vodContent.htmlDecode().trim(),
-                    color = AppColors.OnBgMuted,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = if (contentExpanded) Int.MAX_VALUE else CONTENT_MAX_LINES,
-                    overflow = if (contentExpanded) TextOverflow.Visible else TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { contentExpanded = !contentExpanded },
-                )
+                PlotSummary(content = v.vodContent, style = MaterialTheme.typography.bodyMedium)
             }
 
             if (d.sources.size > 1) {
@@ -905,7 +881,47 @@ private fun WideLayout(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+/**
+ * 劇情簡介：點一下展開/收合。電視盒上純文字看不出焦點停在哪 → 包一層可聚焦 Box，
+ * 聚焦時顯示外框，使用者才知道按 OK 會展開這段（使用者實機回報「沒提示不知道選在哪」）。
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun PlotSummary(content: String, style: TextStyle) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    SectionHeader(title = "劇情簡介")
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            // border 固定 2dp（idle 透明）保留空間，聚焦變色不造成 layout 抖動
+            .border(
+                BorderStroke(2.dp, if (focused) AppColors.FocusRing else Color.Transparent),
+                RoundedCornerShape(8.dp),
+            )
+            .clickable(interactionSource = interaction, indication = null) { expanded = !expanded }
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        Text(
+            content.htmlDecode().trim(),
+            color = AppColors.OnBgMuted,
+            style = style,
+            maxLines = if (expanded) Int.MAX_VALUE else CONTENT_MAX_LINES,
+            overflow = if (expanded) TextOverflow.Visible else TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * 集數格。**不可用會自己捲動的 LazyVerticalGrid**——它被包在「整頁 verticalScroll」的 Column 裡，
+ * 兩層捲動會打架：電視盒上 75 集時每按一下方向鍵內外各捲一次 → 畫面上下亂跳、焦點跑掉
+ * （使用者實機回報）。改用不捲動、會撐到完整高度的 FlowRow，全頁只剩外層一層捲動，
+ * 焦點移到哪外層就順順帶過去；且 FlowRow 不虛擬化，第 75 集也一定 compose 得到，
+ * 初次 requestFocus（接續觀看那一集）一定吃得到。
+ */
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun EpisodeGrid(
     episodes: List<tw.pp.kazi.data.Episode>,
@@ -920,28 +936,18 @@ private fun EpisodeGrid(
         if (reversed) episodes.withIndex().toList().reversed() else episodes.withIndex().toList()
     }
     // 「正在看」是這個 source 的某一集 → 把 firstEpisodeFocus 從第一格搬到那一格，
-    // 這樣外面 requestFocus 進來會直接落在 ▶ 那一集，而不是 ep 1
+    // 這樣外面 requestFocus 進來會直接落在 ▶ 那一集，而不是 ep 1（聚焦會自動把該格捲進畫面）
     val watchingDisplayIdx = remember(displayed, historyItem, selectedSource) {
         if (historyItem?.sourceIndex != selectedSource) return@remember -1
         if (historyItem.episodeIndex !in episodes.indices) return@remember -1
         displayed.indexOfFirst { it.index == historyItem.episodeIndex }
     }
-    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
-    // watching 在第 50 集時，LazyGrid 沒 scroll 過去那一格根本還沒 compose，
-    // requestFocus 就吃不到。先 scroll 把 watching 帶進視窗，再讓 focus 落定
-    LaunchedEffect(watchingDisplayIdx) {
-        if (watchingDisplayIdx > 0) {
-            runCatching { gridState.scrollToItem(watchingDisplayIdx) }
-        }
-    }
-    LazyVerticalGrid(
-        state = gridState,
-        columns = GridCells.Adaptive(minSize = minCell),
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.heightIn(min = 200.dp, max = 600.dp),
     ) {
-        itemsIndexed(displayed) { displayIdx, indexedEp ->
+        displayed.forEachIndexed { displayIdx, indexedEp ->
             val idx = indexedEp.index
             val ep = indexedEp.value
             val watching = historyItem?.sourceIndex == selectedSource &&
@@ -952,8 +958,9 @@ private fun EpisodeGrid(
                 text = if (watching) "▶ ${ep.name}" else ep.name,
                 selected = watching,
                 onClick = { onEpisode(idx) },
+                // widthIn(min) 取代 grid 的 Adaptive：短集名對齊成格狀、長集名自己撐寬不被切
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .widthIn(min = minCell)
                     .then(if (attachInitialFocus) Modifier.focusRequester(firstEpisodeFocus) else Modifier),
             )
         }

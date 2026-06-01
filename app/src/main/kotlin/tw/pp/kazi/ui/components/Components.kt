@@ -665,6 +665,7 @@ fun ConfirmDeleteButton(
     timeoutMs: Long = 3000L,
 ) {
     var armed by remember { mutableStateOf(false) }
+    var armedAt by remember { mutableLongStateOf(0L) }
     LaunchedEffect(armed) {
         if (armed) {
             kotlinx.coroutines.delay(timeoutMs)
@@ -675,11 +676,21 @@ fun ConfirmDeleteButton(
         text = if (armed) confirmText else text,
         icon = if (armed) confirmIcon else icon,
         onClick = {
-            if (armed) {
-                armed = false
-                onConfirm()
-            } else {
-                armed = true
+            val now = System.currentTimeMillis()
+            when {
+                // 上膛後要隔一段「刻意的間隔」才接受確認。電視盒上刪掉一筆後焦點會跳到隔壁那顆
+                // 刪除鈕，使用者快速連按時殘留的按鍵會「上膛→確認」一氣呵成、跳過確認直接刪掉
+                // （實機回報的 bug）。太快的第二下視為連按殘留 → 忽略、維持上膛，逼使用者看到「確認」
+                // 後再刻意按一次。touch 正常雙擊間隔都遠大於這個門檻，不受影響。
+                armed && now - armedAt >= CONFIRM_MIN_GAP_MS -> {
+                    armed = false
+                    onConfirm()
+                }
+                !armed -> {
+                    armed = true
+                    armedAt = now
+                }
+                // armed 但太快：忽略這下，確認鈕續顯示
             }
         },
         // armed 時 fill（primary=true）讓視覺更跳；idle 維持 outline
@@ -691,6 +702,9 @@ fun ConfirmDeleteButton(
         modifier = modifier,
     )
 }
+
+// 上膛到接受「確認」之間要求的最短間隔：低於此值的第二下視為快速連按殘留而忽略
+private const val CONFIRM_MIN_GAP_MS = 350L
 
 /**
  * 給 GradientTopBar.titleBadges 用的小膠囊。傳 onClick 就會變成可點擊的 toggle。

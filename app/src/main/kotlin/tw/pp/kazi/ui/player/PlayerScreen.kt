@@ -1415,16 +1415,16 @@ private fun ProgressBar(
 }
 
 /**
- * Seek 累計量顯示：60 秒以下顯示 `±Xs`，超過 60 秒拆成 `±Xm Ys`
- * （`±2m 30s` 比 `±150s` 直觀很多，使用者按住 ← 加速 seek 後一眼看出跳了幾分鐘）
+ * Seek 累計量顯示：60 秒以下顯示 `±X秒`，超過 60 秒拆成 `±X分Y秒`
+ * （`±2分30秒` 比 `±150秒` 直觀很多，使用者按住 ← 加速 seek 後一眼看出跳了幾分鐘）
  */
 private fun formatSeekDelta(deltaMs: Long): String {
     val sign = if (deltaMs >= 0) "+" else "-"
     val totalSec = abs(deltaMs) / 1000
-    if (totalSec < 60) return "${sign}${totalSec}s"
+    if (totalSec < 60) return "${sign}${totalSec}秒"
     val m = totalSec / 60
     val s = totalSec % 60
-    return if (s == 0L) "${sign}${m}m" else "${sign}${m}m ${s}s"
+    return if (s == 0L) "${sign}${m}分" else "${sign}${m}分${s}秒"
 }
 
 private fun formatDuration(ms: Long): String {
