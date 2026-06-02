@@ -911,14 +911,14 @@ function renderImportPreview(){
     ul.appendChild(li);
   });
   document.getElementById('importPreviewTitle').textContent =
-    '預覽匯入（共 ' + importPreviewData.length + ' · 新增 ' + newCount + ' · 已存在 ' + dupCount + '）';
+    '預覽匯入（共 ' + importPreviewData.length + ' 個 · 新增 ' + newCount + ' 個 · 已存在 ' + dupCount + ' 個）';
   updateImportCount();
 }
 
 function updateImportCount(){
   const checked = document.querySelectorAll('#importList input[type=checkbox]:checked').length;
   const btn = document.getElementById('importConfirmBtn');
-  btn.textContent = checked > 0 ? ('確定匯入（' + checked + '）') : '確定匯入';
+  btn.textContent = checked > 0 ? ('確定匯入（' + checked + ' 個）') : '確定匯入';
   btn.disabled = checked === 0;
   const label = document.getElementById('importSelCount');
   if (label) label.textContent = '已選 ' + checked + ' 個';

@@ -121,7 +121,7 @@ fun HistoryScreen() {
                                     failed++
                                 }
                             }
-                            checkProgress = "完成：${updated} 部有更新、${failed} 部失敗（共 ${target.size}）"
+                            checkProgress = "完成：${updated} 部有更新、${failed} 部失敗（共 ${target.size} 部）"
                             checking = false
                         }
                     },
