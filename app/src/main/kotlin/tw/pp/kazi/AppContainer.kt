@@ -98,6 +98,28 @@ class AppContainer(private val context: Context) {
     // 只在 UI thread 讀寫，不需額外同步。
     var pendingDetailPeers: List<Video>? = null
 
+    // 同名他站清單的 LRU（key = 進入詳情頁的 siteId/vodId）。pendingDetailPeers 是一次性值，
+    // 從 player 返回時 DetailScreen 會重建、那個值早已被 consume → 用這層 cache 撈回，
+    // 行為對齊 detailsCache（共用同一組容量常數）。
+    private val peersCache: MutableMap<Pair<Long, Long>, List<Video>> =
+        object : LinkedHashMap<Pair<Long, Long>, List<Video>>(
+            DETAILS_CACHE_CAPACITY,
+            DETAILS_CACHE_LOAD_FACTOR,
+            /* accessOrder = */ true,
+        ) {
+            override fun removeEldestEntry(eldest: Map.Entry<Pair<Long, Long>, List<Video>>): Boolean =
+                size > DETAILS_CACHE_MAX
+        }
+
+    @Synchronized
+    fun cachePeers(siteId: Long, vodId: Long, peers: List<Video>) {
+        peersCache[siteId to vodId] = peers
+    }
+
+    @Synchronized
+    fun cachedPeers(siteId: Long, vodId: Long): List<Video>? =
+        peersCache[siteId to vodId]
+
     // 各畫面的 UI snapshot：從子畫面返回時還原狀態。每個畫面用一個 String key 取得自己的 bag（map），
     // bag 內 by-stateKey 存任意 state value。實際讀寫包在 ui.components.ScreenSnapshot helper，
     // 這裡只提供 raw access。只在 UI thread 讀寫。

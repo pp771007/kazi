@@ -84,9 +84,19 @@ fun DetailScreen(siteId: Long, vodId: Long) {
     val incognito by container.incognito.collectAsState()
     val scope = rememberCoroutineScope()
 
-    // 從 SearchScreen 聚合卡帶進來的同名他站（一次性），DetailScreen 進入時 consume。
+    // 從 SearchScreen 聚合卡帶進來的同名他站（一次性）。首次 consume 並寫進 cache；
+    // 從 player 返回時 NavCompose 會重建本 composable、一次性值早已被清空 →
+    // 改從 cache 撈回，否則同名站台那排會消失。key 用進入頁的 siteId/vodId（穩定，
+    // 不隨切 peer 改變）。
     val peers = remember {
-        container.pendingDetailPeers.also { container.pendingDetailPeers = null }
+        val incoming = container.pendingDetailPeers
+        container.pendingDetailPeers = null
+        if (incoming != null) {
+            container.cachePeers(siteId, vodId, incoming)
+            incoming
+        } else {
+            container.cachedPeers(siteId, vodId)
+        }
     }
 
     // siteId / vodId 作為 state — 切換同名站時就地更新不換頁。
