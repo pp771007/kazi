@@ -84,20 +84,26 @@ fun DetailScreen(siteId: Long, vodId: Long) {
     val incognito by container.incognito.collectAsState()
     val scope = rememberCoroutineScope()
 
-    // 從 SearchScreen 聚合卡帶進來的同名他站（一次性）。首次 consume 並寫進 cache；
-    // 從 player 返回時 NavCompose 會重建本 composable、一次性值早已被清空 →
-    // 改從 cache 撈回，否則同名站台那排會消失。key 用進入頁的 siteId/vodId（穩定，
-    // 不隨切 peer 改變）。
+    // 從 SearchScreen 聚合卡帶進來的同名他站（一次性）。分兩種進入情況：
+    //   首次進入（含從首頁進來、本就無同名站）→ 用帶進來的 pendingDetailPeers（可能是 null），
+    //     有值才寫進 cache；
+    //   從 player 返回時 NavCompose 重建本 composable、一次性值早已被清空 → 從 cache 撈回，
+    //     否則同名站台那排會消失。key 用進入頁的 siteId/vodId（穩定，不隨切 peer 改變）。
+    // 兩種情況進來時 pendingDetailPeers 都可能是 null，光看它分不出來；用一個 saveable 旗標分：
+    // rememberSaveable 能跨「pop 回本頁」的重建存活、但每次重新 navigate 進來都是全新的 →
+    // 首次必為 false、重建必為 true。這樣從首頁進同一部片時不會誤撈到上次搜尋留下的 cache。
+    var peersConsumed by rememberSaveable { mutableStateOf(false) }
     val peers = remember {
-        val incoming = container.pendingDetailPeers
-        container.pendingDetailPeers = null
-        if (incoming != null) {
-            container.cachePeers(siteId, vodId, incoming)
-            incoming
-        } else {
+        if (peersConsumed) {
             container.cachedPeers(siteId, vodId)
+        } else {
+            val incoming = container.pendingDetailPeers
+            container.pendingDetailPeers = null
+            incoming?.let { container.cachePeers(siteId, vodId, it) }
+            incoming
         }
     }
+    LaunchedEffect(Unit) { peersConsumed = true }
 
     // siteId / vodId 作為 state — 切換同名站時就地更新不換頁。
     var currentSiteId by rememberSaveable { mutableLongStateOf(siteId) }
