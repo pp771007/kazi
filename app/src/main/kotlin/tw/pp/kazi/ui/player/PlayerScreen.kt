@@ -536,11 +536,20 @@ fun PlayerScreen(
                 openMenu = PlayerMenu.None
             }
             PlayerMenu.Sources -> {
-                val target = sourcesList.getOrNull(idx)?.episodes
+                val targetSource = sourcesList.getOrNull(idx)
+                val target = targetSource?.episodes
                 if (target != null) {
-                    // 換來源保留進度:同一集的不同線,帶當前秒數續播
-                    pendingResumeMs = player.currentPosition.coerceAtLeast(0)
-                    currentEpIdx = matchEpisodeIndex(currentEpisode?.name.orEmpty(), currentEpIdx, target)
+                    // 換線路:這條線路自己看過 → 接它自己的進度(集 + 秒);沒看過 → 對齊目前這集 + 帶當前秒數。
+                    val flag = targetSource.flag.ifBlank { "線路${idx + 1}" }
+                    val saved = site?.let { container.historyRepository.find(vodId, it.id)?.lines?.get(flag) }
+                    if (saved != null && saved.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS
+                        && saved.episodeIndex in target.indices) {
+                        currentEpIdx = saved.episodeIndex
+                        pendingResumeMs = saved.positionMs
+                    } else {
+                        pendingResumeMs = player.currentPosition.coerceAtLeast(0)
+                        currentEpIdx = matchEpisodeIndex(currentEpisode?.name.orEmpty(), currentEpIdx, target)
+                    }
                     currentSourceIdx = idx
                 }
                 openMenu = PlayerMenu.None
@@ -1475,6 +1484,20 @@ private suspend fun saveHistoryIfReady(
         if (!isFavorite && !isInHistory) return
     }
 
+    // 多線路進度:用「線路名」當鍵記下這條線路自己的進度,並保留其他線路既有的進度(不互相覆蓋)。
+    // 線路名空白時退用「線路N」當鍵。頂層欄位仍鏡射「目前線路」供卡片顯示 / 舊版相容。
+    val now = System.currentTimeMillis()
+    val flag = d.sources.getOrNull(sourceIdx)?.flag?.ifBlank { "線路${sourceIdx + 1}" } ?: "線路${sourceIdx + 1}"
+    val existingLines = container.historyRepository.find(vodId, s.id)?.lines ?: emptyMap()
+    val mergedLines = existingLines + (flag to tw.pp.kazi.data.LineProgress(
+        episodeIndex = episodeIdx,
+        episodeName = episodeName,
+        positionMs = positionMs,
+        durationMs = durationMs,
+        totalEpisodes = totalAcrossSources,
+        updatedAt = now,
+    ))
+
     container.historyRepository.record(
         HistoryItem(
             videoId = vodId,
@@ -1489,6 +1512,9 @@ private suspend fun saveHistoryIfReady(
             positionMs = positionMs,
             durationMs = durationMs,
             totalEpisodes = totalAcrossSources,
+            updatedAt = now,
+            sourceFlag = flag,
+            lines = mergedLines,
         )
     )
 }

@@ -113,6 +113,18 @@ data class FavoriteItem(
     val deletedAt: Long = 0,  // 軟刪墓碑:>0 = 已刪(時間戳),跟著同步讓刪除跨裝置生效;0 = 正常
 )
 
+// 單一「線路(源)」的觀看進度。同一部片同一站台底下不同線路各記一份(鍵=線路名),
+// 切線路時各接各的、不會互相覆蓋。跨 app 同步時用 positionSec(跟既有格式一致)。
+@Serializable
+data class LineProgress(
+    val episodeIndex: Int = 0,
+    val episodeName: String = "",
+    val positionMs: Long = 0,
+    val durationMs: Long = 0,
+    val totalEpisodes: Int = 0,
+    val updatedAt: Long = 0,
+)
+
 @Serializable
 data class HistoryItem(
     val videoId: Long,
@@ -131,6 +143,10 @@ data class HistoryItem(
     val hasUpdate: Boolean = false,
     val newEpisodesCount: Int = 0,
     val deletedAt: Long = 0,  // 軟刪墓碑:>0 = 已刪(時間戳),跟著同步讓刪除跨裝置生效;0 = 正常
+    // 多線路進度:目前(最近看)那條線路的線路名 + 「線路名 → 各自進度」表。
+    // 上面那組 sourceIndex/episodeIndex/positionMs… 仍鏡射「目前線路」的進度(卡片顯示 + 舊版相容)。
+    val sourceFlag: String = "",
+    val lines: Map<String, LineProgress> = emptyMap(),
 )
 
 sealed class ApiResult<out T> {

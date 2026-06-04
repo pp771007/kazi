@@ -290,12 +290,16 @@ fun DetailScreen(siteId: Long, vodId: Long) {
     // 被打回 0:00。對齊「繼續觀看」按鈕的行為。
     val onEpisodePlay: (Int) -> Unit = { idx ->
         val h = historyItem
-        val resumePos = if (h != null
-            && h.sourceIndex == selectedSource
-            && h.episodeIndex == idx
-            && h.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) {
-            h.positionMs
-        } else 0L
+        // 多線路:點到「這條線路自己上次看的那一集」就接它的秒數;否則從頭。也相容沒有 lines 的舊紀錄(用頂層)。
+        val flag = d.sources.getOrNull(selectedSource)?.flag?.ifBlank { "線路${selectedSource + 1}" } ?: ""
+        val lineProg = h?.lines?.get(flag)
+        val resumePos = when {
+            h != null && h.sourceIndex == selectedSource && h.episodeIndex == idx
+                && h.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS -> h.positionMs
+            lineProg != null && lineProg.episodeIndex == idx
+                && lineProg.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS -> lineProg.positionMs
+            else -> 0L
+        }
         nav.navigate(Routes.player(currentSiteId, currentVodId, selectedSource, idx, resumePos))
     }
 

@@ -21,6 +21,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -215,6 +216,20 @@ class SyncManager(
         put("totalEpisodes", it.totalEpisodes)
         put("updatedAt", it.updatedAt)
         put("deletedAt", it.deletedAt)
+        // 多線路進度(線路名 → 該線路進度);跨 app 一律用 positionSec。網頁版會原樣保留 / 使用。
+        put("sourceFlag", it.sourceFlag)
+        put("lines", buildJsonObject {
+            it.lines.forEach { (flag, lp) ->
+                putJsonObject(flag) {
+                    put("episodeIndex", lp.episodeIndex)
+                    put("episodeName", lp.episodeName)
+                    put("positionSec", lp.positionMs / 1000.0)
+                    put("durationSec", lp.durationMs / 1000.0)
+                    put("totalEpisodes", lp.totalEpisodes)
+                    put("updatedAt", lp.updatedAt)
+                }
+            }
+        })
     }
 
     private fun historyFromCanonical(o: JsonObject): HistoryItem? {
@@ -235,6 +250,18 @@ class SyncManager(
             totalEpisodes = o["totalEpisodes"]?.jsonPrimitive?.intOrNull ?: 0,
             updatedAt = o["updatedAt"]?.jsonPrimitive?.longOrNull ?: System.currentTimeMillis(),
             deletedAt = o["deletedAt"]?.jsonPrimitive?.longOrNull ?: 0,
+            sourceFlag = o["sourceFlag"]?.jsonPrimitive?.contentOrNull ?: "",
+            lines = (o["lines"] as? JsonObject)?.mapValues { (_, v) ->
+                val lo = v.jsonObject
+                LineProgress(
+                    episodeIndex = lo["episodeIndex"]?.jsonPrimitive?.intOrNull ?: 0,
+                    episodeName = lo["episodeName"]?.jsonPrimitive?.contentOrNull ?: "",
+                    positionMs = ((lo["positionSec"]?.jsonPrimitive?.doubleOrNull ?: 0.0) * 1000).toLong(),
+                    durationMs = ((lo["durationSec"]?.jsonPrimitive?.doubleOrNull ?: 0.0) * 1000).toLong(),
+                    totalEpisodes = lo["totalEpisodes"]?.jsonPrimitive?.intOrNull ?: 0,
+                    updatedAt = lo["updatedAt"]?.jsonPrimitive?.longOrNull ?: 0,
+                )
+            } ?: emptyMap(),
         )
     }
 
