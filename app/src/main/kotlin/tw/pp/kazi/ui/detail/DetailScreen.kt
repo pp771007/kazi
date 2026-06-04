@@ -169,10 +169,12 @@ fun DetailScreen(siteId: Long, vodId: Long) {
         val d = details
         if (d == null || didAutoPickSource) return@LaunchedEffect
         val firstNonEmpty = d.sources.indexOfFirst { it.episodes.isNotEmpty() }
-        val fromHistory = historyItem
-            ?.takeIf { it.sourceIndex in d.sources.indices }
-            ?.takeIf { d.sources[it.sourceIndex].episodes.isNotEmpty() }
-            ?.sourceIndex
+        // 用「線路名」對齊(不靠 index,站台重排線路也挑得對):找最近看的那條線路名在現在第幾個 source
+        val fromHistory = historyItem?.sourceFlag?.takeIf { it.isNotBlank() }?.let { flag ->
+            d.sources.indices.firstOrNull { i ->
+                d.sources[i].flag.ifBlank { "線路${i + 1}" } == flag && d.sources[i].episodes.isNotEmpty()
+            }
+        }
         selectedSource = fromHistory ?: firstNonEmpty.coerceAtLeast(0)
         didAutoPickSource = true
     }
@@ -298,6 +300,13 @@ fun DetailScreen(siteId: Long, vodId: Long) {
         nav.navigate(Routes.player(currentSiteId, currentVodId, selectedSource, idx, resumePos))
     }
 
+    // 「正在看」高亮的集索引:用線路名找『目前選的這條線路』自己的紀錄(不靠 index,站台重排也對);沒有回 -1
+    val watchingEpisodeIndex = run {
+        val flag = d.sources.getOrNull(selectedSource)?.flag?.ifBlank { "線路${selectedSource + 1}" }
+        if (flag == null) -1
+        else history.firstOrNull { it.videoId == currentVodId && it.siteId == currentSiteId && it.sourceFlag == flag }?.episodeIndex ?: -1
+    }
+
     // Compact (手機直版) → 單欄垂直版型
     // Medium (手機橫向) → Wide 但 poster 欄縮窄，標題立刻可見 + 右邊有內容
     // Expanded (電視盒 / 大平板) → Wide 標準寬度
@@ -307,6 +316,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
             selectedSource = selectedSource,
             onSourcePick = { selectedSource = it },
             historyItem = historyItem,
+            watchingEpisodeIndex = watchingEpisodeIndex,
             firstEpisodeFocus = firstEpisodeFocus,
             resumeFocus = resumeFocus,
             isFavorited = isFavorited,
@@ -334,6 +344,7 @@ fun DetailScreen(siteId: Long, vodId: Long) {
             selectedSource = selectedSource,
             onSourcePick = { selectedSource = it },
             historyItem = historyItem,
+            watchingEpisodeIndex = watchingEpisodeIndex,
             firstEpisodeFocus = firstEpisodeFocus,
             resumeFocus = resumeFocus,
             isFavorited = isFavorited,
@@ -410,6 +421,7 @@ private fun CompactLayout(
     selectedSource: Int,
     onSourcePick: (Int) -> Unit,
     historyItem: HistoryItem?,
+    watchingEpisodeIndex: Int,
     firstEpisodeFocus: FocusRequester,
     resumeFocus: FocusRequester,
     isFavorited: Boolean,
@@ -631,7 +643,7 @@ private fun CompactLayout(
             EpisodeGrid(
                 episodes = src.episodes,
                 selectedSource = selectedSource,
-                historyItem = historyItem,
+                watchingEpisodeIndex = watchingEpisodeIndex,
                 firstEpisodeFocus = firstEpisodeFocus,
                 onEpisode = onEpisode,
                 minCell = EPISODE_CELL_MIN_COMPACT,
@@ -651,6 +663,7 @@ private fun WideLayout(
     selectedSource: Int,
     onSourcePick: (Int) -> Unit,
     historyItem: HistoryItem?,
+    watchingEpisodeIndex: Int,
     firstEpisodeFocus: FocusRequester,
     resumeFocus: FocusRequester,
     isFavorited: Boolean,
@@ -885,7 +898,7 @@ private fun WideLayout(
                 EpisodeGrid(
                     episodes = src.episodes,
                     selectedSource = selectedSource,
-                    historyItem = historyItem,
+                    watchingEpisodeIndex = watchingEpisodeIndex,
                     firstEpisodeFocus = firstEpisodeFocus,
                     onEpisode = onEpisode,
                     minCell = EPISODE_CELL_MIN_WIDE,
@@ -941,7 +954,7 @@ private fun PlotSummary(content: String, style: TextStyle) {
 private fun EpisodeGrid(
     episodes: List<tw.pp.kazi.data.Episode>,
     selectedSource: Int,
-    historyItem: HistoryItem?,
+    watchingEpisodeIndex: Int,   // 這條(目前選的)線路「正在看」的集索引;-1 = 沒有
     firstEpisodeFocus: FocusRequester,
     onEpisode: (Int) -> Unit,
     minCell: Dp,
@@ -952,10 +965,9 @@ private fun EpisodeGrid(
     }
     // 「正在看」是這個 source 的某一集 → 把 firstEpisodeFocus 從第一格搬到那一格，
     // 這樣外面 requestFocus 進來會直接落在 ▶ 那一集，而不是 ep 1（聚焦會自動把該格捲進畫面）
-    val watchingDisplayIdx = remember(displayed, historyItem, selectedSource) {
-        if (historyItem?.sourceIndex != selectedSource) return@remember -1
-        if (historyItem.episodeIndex !in episodes.indices) return@remember -1
-        displayed.indexOfFirst { it.index == historyItem.episodeIndex }
+    val watchingDisplayIdx = remember(displayed, watchingEpisodeIndex) {
+        if (watchingEpisodeIndex !in episodes.indices) return@remember -1
+        displayed.indexOfFirst { it.index == watchingEpisodeIndex }
     }
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
@@ -965,8 +977,7 @@ private fun EpisodeGrid(
         displayed.forEachIndexed { displayIdx, indexedEp ->
             val idx = indexedEp.index
             val ep = indexedEp.value
-            val watching = historyItem?.sourceIndex == selectedSource &&
-                    historyItem.episodeIndex == idx
+            val watching = idx == watchingEpisodeIndex
             // 有正在看那一集 → focus 落在它；沒有就 fallback 第一格
             val attachInitialFocus = if (watchingDisplayIdx >= 0) watching else displayIdx == 0
             FocusableTag(
