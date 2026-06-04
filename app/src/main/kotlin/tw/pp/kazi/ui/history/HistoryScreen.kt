@@ -206,7 +206,7 @@ fun HistoryScreen() {
                         nav.navigate(Routes.detail(item.siteId, item.videoId))
                     },
                     onDelete = {
-                        scope.launch { container.historyRepository.remove(item.videoId, item.siteId) }
+                        scope.launch { container.historyRepository.remove(item.videoId, item.siteId, item.sourceFlag) }
                     },
                 )
             }
@@ -324,11 +324,10 @@ private fun HistoryRow(
                 color = AppColors.OnBgDim,
                 style = MaterialTheme.typography.labelSmall,
             )
-            // 目前顯示的是哪條線路;若同站台別條線路也看過,標出來(各線路進度各自獨立)
+            // 各線路獨立一筆 → 一張卡就是一條線路;標出是哪條,方便分辨同片不同線路的卡
             if (item.sourceFlag.isNotBlank()) {
-                val otherLines = item.lines.keys.count { it != item.sourceFlag }
                 Text(
-                    "線路：${item.sourceFlag}" + if (otherLines > 0) " · 另有 $otherLines 條線路看過" else "",
+                    "線路：${item.sourceFlag}",
                     color = AppColors.OnBgDim,
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,

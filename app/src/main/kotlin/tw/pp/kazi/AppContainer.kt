@@ -73,7 +73,10 @@ class AppContainer(private val context: Context) {
     suspend fun checkHistoryUpdates(onProgress: (String?) -> Unit = {}): Pair<Int, Int> {
         historyUpdateCheckedAt = System.currentTimeMillis()
         val sites = siteRepository.sites.value
-        val target = historyRepository.items.value.take(tw.pp.kazi.data.HistoryConfig.UPDATE_CHECK_BATCH)
+        // 歷史已拆成每線路一筆 → 同一部片同站台可能多筆,檢查更新以「片+站」去重,避免重複抓同一部片詳情
+        val target = historyRepository.items.value
+            .distinctBy { it.videoId to it.siteId }
+            .take(tw.pp.kazi.data.HistoryConfig.UPDATE_CHECK_BATCH)
         var updated = 0
         var failed = 0
         target.forEachIndexed { idx, item ->

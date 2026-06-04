@@ -42,35 +42,86 @@ class HistoryRepository(context: Context) {
         }
     }
 
+    // 各線路獨立一筆的鍵:videoId + siteId + 線路名
+    private fun keyOf(it: HistoryItem) = "${it.videoId}|${it.siteId}|${it.sourceFlag}"
+
+    // 把舊資料正規化成「每線路一筆」:
+    // - 帶 lines 表的(v0.20.0 過渡格式 / 別台同步來的)→ 每條線路炸成一筆;
+    // - 沒有 lines 的 → 本來就一筆(sourceFlag 可能空 = 更舊的資料);
+    // - 墓碑原樣保留。最後用 (videoId,siteId,sourceFlag) 去重取較新。
+    private fun explodeForSplit(list: List<HistoryItem>): List<HistoryItem> {
+        val out = ArrayList<HistoryItem>()
+        for (it in list) {
+            if (it.deletedAt > 0L) { out.add(it.copy(lines = emptyMap())); continue }
+            if (it.lines.isNotEmpty()) {
+                for ((flag, lp) in it.lines) {
+                    out.add(it.copy(
+                        sourceFlag = flag,
+                        episodeIndex = lp.episodeIndex,
+                        episodeName = lp.episodeName.ifBlank { it.episodeName },
+                        positionMs = lp.positionMs,
+                        durationMs = lp.durationMs,
+                        totalEpisodes = if (lp.totalEpisodes > 0) lp.totalEpisodes else it.totalEpisodes,
+                        updatedAt = if (lp.updatedAt > 0) lp.updatedAt else it.updatedAt,
+                        lines = emptyMap(),
+                    ))
+                }
+                // 頂層線路不在 lines 裡的話補一筆(保險,別漏掉目前線路)
+                if (it.sourceFlag.isNotBlank() && !it.lines.containsKey(it.sourceFlag)) {
+                    out.add(it.copy(lines = emptyMap()))
+                }
+            } else {
+                out.add(it.copy(lines = emptyMap()))
+            }
+        }
+        val eff = { x: HistoryItem -> maxOf(x.updatedAt, x.deletedAt) }
+        val byKey = LinkedHashMap<String, HistoryItem>()
+        for (it in out) {
+            val ex = byKey[keyOf(it)]
+            if (ex == null || eff(it) >= eff(ex)) byKey[keyOf(it)] = it
+        }
+        return byKey.values.toList()
+    }
+
     // active 取未刪、按時間排序、限量;墓碑只留 TTL 內的(超過清掉)。同時更新兩個 flow + 落地。
+    // 進來的資料先正規化成「每線路一筆」,讓 load / record / 同步各路徑都統一成拆開後的格式。
     private fun setAll(list: List<HistoryItem>) {
         val now = System.currentTimeMillis()
-        val active = list.filter { it.deletedAt == 0L }
+        val normalized = explodeForSplit(list)
+        val active = normalized.filter { it.deletedAt == 0L }
             .sortedByDescending { it.updatedAt }
             .take(HistoryConfig.MAX_ITEMS)
-        val tombstones = list.filter { it.deletedAt > 0L && it.deletedAt > now - TOMBSTONE_TTL_MS }
+        val tombstones = normalized.filter { it.deletedAt > 0L && it.deletedAt > now - TOMBSTONE_TTL_MS }
         val combined = active + tombstones
         _all.value = combined
         _items.value = active
         persist(combined)
     }
 
-    fun find(videoId: Long, siteId: Long): HistoryItem? =
-        _items.value.firstOrNull { it.videoId == videoId && it.siteId == siteId }
+    // 某部片某站台「某條線路」的紀錄
+    fun find(videoId: Long, siteId: Long, sourceFlag: String): HistoryItem? =
+        _items.value.firstOrNull { it.videoId == videoId && it.siteId == siteId && it.sourceFlag == sourceFlag }
+
+    // 某部片某站台「最近看的那條線路」(詳情頁「繼續看」/自動挑線路用)
+    fun findLatest(videoId: Long, siteId: Long): HistoryItem? =
+        _items.value.filter { it.videoId == videoId && it.siteId == siteId }.maxByOrNull { it.updatedAt }
 
     suspend fun record(item: HistoryItem) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val filtered = _all.value.filterNot { it.videoId == item.videoId && it.siteId == item.siteId }
+            // 只取代「同一條線路」那一筆,其他線路的紀錄保留
+            val filtered = _all.value.filterNot {
+                it.videoId == item.videoId && it.siteId == item.siteId && it.sourceFlag == item.sourceFlag
+            }
             setAll(listOf(item) + filtered)
         }
     }
 
-    // 軟刪:標記 deletedAt=now 留在清單裡跟著同步(而非真的移除),否則下次同步會被其他裝置推回來復活
-    suspend fun remove(videoId: Long, siteId: Long) = withContext(Dispatchers.IO) {
+    // 軟刪:標記 deletedAt=now 留在清單裡跟著同步(而非真的移除)。拆開後一張卡=一條線路,刪的是該線路那筆。
+    suspend fun remove(videoId: Long, siteId: Long, sourceFlag: String) = withContext(Dispatchers.IO) {
         mutex.withLock {
             val now = System.currentTimeMillis()
             val updated = _all.value.map {
-                if (it.videoId == videoId && it.siteId == siteId) it.copy(deletedAt = now) else it
+                if (it.videoId == videoId && it.siteId == siteId && it.sourceFlag == sourceFlag) it.copy(deletedAt = now) else it
             }
             setAll(updated)
         }

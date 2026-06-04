@@ -135,8 +135,9 @@ fun DetailScreen(siteId: Long, vodId: Long) {
     // 進入頁面只 focus 一次；切 peer (currentSiteId/vodId 變動) 視為重新進入，要重新搶焦
     var pendingInitialFocus by remember(currentSiteId, currentVodId) { mutableStateOf(true) }
 
+    // 歷史已拆成「每線路一筆」:同片同站可能多筆。「繼續看 / 自動挑線路」用最近看的那條。
     val historyItem = remember(history, currentSiteId, currentVodId) {
-        history.firstOrNull { it.siteId == currentSiteId && it.videoId == currentVodId }
+        history.filter { it.siteId == currentSiteId && it.videoId == currentVodId }.maxByOrNull { it.updatedAt }
     }
 
     LaunchedEffect(currentSiteId, currentVodId, retryToken) {
@@ -289,17 +290,11 @@ fun DetailScreen(siteId: Long, vodId: Long) {
     // → 從 history positionMs 接著看；其他情況從頭開始。避免使用者本來想繼續，結果不小心點同一集
     // 被打回 0:00。對齊「繼續觀看」按鈕的行為。
     val onEpisodePlay: (Int) -> Unit = { idx ->
-        val h = historyItem
-        // 多線路:點到「這條線路自己上次看的那一集」就接它的秒數;否則從頭。也相容沒有 lines 的舊紀錄(用頂層)。
+        // 多線路各自一筆:點到「這條線路自己上次看的那一集」就接它的秒數;否則從頭。
         val flag = d.sources.getOrNull(selectedSource)?.flag?.ifBlank { "線路${selectedSource + 1}" } ?: ""
-        val lineProg = h?.lines?.get(flag)
-        val resumePos = when {
-            h != null && h.sourceIndex == selectedSource && h.episodeIndex == idx
-                && h.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS -> h.positionMs
-            lineProg != null && lineProg.episodeIndex == idx
-                && lineProg.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS -> lineProg.positionMs
-            else -> 0L
-        }
+        val rec = history.firstOrNull { it.videoId == currentVodId && it.siteId == currentSiteId && it.sourceFlag == flag }
+        val resumePos = if (rec != null && rec.episodeIndex == idx
+            && rec.positionMs > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) rec.positionMs else 0L
         nav.navigate(Routes.player(currentSiteId, currentVodId, selectedSource, idx, resumePos))
     }
 

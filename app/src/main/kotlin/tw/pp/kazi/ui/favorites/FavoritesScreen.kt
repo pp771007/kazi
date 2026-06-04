@@ -164,8 +164,9 @@ private fun FavoritePosterCard(
     onRatio: ((Float) -> Unit)? = null,
 ) {
     val nav = LocalNavController.current
+    // 歷史已拆成「每線路一筆」,同片同站可能有多筆 → 取最近看的那條線路顯示進度
     val hist = remember(history, fav.videoId, fav.siteId) {
-        history.firstOrNull { it.videoId == fav.videoId && it.siteId == fav.siteId }
+        history.filter { it.videoId == fav.videoId && it.siteId == fav.siteId }.maxByOrNull { it.updatedAt }
     }
     val progress = if (hist != null && hist.durationMs > 0)
         (hist.positionMs.toFloat() / hist.durationMs) else null
