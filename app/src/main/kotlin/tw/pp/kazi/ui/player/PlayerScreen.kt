@@ -267,13 +267,18 @@ fun PlayerScreen(
                     PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> {
                         val d = details
                         if (d != null && currentSourceIdx < d.sources.size - 1) {
-                            // 換到下一個 source；盡量保留原本的 ep idx（同一部戲不同源通常集數對齊），
-                            // 新源集數不夠時 clamp 到最後一集。原本寫死 0 會讓使用者選第 4 集失敗自動跳到第 1 集
+                            // 換到下一個 source。要保留「集數 + 秒數」,不然自動跳源會把續看歸零:
+                            // - 集數:用集名/集號智慧對齊(同一部戲不同源集數未必同序),對不到才退回原 idx(clamp)。
+                            // - 秒數:已經播出去就用當前位置;一開場就壞(位置=0)則退回原本要續看的點 resumePositionMs。
+                            //   設給 pendingResumeMs,讓新 source 的 prepare 接著 seek 過去(跟手動換源同一套)。
                             val nextIdx = currentSourceIdx + 1
-                            val nextSrc = d.sources.getOrNull(nextIdx)
-                            val maxEp = (nextSrc?.episodes?.size ?: 1) - 1
+                            val nextEps = d.sources.getOrNull(nextIdx)?.episodes ?: emptyList()
+                            val playedPos = player.currentPosition.coerceAtLeast(0)
+                            pendingResumeMs =
+                                if (playedPos > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) playedPos
+                                else resumePositionMs
+                            currentEpIdx = matchEpisodeIndex(epName, currentEpIdx, nextEps)
                             currentSourceIdx = nextIdx
-                            currentEpIdx = currentEpIdx.coerceIn(0, maxEp.coerceAtLeast(0))
                             return
                         }
                         playbackError = friendlyPlaybackError(error)
