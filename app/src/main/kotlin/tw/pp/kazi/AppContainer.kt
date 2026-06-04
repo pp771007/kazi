@@ -61,6 +61,37 @@ class AppContainer(private val context: Context) {
         configRepository, historyRepository, favoriteRepository, siteRepository, appScope,
     )
 
+    // 觀看歷史「有沒有新集數」檢查的最後執行時間(in-memory;冷啟動會重置 → 重開 app 進歷史頁先檢查一次)
+    @Volatile private var historyUpdateCheckedAt = 0L
+    fun historyUpdateOnCooldown(): Boolean =
+        System.currentTimeMillis() - historyUpdateCheckedAt < tw.pp.kazi.data.HistoryConfig.UPDATE_CHECK_COOLDOWN_MS
+
+    /**
+     * 掃最近 N 筆歷史、逐筆抓詳情比對總集數,有變多就標記成「有更新」。回傳 (有更新數, 失敗數)。
+     * 手動按鈕與「進歷史頁自動檢查」共用這支;一開始就記錄時間戳,避免並發 / 重入重複觸發。
+     */
+    suspend fun checkHistoryUpdates(onProgress: (String?) -> Unit = {}): Pair<Int, Int> {
+        historyUpdateCheckedAt = System.currentTimeMillis()
+        val sites = siteRepository.sites.value
+        val target = historyRepository.items.value.take(tw.pp.kazi.data.HistoryConfig.UPDATE_CHECK_BATCH)
+        var updated = 0
+        var failed = 0
+        target.forEachIndexed { idx, item ->
+            onProgress("檢查中 ${idx + 1}/${target.size}：${item.videoName}")
+            val s = sites.firstOrNull { it.id == item.siteId }
+            if (s == null) { failed++; return@forEachIndexed }
+            when (val r = macCmsApi.fetchDetails(s, item.videoId)) {
+                is tw.pp.kazi.data.ApiResult.Success -> {
+                    val total = r.data.sources.maxOfOrNull { it.episodes.size } ?: 0
+                    if (total > item.totalEpisodes) updated++
+                    historyRepository.markUpdateStatus(item.videoId, item.siteId, total)
+                }
+                is tw.pp.kazi.data.ApiResult.Error -> failed++
+            }
+        }
+        return updated to failed
+    }
+
     private var lanServer: LanServer? = null
     private var lanNetworkCallback: ConnectivityManager.NetworkCallback? = null
 

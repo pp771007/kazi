@@ -40,6 +40,8 @@ object HistoryConfig {
     const val MAX_ITEMS = 200
     const val SAVE_INTERVAL_MS = 15_000L
     const val UPDATE_CHECK_BATCH = 20
+    // 進歷史頁自動檢查更新的冷卻:這段時間內不重複自動檢查(手動按鈕不受此限)。對齊網頁版的 10 分鐘。
+    const val UPDATE_CHECK_COOLDOWN_MS = 10 * 60 * 1000L
     const val POSITION_IGNORED_THRESHOLD_MS = 5_000L
 }
 

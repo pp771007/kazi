@@ -24,7 +24,6 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
-import tw.pp.kazi.data.ApiResult
 import tw.pp.kazi.data.HistoryConfig
 import tw.pp.kazi.data.HistoryItem
 import tw.pp.kazi.ui.LocalAppContainer
@@ -80,6 +79,19 @@ fun HistoryScreen() {
     // 進頁主動同步(別台最新進度);失敗才提示,成功安靜。詳見 SyncOnEnter。
     tw.pp.kazi.ui.SyncOnEnter()
 
+    // 進歷史頁自動檢查一次「有沒有新集數」(對齊網頁版)。冷卻時間內不重複、手動按鈕仍可隨時重查。
+    // 用 appScope 跑,使用者掃一半離開也會掃完(同手動按鈕的理由)。
+    LaunchedEffect(items.isNotEmpty()) {
+        if (items.isEmpty() || checking || container.historyUpdateOnCooldown()) return@LaunchedEffect
+        container.appScope.launch {
+            checking = true
+            checkProgress = null
+            val (updated, _) = container.checkHistoryUpdates { checkProgress = it }
+            checkProgress = if (updated > 0) "發現 ${updated} 部有更新" else null
+            checking = false
+        }
+    }
+
     ScreenScaffold(
         title = "觀看歷史",
         subtitle = "${items.size} 筆紀錄",
@@ -100,28 +112,13 @@ fun HistoryScreen() {
                     onClick = {
                         // 用 container.appScope 不是 rememberCoroutineScope —— 使用者可能掃到一半就返回，
                         // 那時 rememberCoroutineScope 會 cancel，markUpdateStatus 寫到一半的 row 不一致。
-                        // 用 appScope 確保整輪掃完才結束。
+                        // 用 appScope 確保整輪掃完才結束。掃描邏輯收斂在 container.checkHistoryUpdates。
                         container.appScope.launch {
                             checking = true
                             checkProgress = null
-                            val sites = container.siteRepository.sites.value
-                            val target = items.take(HistoryConfig.UPDATE_CHECK_BATCH)
-                            var updated = 0
-                            var failed = 0
-                            target.forEachIndexed { idx, item ->
-                                checkProgress = "檢查中 ${idx + 1}/${target.size}：${item.videoName}"
-                                val s = sites.firstOrNull { it.id == item.siteId }
-                                if (s == null) { failed++; return@forEachIndexed }
-                                val r = container.macCmsApi.fetchDetails(s, item.videoId)
-                                if (r is ApiResult.Success) {
-                                    val total = r.data.sources.maxOfOrNull { it.episodes.size } ?: 0
-                                    if (total > item.totalEpisodes) updated++
-                                    container.historyRepository.markUpdateStatus(item.videoId, item.siteId, total)
-                                } else {
-                                    failed++
-                                }
-                            }
-                            checkProgress = "完成：${updated} 部有更新、${failed} 部失敗（共 ${target.size} 部）"
+                            val target = items.take(HistoryConfig.UPDATE_CHECK_BATCH).size
+                            val (updated, failed) = container.checkHistoryUpdates { checkProgress = it }
+                            checkProgress = "完成：${updated} 部有更新、${failed} 部失敗（共 ${target} 部）"
                             checking = false
                         }
                     },
