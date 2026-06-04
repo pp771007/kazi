@@ -87,6 +87,8 @@ object PlayerConfig {
     // 手勢參數
     const val GESTURE_DECISION_PX = 16f
     const val GESTURE_INDICATOR_HIDE_MS = 700L
+    // 自動跳線路提示停留時間(讓使用者看清「換到哪條線路」)
+    const val LINE_NOTICE_MS = 4_000L
     const val SEEK_GESTURE_MAX_MS = 120_000L
     const val BRIGHTNESS_DEFAULT_FALLBACK = 0.5f
 

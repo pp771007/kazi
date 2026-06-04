@@ -123,6 +123,8 @@ fun PlayerScreen(
     var durationMs by remember { mutableLongStateOf(0L) }
     var isPlaying by remember { mutableStateOf(true) }
     var playbackError by remember { mutableStateOf<String?>(null) }
+    // 自動跳線路時的短暫提示(例如「線路A 無法播放,已自動換到 線路B」),幾秒後自動消失
+    var lineNotice by remember { mutableStateOf<String?>(null) }
     var speed by remember { mutableFloatStateOf(PlayerConfig.DEFAULT_SPEED) }
     // 控制面板狀態機(電視用手動按鍵高亮,不走 Compose 焦點 → 不踩 focusGroup 吃 OK / focusProperties 閃退的雷):
     //  barFocused=焦點在底部控制條;openMenu!=None=正在展開某個清單;menuIndex/barIndex=高亮第幾個
@@ -278,6 +280,10 @@ fun PlayerScreen(
                                 if (playedPos > HistoryConfig.POSITION_IGNORED_THRESHOLD_MS) playedPos
                                 else resumePositionMs
                             currentEpIdx = matchEpisodeIndex(epName, currentEpIdx, nextEps)
+                            // 提示使用者「原線路壞了、自動換到哪條」,別讓它默默跳走
+                            val failedFlag = d.sources.getOrNull(currentSourceIdx)?.flag?.ifBlank { "線路${currentSourceIdx + 1}" } ?: "線路${currentSourceIdx + 1}"
+                            val nextFlag = d.sources.getOrNull(nextIdx)?.flag?.ifBlank { "線路${nextIdx + 1}" } ?: "線路${nextIdx + 1}"
+                            lineNotice = "「$failedFlag」無法播放,已自動換到「$nextFlag」"
                             currentSourceIdx = nextIdx
                             return
                         }
@@ -410,6 +416,14 @@ fun PlayerScreen(
         if (g is GestureIndicator.Speed && longPressActive) return@LaunchedEffect
         delay(PlayerConfig.GESTURE_INDICATOR_HIDE_MS)
         gestureIndicator = null
+    }
+
+    // 自動跳線路提示:顯示幾秒後自動消失
+    LaunchedEffect(lineNotice) {
+        if (lineNotice != null) {
+            delay(PlayerConfig.LINE_NOTICE_MS)
+            lineNotice = null
+        }
     }
 
     // 雙擊累加 seek 的提交：每次 seekCommitTrigger 變動就重新計時，timer 結束才真的 seek
@@ -854,6 +868,24 @@ fun PlayerScreen(
                     indicator,
                     modifier = Modifier.align(alignment).padding(top = topPad),
                 )
+            }
+
+            // 自動跳線路提示:上方置中的小橫幅,幾秒後自動淡出
+            lineNotice?.let { msg ->
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 56.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xE6000000))
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                ) {
+                    Text(
+                        msg,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
 
             // 左上角現在時間，跟著 controlsVisible 一起淡入淡出
