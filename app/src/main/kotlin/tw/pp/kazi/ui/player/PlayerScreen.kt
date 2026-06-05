@@ -297,7 +297,11 @@ fun PlayerScreen(
                     val d = details ?: return
                     val src = d.sources.getOrNull(currentSourceIdx) ?: return
                     if (currentEpIdx < src.episodes.size - 1) {
+                        val nextName = src.episodes.getOrNull(currentEpIdx + 1)?.name?.ifBlank { null }
+                        lineNotice = if (nextName != null) "本集播畢,自動播放下一集:$nextName" else "本集播畢,自動播放下一集"
                         currentEpIdx += 1
+                    } else {
+                        lineNotice = "已是最後一集,播放結束"
                     }
                 }
             }
