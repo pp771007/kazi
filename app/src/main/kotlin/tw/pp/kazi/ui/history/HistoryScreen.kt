@@ -41,6 +41,9 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
+// 一張卡 = 一條線路,所以列表 key 必須帶 sourceFlag;只用 siteId-videoId 會在同片多線路時撞 key 崩潰。
+private fun historyKey(it: HistoryItem) = "${it.siteId}-${it.videoId}-${it.sourceFlag}"
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun HistoryScreen() {
@@ -58,11 +61,11 @@ fun HistoryScreen() {
     // 冷進入則 focus 第一筆的「繼續」按鈕。只在 TV 跑（手機觸控不需要起點）。
     val restoreFocusKey = remember { container.historyLastFocusKey }
     val rowFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
-    val firstItemKey = remember(items) { items.firstOrNull()?.let { "${it.siteId}-${it.videoId}" } }
+    val firstItemKey = remember(items) { items.firstOrNull()?.let { historyKey(it) } }
     // 若有 restore key 對得上就用它；否則打第一筆當預設 focus 起點
     val effectiveFocusKey = remember(restoreFocusKey, items) {
         when {
-            restoreFocusKey != null && items.any { "${it.siteId}-${it.videoId}" == restoreFocusKey } -> restoreFocusKey
+            restoreFocusKey != null && items.any { historyKey(it) == restoreFocusKey } -> restoreFocusKey
             else -> firstItemKey
         }
     }
@@ -170,8 +173,8 @@ fun HistoryScreen() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            items(items, key = { "${it.siteId}-${it.videoId}" }) { item ->
-                val key = "${item.siteId}-${item.videoId}"
+            items(items, key = { historyKey(it) }) { item ->
+                val key = historyKey(item)
                 HistoryRow(
                     item = item,
                     focusRequester = if (key == effectiveFocusKey) rowFocusRequester else null,
