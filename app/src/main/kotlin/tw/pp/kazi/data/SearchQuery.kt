@@ -46,7 +46,8 @@ fun aggregateByName(videos: List<Video>): List<AggregatedVideo> =
             name = name,
             pic = list.firstOrNull { it.vodPic.isNotBlank() }?.vodPic ?: "",
             remarks = list.firstOrNull { it.vodRemarks.isNotBlank() }?.vodRemarks ?: "",
-            sources = list,
+            // 同站可能回重複 vod;去重避免詳情頁同名他站 LazyColumn key 撞 key 崩潰
+            sources = list.distinctBy { "${it.fromSiteId}-${it.vodId}" },
         )
     }
 

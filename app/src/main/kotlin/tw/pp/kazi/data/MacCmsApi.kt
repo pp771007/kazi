@@ -54,9 +54,10 @@ class MacCmsApi {
             // 可讀性差（API 回傳 page=0 vs 我們送出去的 page=1）
             val respPage = readInt(root, "page")
             val respPageCount = readInt(root, "pagecount")
+            // 站台可能回重複 type_id(設定錯 / 舊資料);去重避免後續 LazyRow key 撞 key 崩潰
             val categories = (root["class"] as? JsonArray)?.mapNotNull { el ->
                 runCatching { json.decodeFromJsonElement(Category.serializer(), el) }.getOrNull()
-            }.orEmpty()
+            }.orEmpty().distinctBy { it.typeId }
 
             if (code != Spec.CODE_SUCCESS) {
                 if (keyword != null && total == 0) {
@@ -103,13 +104,14 @@ class MacCmsApi {
                 } else emptyMap()
             } else emptyMap()
 
+            // 站台可能在同一頁回重複 vod_id;去重避免影片格 LazyGrid key 撞 key 崩潰
             val videos = videoObjs.map { obj ->
                 val id = obj["vod_id"]?.jsonPrimitive?.longOrNull ?: 0L
                 val detail = detailMap[id]
                 val pic = resolvePic(baseUrl, obj, detail)
                 val merged = mergeObjects(obj, detail, pic)
                 json.decodeFromJsonElement(Video.serializer(), merged)
-            }
+            }.distinctBy { it.vodId }
 
             ApiResult.Success(
                 VideoListPage(

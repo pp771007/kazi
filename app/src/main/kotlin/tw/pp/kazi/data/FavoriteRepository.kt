@@ -42,12 +42,26 @@ class FavoriteRepository(context: Context) {
         }
     }
 
+    // UI 用 (siteId,videoId) 當列表 key,但同步是用 (videoId,siteUrl) 去重;
+    // 兩個不同 siteUrl 可能解析到同一 siteId,合併後就會有兩筆同 (siteId,videoId) → 收藏頁撞 key 崩潰。
+    // 比照 HistoryRepository,在落地前用 (siteId,videoId) 防禦性去重,留較新的一筆。
+    private fun dedupBySiteVideo(list: List<FavoriteItem>): List<FavoriteItem> {
+        val byKey = LinkedHashMap<String, FavoriteItem>()
+        for (it in list) {
+            val k = "${it.siteId}-${it.videoId}"
+            val ex = byKey[k]
+            if (ex == null || maxOf(it.addedAt, it.deletedAt) >= maxOf(ex.addedAt, ex.deletedAt)) byKey[k] = it
+        }
+        return byKey.values.toList()
+    }
+
     private fun setAll(list: List<FavoriteItem>) {
         val now = System.currentTimeMillis()
-        val active = list.filter { it.deletedAt == 0L }
+        val deduped = dedupBySiteVideo(list)
+        val active = deduped.filter { it.deletedAt == 0L }
             .sortedByDescending { it.addedAt }
             .take(FavoriteConfig.MAX_ITEMS)
-        val tombstones = list.filter { it.deletedAt > 0L && it.deletedAt > now - TOMBSTONE_TTL_MS }
+        val tombstones = deduped.filter { it.deletedAt > 0L && it.deletedAt > now - TOMBSTONE_TTL_MS }
         val combined = active + tombstones
         _all.value = combined
         _items.value = active
