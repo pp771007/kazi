@@ -126,6 +126,7 @@ fun HomeScreen() {
     var lastClickedVodId by homeSnap.state<Long?>("lastClickedVodId") { null }
     var loading by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var errorIsCert by remember { mutableStateOf(false) }
     var retryKey by remember { mutableIntStateOf(0) }
     // 若 snapshot 還原成功（selectedSite 在進畫面時就有值），跳過第一次 LaunchedEffect 的 API 抓取
     var skipNextFetch by remember { mutableStateOf(selectedSite != null) }
@@ -179,6 +180,7 @@ fun HomeScreen() {
         }
         loading = true
         errorMsg = null
+        errorIsCert = false
         when (val r = container.macCmsApi.fetchList(
             site = site,
             typeId = selectedCategory?.typeId,
@@ -194,6 +196,7 @@ fun HomeScreen() {
             is ApiResult.Error -> {
                 videos = emptyList()
                 errorMsg = r.message
+                errorIsCert = r.certError
             }
         }
         loading = false
@@ -451,20 +454,42 @@ fun HomeScreen() {
                 loading -> { { LoadingState() } }
                 err != null -> {
                     {
+                        val certSite = selectedSite
                         EmptyState(
                             title = "載入失敗",
                             subtitle = err,
                             icon = Icons.Filled.ErrorOutline,
                             action = {
-                                AppButton(
-                                    text = "重試",
-                                    icon = Icons.Filled.Refresh,
-                                    onClick = {
-                                        pendingContentFocus = true
-                                        retryKey += 1
-                                    },
-                                    modifier = Modifier.focusRequester(retryFocus),
-                                )
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    // 憑證錯誤 → 提供一鍵關閉此站 SSL 驗證並重試,省得繞進站點設定手動關
+                                    if (errorIsCert && certSite != null) {
+                                        AppButton(
+                                            text = "關閉此站 SSL 驗證並重試",
+                                            icon = Icons.Filled.LockOpen,
+                                            onClick = {
+                                                val fixed = certSite.copy(sslVerify = false)
+                                                scope.launch { container.siteRepository.updateSite(fixed) }
+                                                pendingContentFocus = true
+                                                selectedSite = fixed
+                                            },
+                                            modifier = Modifier.focusRequester(retryFocus),
+                                        )
+                                    }
+                                    AppButton(
+                                        text = "重試",
+                                        icon = Icons.Filled.Refresh,
+                                        onClick = {
+                                            pendingContentFocus = true
+                                            retryKey += 1
+                                        },
+                                        primary = !(errorIsCert && certSite != null),
+                                        modifier = if (errorIsCert && certSite != null) Modifier
+                                            else Modifier.focusRequester(retryFocus),
+                                    )
+                                }
                             },
                         )
                     }

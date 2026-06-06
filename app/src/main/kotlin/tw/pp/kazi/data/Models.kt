@@ -151,6 +151,7 @@ data class HistoryItem(
 
 sealed class ApiResult<out T> {
     data class Success<T>(val data: T) : ApiResult<T>()
-    data class Error(val message: String) : ApiResult<Nothing>()
+    // certError=true 代表是 SSL 憑證驗證失敗,UI 可據此提供「關閉此站 SSL 驗證並重試」
+    data class Error(val message: String, val certError: Boolean = false) : ApiResult<Nothing>()
 }
 

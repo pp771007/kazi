@@ -124,7 +124,7 @@ class MacCmsApi {
             )
         }.getOrElse { e ->
             Logger.w("fetchList failed for ${site.name}: ${e.javaClass.simpleName} ${e.message}")
-            errorResult(networkErrorMessage(e))
+            ApiResult.Error(networkErrorMessage(e), certError = isCertError(e))
         }
     }
 
@@ -378,10 +378,19 @@ class MacCmsApi {
 
     private fun errorResult(msg: String): ApiResult<Nothing> = ApiResult.Error(msg)
 
-    private fun networkErrorMessage(e: Throwable): String = when (e) {
-        is java.net.SocketTimeoutException -> "連線超時，站點可能已失效"
-        is java.net.UnknownHostException -> "找不到站點主機"
-        is java.net.ConnectException -> "無法連線到站點"
+    // SSLHandshakeException 會包著 CertPathValidatorException / CertificateException,要走 cause 鏈才抓得到
+    private fun isCertError(e: Throwable): Boolean =
+        generateSequence(e) { it.cause }.any {
+            it is java.security.cert.CertificateException ||
+                it is java.security.cert.CertPathValidatorException ||
+                it is javax.net.ssl.SSLHandshakeException
+        }
+
+    private fun networkErrorMessage(e: Throwable): String = when {
+        e is java.net.SocketTimeoutException -> "連線超時，站點可能已失效"
+        e is java.net.UnknownHostException -> "找不到站點主機"
+        e is java.net.ConnectException -> "無法連線到站點"
+        isCertError(e) -> "這個站台的 SSL 憑證無法驗證（可能是裝置憑證較舊，或站台未提供完整憑證）"
         else -> "網路錯誤：${e.message ?: e.javaClass.simpleName}"
     }
 
