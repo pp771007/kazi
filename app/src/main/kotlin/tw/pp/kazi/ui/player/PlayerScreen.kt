@@ -544,6 +544,14 @@ fun PlayerScreen(
         }
     }
 
+    // 從控制條清單選完(換集 / 換線路 / 倍速)就收掉整個控制列回到乾淨畫面,
+    // 不要停在浮動控制條,害使用者還得多按一次返回才離開。
+    fun dismissControls() {
+        openMenu = PlayerMenu.None
+        barFocused = false
+        controlsVisible = false
+    }
+
     // 在清單裡按 OK 確認當前 menuIndex 的選擇
     fun confirmMenu() {
         val idx = menuIndex
@@ -551,7 +559,7 @@ fun PlayerScreen(
             PlayerMenu.Episodes -> {
                 // 手動挑某一集 = 從頭播該集
                 if (idx in episodes.indices) { currentEpIdx = idx; pendingResumeMs = 0L }
-                openMenu = PlayerMenu.None
+                dismissControls()
             }
             PlayerMenu.Sources -> {
                 val targetSource = sourcesList.getOrNull(idx)
@@ -570,12 +578,12 @@ fun PlayerScreen(
                     }
                     currentSourceIdx = idx
                 }
-                openMenu = PlayerMenu.None
+                dismissControls()
             }
             PlayerMenu.Sites -> peers?.getOrNull(idx)?.let { applyPeerPick(it) }
             PlayerMenu.Speed -> {
                 PlayerConfig.PLAYBACK_SPEEDS.getOrNull(idx)?.let { speed = it }
-                openMenu = PlayerMenu.None
+                dismissControls()
             }
             PlayerMenu.None -> Unit
         }
