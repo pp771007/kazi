@@ -2,6 +2,7 @@ package tw.pp.kazi.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -24,7 +25,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -60,6 +63,7 @@ fun SettingsScreen() {
     val nav = LocalNavController.current
     val windowSize = LocalWindowSize.current
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val sites by container.siteRepository.sites.collectAsState()
     val settings by container.configRepository.settings.collectAsState()
 
@@ -124,14 +128,26 @@ fun SettingsScreen() {
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
                     // 不再放「立即同步」:進歷史/收藏頁已自動同步,失敗才提示(見 SyncOnEnter)。
-                    AppButton(
-                        text = "解除綁定",
-                        icon = Icons.Filled.LinkOff,
-                        primary = false,
-                        onClick = {
-                            container.appScope.launch { container.unbindSync() }
-                        },
-                    )
+                    // 平鋪 Row(不包 focusGroup,避免吃掉按鈕點擊):解除綁定 + 複製伺服器網址
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AppButton(
+                            text = "解除綁定",
+                            icon = Icons.Filled.LinkOff,
+                            primary = false,
+                            onClick = {
+                                container.appScope.launch { container.unbindSync() }
+                            },
+                        )
+                        AppButton(
+                            text = "複製網址",
+                            icon = Icons.Filled.ContentCopy,
+                            primary = false,
+                            onClick = {
+                                clipboard.setText(AnnotatedString(settings.syncServerUrl))
+                                Toast.makeText(context, "已複製伺服器網址", Toast.LENGTH_SHORT).show()
+                            },
+                        )
+                    }
                 } else {
                     // 未綁定:填網址+密碼換 token(密碼只用一次,不長存)
                     Text(
