@@ -10,5 +10,8 @@
 local.properties
 /app/build/
 /app/release/
+/baselineprofile/build/
+# 任何模組的 build/ 都不進版控(避免新模組漏加)
+build/
 .claude/settings.local.json
 /gradle/*.zip

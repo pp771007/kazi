@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Kazi"
 include(":app")
+include(":baselineprofile")

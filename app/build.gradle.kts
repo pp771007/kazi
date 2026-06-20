@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.baselineprofile)
 }
 
 android {
@@ -45,10 +46,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 沒設密碼（本機沒配 gradle.properties / CI 沒給 secret）就不簽，避免 build 直接爆
-            signingConfigs.findByName("release")?.takeIf { it.storeFile != null }?.let {
-                signingConfig = it
-            }
+            // 有 keystore（CI 給 secret）就用正式簽；本機沒給就退回 debug 簽，
+            // 這樣本機 release / Baseline Profile 產生用的 nonMinifiedRelease 變體仍可安裝。
+            val releaseSigning = signingConfigs.findByName("release")?.takeIf { it.storeFile != null }
+            signingConfig = releaseSigning ?: signingConfigs.getByName("debug")
         }
     }
 
@@ -113,7 +114,12 @@ dependencies {
     implementation(libs.nanohttpd)
     implementation(libs.zxing.core)
     implementation(libs.coil.compose)
+    // ProfileInstaller:讓打包進 APK 的 Baseline Profile 在裝機/首次啟動時被 ART 套用(預編譯熱路徑)
+    implementation(libs.androidx.profileinstaller)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+
+    // 由 :baselineprofile 模組產生的設定檔會被收進 release APK
+    baselineProfile(project(":baselineprofile"))
 }
