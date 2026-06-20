@@ -20,6 +20,7 @@ import tw.pp.kazi.data.ConfigRepository
 import tw.pp.kazi.data.HistoryRepository
 import tw.pp.kazi.data.LanConfig
 import tw.pp.kazi.data.MacCmsApi
+import tw.pp.kazi.data.RemoteApkInstallRequest
 import tw.pp.kazi.data.RemoteSearchRequest
 import tw.pp.kazi.data.SiteRepository
 import tw.pp.kazi.data.SiteScanner
@@ -108,6 +109,10 @@ class AppContainer(private val context: Context) {
     private val _pendingRemoteSearch = MutableStateFlow<RemoteSearchRequest?>(null)
     val pendingRemoteSearch: StateFlow<RemoteSearchRequest?> = _pendingRemoteSearch.asStateFlow()
 
+    // 遠端裝 APK 的請求(同上:背景排隊,回前景觸發)
+    private val _pendingRemoteApkInstall = MutableStateFlow<RemoteApkInstallRequest?>(null)
+    val pendingRemoteApkInstall: StateFlow<RemoteApkInstallRequest?> = _pendingRemoteApkInstall.asStateFlow()
+
     // LinkedHashMap with access-order + size cap = simple LRU
     private val detailsCache: MutableMap<Pair<Long, Long>, VideoDetails> =
         object : LinkedHashMap<Pair<Long, Long>, VideoDetails>(
@@ -193,6 +198,16 @@ class AppContainer(private val context: Context) {
         _pendingRemoteSearch.value = null
     }
 
+    private val installSeq = java.util.concurrent.atomic.AtomicLong(0)
+    fun submitRemoteApkInstall(request: RemoteApkInstallRequest): Boolean {
+        _pendingRemoteApkInstall.value = request.copy(seq = installSeq.incrementAndGet())
+        return true
+    }
+
+    fun consumePendingRemoteApkInstall() {
+        _pendingRemoteApkInstall.value = null
+    }
+
     // app 從背景回到前景時自動拉一次同步(下載別台的變動)。冷啟動那次跳過,bootstrap 已經同步過了。
     // 只在「回前景」拉、背景不拉 → 不耗電也不會狂打伺服器;沒綁定同步時 sync() 本身會直接 return。
     private var foregroundSyncArmed = false
@@ -250,6 +265,7 @@ class AppContainer(private val context: Context) {
                 appContext = appContext,
                 currentSyncUrl = { configRepository.settings.value.syncServerUrl },
                 saveSync = { url, pw -> saveAndTestSync(url, pw) },
+                onRemoteInstall = { req -> submitRemoteApkInstall(req) },
             )
             if (s.safeStart()) s else null
         }

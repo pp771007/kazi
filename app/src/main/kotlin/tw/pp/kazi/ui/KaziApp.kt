@@ -31,6 +31,7 @@ import tw.pp.kazi.ui.favorites.FavoritesScreen
 import tw.pp.kazi.ui.history.HistoryScreen
 import tw.pp.kazi.ui.home.HomeScreen
 import tw.pp.kazi.ui.lan.LanShareScreen
+import tw.pp.kazi.ui.lan.RemoteApkInstallScreen
 import tw.pp.kazi.ui.logs.LogScreen
 import tw.pp.kazi.ui.player.PlayerScreen
 import tw.pp.kazi.ui.scan.ScanSitesScreen
@@ -81,6 +82,15 @@ fun KaziApp(container: AppContainer) {
             }
         }
 
+        // 遠端遙控送來「裝 APK」請求 → 開安裝畫面(畫面自己讀取請求、下載/安裝、離開時 consume)
+        LaunchedEffect(Unit) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                container.pendingRemoteApkInstall.filterNotNull().collect {
+                    nav.navigate(Routes.RemoteApkInstall) { launchSingleTop = true }
+                }
+            }
+        }
+
         CompositionLocalProvider(
             LocalAppContainer provides container,
             LocalNavController provides nav,
@@ -112,6 +122,7 @@ fun KaziApp(container: AppContainer) {
                     composable(Routes.History) { HistoryScreen() }
                     composable(Routes.Favorites) { FavoritesScreen() }
                     composable(Routes.LanShare) { LanShareScreen() }
+                    composable(Routes.RemoteApkInstall) { RemoteApkInstallScreen() }
                     composable(Routes.Logs) { LogScreen() }
                     composable(Routes.ScanSites) { ScanSitesScreen() }
                     composable(

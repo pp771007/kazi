@@ -13,13 +13,17 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import tw.pp.kazi.data.AppJson
 import tw.pp.kazi.data.MoveDirection
+import tw.pp.kazi.data.RemoteApkInstallRequest
 import tw.pp.kazi.data.RemoteSearchRequest
 import tw.pp.kazi.data.Site
 import tw.pp.kazi.data.SiteRepository
+import tw.pp.kazi.data.UpdateChecker
 import tw.pp.kazi.util.Logger
 import android.content.Context
 import tw.pp.kazi.util.ChineseConverter
+import java.io.File
 import java.io.IOException
+import java.net.URLDecoder
 
 class LanServer(
     port: Int,
@@ -29,6 +33,8 @@ class LanServer(
     // 帳號同步:讀目前伺服器網址(預填面板)、存設定並測試登入(回傳是否成功)
     private val currentSyncUrl: () -> String = { "" },
     private val saveSync: suspend (String, String) -> Boolean = { _, _ -> false },
+    // 遠端裝 APK:把「下載網址 / 已上傳的檔」排進佇列,回傳 TV 是否接收
+    private val onRemoteInstall: (RemoteApkInstallRequest) -> Boolean = { false },
 ) : NanoHTTPD(port) {
 
     // 注意：handler 內呼叫的 SiteRepository.* 都是 suspend + 自帶 mutex，
@@ -58,6 +64,8 @@ class LanServer(
                 uri == PATH_API_SITES && method == Method.POST -> addSite(session)
                 uri == PATH_API_SITES_IMPORT && method == Method.POST -> importSites(session)
                 uri == PATH_API_REMOTE_SEARCH && method == Method.POST -> remoteSearch(session)
+                uri == PATH_API_REMOTE_INSTALL && method == Method.POST -> remoteInstallUrl(session)
+                uri == PATH_API_REMOTE_INSTALL_UPLOAD && method == Method.POST -> remoteInstallUpload(session)
                 uri == PATH_API_T2S && method == Method.POST -> t2s(session)
                 uri == PATH_API_SYNC && method == Method.GET -> syncConfig()
                 uri == PATH_API_SYNC && method == Method.POST -> saveSyncConfig(session)
@@ -186,6 +194,76 @@ class LanServer(
         }
     }
 
+    // 方式二:手機貼 APK 下載網址 → 電視盒自己下載安裝
+    private fun remoteInstallUrl(session: IHTTPSession): Response {
+        val body = readBody(session)
+        val obj = parseJsonObject(body) ?: return badRequest("Invalid JSON")
+        val url = (obj["url"] as? JsonPrimitive)?.content?.trim().orEmpty()
+        if (url.isBlank() || !(url.startsWith("http://") || url.startsWith("https://"))) {
+            return badRequest("請給 http(s) 開頭的 APK 網址")
+        }
+        val rawName = (obj["name"] as? JsonPrimitive)?.content?.trim().orEmpty()
+            .ifBlank { url.substringAfterLast('/').substringBefore('?') }
+        val name = sanitizeApkName(rawName)
+        val ok = onRemoteInstall(RemoteApkInstallRequest(fileName = name, url = url))
+        return installQueuedResponse(ok)
+    }
+
+    // 方式一:手機把 APK 檔當 raw body 直接 POST 上來(不走 multipart,串流寫進電視盒 cache),再排隊安裝
+    private fun remoteInstallUpload(session: IHTTPSession): Response {
+        val name = sanitizeApkName(queryParam(session, "name").ifBlank { "remote.apk" })
+        val contentLength = session.headers["content-length"]?.toLongOrNull()
+            ?: return badRequest("缺少檔案大小")
+        if (contentLength <= 0) return badRequest("檔案是空的")
+        if (contentLength > MAX_APK_BYTES) return badRequest("檔案太大(上限 ${MAX_APK_BYTES / 1024 / 1024}MB)")
+        val dir = UpdateChecker.remoteApkDir(appContext)
+        dir.listFiles()?.forEach { it.delete() }   // 只留這一顆
+        val out = File(dir, name)
+        val input = session.inputStream
+        val buf = ByteArray(64 * 1024)
+        var remaining = contentLength
+        out.outputStream().use { output ->
+            while (remaining > 0) {
+                val toRead = minOf(buf.size.toLong(), remaining).toInt()
+                val n = input.read(buf, 0, toRead)
+                if (n < 0) break
+                output.write(buf, 0, n)
+                remaining -= n
+            }
+        }
+        if (remaining > 0) {
+            out.delete()
+            return badRequest("上傳中斷,請重試")
+        }
+        val ok = onRemoteInstall(RemoteApkInstallRequest(fileName = name, localPath = out.absolutePath))
+        return installQueuedResponse(ok)
+    }
+
+    private fun installQueuedResponse(ok: Boolean): Response =
+        jsonResponse(Response.Status.OK, buildJsonObject {
+            put("status", if (ok) STATUS_SUCCESS else STATUS_ERROR)
+            put("message", if (ok) "已送往 TV 盒,請在電視上確認安裝" else "TV 暫時無法接收,請稍後再試")
+        })
+
+    // 檔名去路徑、只留安全字元(英數 . _ - () 與中文),確保 .apk 結尾;空的給預設
+    private fun sanitizeApkName(raw: String): String {
+        val base = raw.substringAfterLast('/').substringAfterLast('\\')
+            .replace(Regex("[^A-Za-z0-9._\\-()\\u4e00-\\u9fff]"), "_")
+            .ifBlank { "remote" }
+        return if (base.endsWith(".apk", ignoreCase = true)) base else "$base.apk"
+    }
+
+    private fun queryParam(session: IHTTPSession, key: String): String {
+        val qs = session.queryParameterString ?: return ""
+        for (pair in qs.split("&")) {
+            val i = pair.indexOf('=')
+            if (i > 0 && pair.substring(0, i) == key) {
+                return runCatching { URLDecoder.decode(pair.substring(i + 1), "UTF-8") }.getOrDefault("")
+            }
+        }
+        return ""
+    }
+
     /**
      * 把手機 app 匯出的 JSON（[{name,url,ssl_verify,enabled}, ...]）丟過來，全部加進站點。
      */
@@ -278,7 +356,11 @@ class LanServer(
         private const val PATH_API_SITES = "/api/sites"
         private const val PATH_API_SITES_IMPORT = "/api/sites/import"
         private const val PATH_API_REMOTE_SEARCH = "/api/remote_search"
+        private const val PATH_API_REMOTE_INSTALL = "/api/remote_install"
+        private const val PATH_API_REMOTE_INSTALL_UPLOAD = "/api/remote_install_upload"
         private const val PATH_API_T2S = "/api/t2s"
+
+        private const val MAX_APK_BYTES = 300L * 1024 * 1024   // 上傳 APK 上限 300MB
         private const val PATH_API_SYNC = "/api/sync"
         private const val PATH_API_SITE_PREFIX = "/api/sites/"
         private const val PATH_MOVE_SUFFIX = "/move"
@@ -437,6 +519,7 @@ class LanServer(
   <button class="tab" data-tab="import">📥 匯入站點</button>
   <button class="tab" data-tab="sites">⚙️ 站點管理</button>
   <button class="tab" data-tab="sync">🔄 同步</button>
+  <button class="tab" data-tab="apk">📦 裝 APK</button>
 </div>
 
 <div id="panel-search" class="panel active">
@@ -515,6 +598,29 @@ class LanServer(
     <button onclick="saveSync()" id="syncBtn" style="width:100%; margin-top:14px">💾 儲存並測試連線</button>
     <div id="syncMsg" class="err"></div>
   </div>
+</div>
+
+<div id="panel-apk" class="panel">
+  <div class="hero">
+    <h2>遠端裝 APK 到電視盒</h2>
+    <p>上傳手機裡的 APK，或貼一個下載網址，送到電視盒安裝。<strong>電視上會跳出系統安裝確認，要拿遙控器在電視上按一下。</strong></p>
+  </div>
+  <div class="card">
+    <label>方式一 · 上傳手機裡的 APK 檔</label>
+    <input id="apkFile" type="file" accept=".apk,application/vnd.android.package-archive"
+           style="width:100%; padding:10px; background:#0D0D15; border:2px solid #2a2a3e; border-radius:10px; color:#cbd5e1; font-size:13px;">
+    <button onclick="uploadApk()" id="apkUploadBtn" style="width:100%">📤 上傳並安裝到 TV</button>
+  </div>
+  <div class="card">
+    <label>方式二 · 貼 APK 下載網址</label>
+    <div class="input-with-clear">
+      <input id="apkUrl" type="text" placeholder="https://.../app.apk" autocapitalize="off" autocomplete="off" oninput="updateClearBtn(this)">
+      <button class="clear-btn" onclick="clearInput('apkUrl')" title="清空" tabindex="-1">✕</button>
+    </div>
+    <button onclick="installApkUrl()" id="apkUrlBtn" style="width:100%; margin-top:12px">🌐 讓 TV 下載並安裝</button>
+  </div>
+  <div id="apkMsg" class="err"></div>
+  <p class="fmt-note">⚠️ 第一次裝時，電視上要先允許本 app「安裝未知來源 App」(電視會自動帶你去設定)。安裝畫面只會出現在電視上，手機這裡按完就好。</p>
 </div>
 
 <div id="panel-sites" class="panel">
@@ -970,6 +1076,62 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, function(ch){
     return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch];
   });
+}
+
+// 上傳要顯示進度,fetch 拿不到上傳進度 → 用 XHR
+function uploadWithProgress(url, file, onProgress){
+  return new Promise(function(resolve, reject){
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.upload.onprogress = function(e){ if(e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100)); };
+    xhr.onload = function(){
+      let d = null; try { d = JSON.parse(xhr.responseText); } catch(_){}
+      if (xhr.status >= 200 && xhr.status < 300 && d && d.status === 'success') resolve(d);
+      else reject(new Error((d && d.message) || ('HTTP ' + xhr.status)));
+    };
+    xhr.onerror = function(){ reject(new Error('連線失敗')); };
+    xhr.send(file);
+  });
+}
+
+async function uploadApk(){
+  const f = document.getElementById('apkFile').files[0];
+  const msg = document.getElementById('apkMsg');
+  msg.className = 'err'; msg.textContent = '';
+  if (!f){ msg.textContent = '請先選一個 APK 檔'; return; }
+  if (!f.name.toLowerCase().endsWith('.apk')){ msg.textContent = '只能傳 .apk 檔'; return; }
+  const btn = document.getElementById('apkUploadBtn');
+  btn.disabled = true; btn.textContent = '上傳中… 0%';
+  try {
+    await uploadWithProgress('/api/remote_install_upload?name=' + encodeURIComponent(f.name), f,
+      function(pct){ btn.textContent = '上傳中… ' + pct + '%'; });
+    msg.className = 'err ok'; msg.textContent = '✅ 已送到電視，請拿遙控器在電視上確認安裝';
+    document.getElementById('apkFile').value = '';
+  } catch(e){
+    msg.textContent = '上傳失敗：' + (e.message || e);
+  } finally {
+    btn.disabled = false; btn.textContent = '📤 上傳並安裝到 TV';
+  }
+}
+
+async function installApkUrl(){
+  const url = document.getElementById('apkUrl').value.trim();
+  const msg = document.getElementById('apkMsg');
+  msg.className = 'err'; msg.textContent = '';
+  if (!url){ msg.textContent = '請貼一個 APK 網址'; return; }
+  const btn = document.getElementById('apkUrlBtn');
+  btn.disabled = true; btn.textContent = '送出中…';
+  const r = await api('/api/remote_install', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ url: url })
+  });
+  btn.disabled = false; btn.textContent = '🌐 讓 TV 下載並安裝';
+  if (r.ok && r.data && r.data.status === 'success'){
+    msg.className = 'err ok'; msg.textContent = '✅ 已送到電視，電視會開始下載並跳出安裝畫面';
+    const el = document.getElementById('apkUrl'); el.value = ''; updateClearBtn(el);
+  } else {
+    msg.textContent = (r.data && r.data.message) || '送出失敗';
+  }
 }
 
 loadSites();

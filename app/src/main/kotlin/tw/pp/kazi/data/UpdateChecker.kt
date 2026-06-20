@@ -37,6 +37,7 @@ object UpdateChecker {
     private const val APK_MIME = "application/vnd.android.package-archive"
     private const val FILE_PROVIDER_SUFFIX = ".fileprovider"
     private const val DOWNLOAD_DIR = "update"
+    private const val REMOTE_APK_DIR = "remote_apk"
     private const val DOWNLOAD_BUF_SIZE = 8 * 1024
     private const val LOCAL_DEV_VERSION = "0.0.0-local"
 
@@ -112,6 +113,43 @@ object UpdateChecker {
         out
     }
 
+    /** 遠端遙控上傳 / 下載的 APK 都放這:跟自更新的 update/ 分開,FileProvider 另設 remote_apk 路徑。 */
+    fun remoteApkDir(context: Context): File =
+        File(context.cacheDir, REMOTE_APK_DIR).apply { mkdirs() }
+
+    /** 給「遠端裝 APK」用的泛用下載:任意網址 → remote_apk/<fileName>,串流寫檔並回報進度。 */
+    suspend fun downloadApkFromUrl(
+        context: Context,
+        url: String,
+        fileName: String,
+        onProgress: (downloaded: Long, total: Long) -> Unit,
+    ): File = withContext(Dispatchers.IO) {
+        val dir = remoteApkDir(context)
+        dir.listFiles()?.forEach { it.delete() }   // 只留這一顆,免得 cache 一直長
+        val out = File(dir, fileName)
+        val client = HttpClients.forSite(sslVerify = false)
+        val request = Request.Builder().url(url).build()
+        client.newCall(request).execute().use { resp ->
+            if (!resp.isSuccessful) error("HTTP ${resp.code}")
+            val body = resp.body ?: error("empty body")
+            val total = body.contentLength()
+            body.byteStream().use { input ->
+                out.outputStream().use { output ->
+                    val buf = ByteArray(DOWNLOAD_BUF_SIZE)
+                    var downloaded = 0L
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n == -1) break
+                        output.write(buf, 0, n)
+                        downloaded += n
+                        onProgress(downloaded, total)
+                    }
+                }
+            }
+        }
+        out
+    }
+
     fun canInstallApks(context: Context): Boolean =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.packageManager.canRequestPackageInstalls()
@@ -144,7 +182,9 @@ object UpdateChecker {
      */
     fun cleanupCache(context: Context) {
         val dir = File(context.cacheDir, DOWNLOAD_DIR)
-        if (!dir.exists()) return
-        dir.listFiles()?.forEach { it.delete() }
+        if (dir.exists()) dir.listFiles()?.forEach { it.delete() }
+        // 遠端遙控裝過的 APK 也一起清(裝完就沒用了)
+        val remote = File(context.cacheDir, REMOTE_APK_DIR)
+        if (remote.exists()) remote.listFiles()?.forEach { it.delete() }
     }
 }

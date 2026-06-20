@@ -9,6 +9,7 @@ object Routes {
     const val History = "history"
     const val Favorites = "favorites"
     const val LanShare = "lan_share"
+    const val RemoteApkInstall = "remote_apk_install"
     const val Logs = "logs"
     const val ScanSites = "scan_sites"
 
