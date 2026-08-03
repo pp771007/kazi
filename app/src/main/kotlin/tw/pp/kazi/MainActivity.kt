@@ -3,12 +3,13 @@ package tw.pp.kazi
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
 import tw.pp.kazi.ui.KaziApp
+import tw.pp.kazi.ui.KeyEventGuardLayout
 
 class MainActivity : ComponentActivity() {
 
@@ -37,8 +38,11 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        setContent {
-            KaziApp(container)
+        // 不用 setContent{}：ComposeView 要包在 KeyEventGuardLayout 裡，才攔得到 preIme 那條路的
+        // 焦點按鍵例外（見該類別註解）。
+        val composeView = ComposeView(this).apply {
+            setContent { KaziApp(container) }
         }
+        setContentView(KeyEventGuardLayout(this).apply { addView(composeView) })
     }
 }

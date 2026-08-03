@@ -4,9 +4,10 @@ Android(手機 + 電視盒)MacCMS 影片 app,Kotlin + Jetpack Compose。手機 /
 
 ## ⚠️ 電視盒焦點(D-pad / TV focus)鐵則
 
-這是這個專案最容易亂改到收不了場的地方。歷史上踩過兩類雷:
+這是這個專案最容易亂改到收不了場的地方。歷史上踩過三類雷:
 1. **「FocusRequester is not initialized」閃退** —— `focusProperties { down/up = someRequester }` 指到的 requester,當下沒掛在任何 composable 上(LazyRow 把它虛擬化掉、或還沒 compose),D-pad 一移動 Compose 解析落點就 crash。
 2. **跳過中間列** —— 手動指定的落點配上一堆「可見了沒/掛上了沒」守衛,守衛判斷錯就 fall through,站點↓直接跳到影片格、跳過分類。
+3. **「Dispatching … while focus system is invalidated.」閃退** —— Compose 自己的前置檢查:焦點重算還沒跑完就收到按鍵。**堆疊裡完全沒有 app 的程式碼,從 composable 那端避不掉**,慢的電視盒(實測 XGIMI / Android 8)畫面剛換又連按方向鍵就會中。已由 `ui/KeyEventGuardLayout.kt`(包在 ComposeView 外的 FrameLayout,MainActivity 掛上)吃掉,代價只是那一次按鍵沒作用。**看到這個訊息不要去改焦點程式碼**,那不是我們寫壞的。
 
 ### 守則
 - **不要手動用 `focusProperties { down=/up= }` 在「列與列之間」硬指 FocusRequester 落點。** 這是上面兩類 bug 的根源。
