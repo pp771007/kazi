@@ -26,6 +26,7 @@ object HttpClients {
             // 開著(OkHttp 預設):連線池重用到伺服器已關掉的 keep-alive 連線時,會內部換新連線重試,
             // 不會把「unexpected end of stream」丟到 UI。POST 若 body 已送出 OkHttp 不會重試 → 不會重複送出。
             .retryOnConnectionFailure(true)
+            .dns(AppDns)
             .build()
     }
 
@@ -46,4 +47,16 @@ object HttpClients {
 
     fun forSite(sslVerify: Boolean): OkHttpClient =
         if (sslVerify) verifyingClient else noVerifyClient
+
+    // 播放器:影片串流一次讀很久,不能有 callTimeout(整個請求的總時限)
+    val streaming: OkHttpClient by lazy {
+        verifyingClient.newBuilder()
+            .callTimeout(0, TimeUnit.SECONDS)
+            .build()
+    }
+
+    // Coil 圖片:只加 DNS,其餘維持 Coil 預設的 OkHttpClient() 行為
+    val images: OkHttpClient by lazy {
+        OkHttpClient.Builder().dns(AppDns).build()
+    }
 }

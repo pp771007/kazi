@@ -56,6 +56,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
@@ -170,9 +171,16 @@ fun PlayerScreen(
     var playerRetryToken by remember { mutableIntStateOf(0) }
 
     val player = remember {
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(MacCmsApiSpec.DEFAULT_USER_AGENT)
-            .setAllowCrossProtocolRedirects(true)
+        // 有開自訂 DNS 才換成 OkHttp(才吃得到 AppDns);沒開維持原本的 DefaultHttpDataSource,行為完全不變。
+        // OkHttp 預設就會跟隨 http↔https 轉址,等同 setAllowCrossProtocolRedirects(true)。
+        val httpFactory = if (container.configRepository.settings.value.dohProvider != null) {
+            OkHttpDataSource.Factory(tw.pp.kazi.data.HttpClients.streaming)
+                .setUserAgent(MacCmsApiSpec.DEFAULT_USER_AGENT)
+        } else {
+            DefaultHttpDataSource.Factory()
+                .setUserAgent(MacCmsApiSpec.DEFAULT_USER_AGENT)
+                .setAllowCrossProtocolRedirects(true)
+        }
         val msFactory = DefaultMediaSourceFactory(context).setDataSourceFactory(httpFactory)
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(msFactory)

@@ -33,7 +33,11 @@ data class AppSettings(
     val syncToken: String = "",     // 裝置 token(換到後只帶這個,不再傳密碼)
     val syncLastSyncAt: Long = 0,   // 最後一次成功同步的時間(0=從未)
     val syncNickname: String = "",  // 同步帳號的暱稱(伺服器回傳,確認綁哪個帳號)
+    val dnsProvider: String = DnsProviders.SYSTEM_ID,
+    val dnsCustomUrl: String = "",
 ) {
+    val dohProvider: DohProvider? get() = DnsProviders.resolve(dnsProvider, dnsCustomUrl)
+
     // 有網址 + (token 或還沒換的密碼)就算已設定
     val syncEnabled: Boolean get() = syncServerUrl.isNotBlank() && (syncToken.isNotBlank() || syncPassword.isNotBlank())
 
@@ -77,6 +81,8 @@ class ConfigRepository(context: Context) {
                 syncToken = (obj[ConfigKeys.SYNC_TOKEN] as? JsonPrimitive)?.content ?: "",
                 syncLastSyncAt = (obj[ConfigKeys.SYNC_LAST_SYNC_AT] as? JsonPrimitive)?.longOrNull ?: 0,
                 syncNickname = (obj[ConfigKeys.SYNC_NICKNAME] as? JsonPrimitive)?.content ?: "",
+                dnsProvider = (obj[ConfigKeys.DNS_PROVIDER] as? JsonPrimitive)?.content ?: DnsProviders.SYSTEM_ID,
+                dnsCustomUrl = (obj[ConfigKeys.DNS_CUSTOM_URL] as? JsonPrimitive)?.content ?: "",
             )
         }
     }
@@ -84,6 +90,10 @@ class ConfigRepository(context: Context) {
     suspend fun updateLanShare(enabled: Boolean) = update { it.copy(lanShareEnabled = enabled) }
 
     suspend fun updateIncognito(enabled: Boolean) = update { it.copy(incognitoMode = enabled) }
+
+    suspend fun updateDns(providerId: String, customUrl: String) = update {
+        it.copy(dnsProvider = providerId, dnsCustomUrl = customUrl.trim())
+    }
 
     suspend fun updateTimeout(seconds: Int) = update { it.copy(requestTimeoutSeconds = seconds) }
 
@@ -150,6 +160,8 @@ class ConfigRepository(context: Context) {
                 ConfigKeys.SYNC_TOKEN to JsonPrimitive(settings.syncToken),
                 ConfigKeys.SYNC_LAST_SYNC_AT to JsonPrimitive(settings.syncLastSyncAt),
                 ConfigKeys.SYNC_NICKNAME to JsonPrimitive(settings.syncNickname),
+                ConfigKeys.DNS_PROVIDER to JsonPrimitive(settings.dnsProvider),
+                ConfigKeys.DNS_CUSTOM_URL to JsonPrimitive(settings.dnsCustomUrl),
             )
         )
         configFile.atomicWriteText(AppJson.encodeToString(JsonObject.serializer(), obj))

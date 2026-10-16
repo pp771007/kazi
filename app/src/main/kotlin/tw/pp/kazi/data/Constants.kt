@@ -36,6 +36,14 @@ object NetworkConfig {
     const val HEALTH_CHECK_PARALLELISM = 8
 }
 
+object DnsConfig {
+    // DoH 查詢逾時:比一般 API 短,連不上要快點退回系統 DNS,不要讓每個請求都卡在等 DNS
+    const val TIMEOUT_SEC = 4L
+    const val CACHE_TTL_MS = 5 * 60 * 1000L
+    // 設定頁測速用的網域:一定存在、各地都查得到
+    const val PROBE_HOST = "github.com"
+}
+
 object HistoryConfig {
     const val MAX_ITEMS = 200
     const val SAVE_INTERVAL_MS = 15_000L
@@ -135,4 +143,6 @@ object ConfigKeys {
     const val SYNC_TOKEN = "sync_token"
     const val SYNC_LAST_SYNC_AT = "sync_last_sync_at"
     const val SYNC_NICKNAME = "sync_nickname"
+    const val DNS_PROVIDER = "dns_provider"
+    const val DNS_CUSTOM_URL = "dns_custom_url"
 }

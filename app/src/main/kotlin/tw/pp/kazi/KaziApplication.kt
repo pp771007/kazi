@@ -1,15 +1,18 @@
 package tw.pp.kazi
 
 import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import tw.pp.kazi.data.HttpClients
 import tw.pp.kazi.util.CrashLog
 import tw.pp.kazi.util.Logger
 
-class KaziApplication : Application() {
+class KaziApplication : Application(), ImageLoaderFactory {
 
     lateinit var container: AppContainer
         private set
@@ -23,6 +26,10 @@ class KaziApplication : Application() {
         container.observeForegroundSync()
         scope.launch { container.bootstrap() }
     }
+
+    // 海報圖也走 App 的 DNS 設定
+    override fun newImageLoader(): ImageLoader =
+        ImageLoader.Builder(this).okHttpClient { HttpClients.images }.build()
 
     override fun onTerminate() {
         // 註：實機上幾乎不會被呼叫（Android 直接殺 process），

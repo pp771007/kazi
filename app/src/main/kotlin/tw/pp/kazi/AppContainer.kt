@@ -13,9 +13,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import tw.pp.kazi.data.AppDns
 import tw.pp.kazi.data.ConfigRepository
 import tw.pp.kazi.data.HistoryRepository
 import tw.pp.kazi.data.LanConfig
@@ -189,6 +191,13 @@ class AppContainer(private val context: Context) {
         appScope.launch { configRepository.updateIncognito(value) }
     }
 
+    // DNS 設定一變(含開機讀檔那次)就換掉全域解析器
+    init {
+        appScope.launch {
+            configRepository.settings.map { it.dohProvider }.distinctUntilChanged().collect { AppDns.apply(it) }
+        }
+    }
+
     fun submitRemoteSearch(request: RemoteSearchRequest): Boolean {
         _pendingRemoteSearch.value = request
         return true
@@ -227,6 +236,8 @@ class AppContainer(private val context: Context) {
 
     suspend fun bootstrap() {
         configRepository.load()
+        // 上面 init 的 collector 是另外排程到主執行緒的,這裡同步套一次,確保之後第一個請求就走對的 DNS
+        AppDns.apply(configRepository.settings.value.dohProvider)
         siteRepository.load()
         historyRepository.load()
         favoriteRepository.load()

@@ -195,6 +195,11 @@ fun SettingsScreen() {
             }
 
             Card {
+                SectionHeader(title = "DNS")
+                DnsSection()
+            }
+
+            Card {
                 SectionHeader(title = "關於")
                 Row(
                     modifier = Modifier.padding(top = 6.dp),
@@ -261,7 +266,7 @@ fun SettingsScreen() {
 
 // 同步設定的輸入框(對齊站點設定的 FormField 樣式;密碼欄可遮蔽)
 @Composable
-private fun SyncField(
+internal fun SyncField(
     label: String,
     placeholder: String,
     value: String,
